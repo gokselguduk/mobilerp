@@ -1609,8 +1609,7 @@ async function depoKaydet(){
   const now=new Date().toLocaleString('tr-TR');
   const kullanici=currentUser?.display_name||currentUser?.username||'—';
   const not=document.getElementById('dh-not')?.value||'';
-  const notlarVal=`[BİRİM:${birim}]${not?'
-'+not:''}`;
+  const notlarVal='[BİRİM:'+birim+']'+(not?'\n'+not:'');
 
   let kayit={
     stok_kodu:stokKodu,
