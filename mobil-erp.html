@@ -1058,10 +1058,8 @@ function renderSiparisGiris(editData=null){
   // SALT OKUNUR MOD — veri girişi kapalı
   const el=document.getElementById('page-SIPARIS_GIRIS');
   if(el)el.innerHTML='<div class="empty"><div class="icon">🔒</div><div style="font-size:14px;font-weight:700;margin-bottom:6px">Görüntüleme Modu</div><div>Veri girişi bu versiyonda kapalıdır.</div></div>';
-  return;
-  // eslint-disable-next-line no-unreachable
-  void 0;
-  if(false){
+}
+function renderSiparisGiris_DISABLED(editData=null){
   sipGirisKalemCount=0;
   sipGirisEditingId=editData?editData.id:null;
   sipGirisEditingSnap=editData||null;
