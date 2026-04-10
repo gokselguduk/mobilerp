@@ -4552,421 +4552,171 @@ function closeModal(id){const el=document.getElementById(id);if(el)el.style.disp
 
 
 async function siparisPdf(sip){
-  if(typeof html2pdf==='undefined'){showToast('⚠️ PDF kütüphanesi yüklenemedi');return;}
-  showToast('📄 PDF hazırlanıyor…');
-
-  const kalemler=parseKalemler(sip);
-  const topAdet=parseInt(sip.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
-  const today=new Date();
-  const gun=sip.ttarih?Math.ceil((new Date(sip.ttarih)-today)/86400000):null;
-  const terminTxt=gun===null?'—':gun<0?Math.abs(gun)+' gün GECİKMİŞ':gun===0?'BUGÜN':gun+' gün kaldı';
-  const terminRenk=gun===null?'#667085':gun<0?'#ef4444':gun<=3?'#f59e0b':'#10b981';
-
-  // Teknik föy ve konfeksiyon verileri
-  let kdK={}, kdUa={};
-  try{[kdK,kdUa]=await Promise.all([kdGet(sip.id,'KD_KONFEKSIYON'),kdGet(sip.id,'KD_URUN_AGACI')]);}catch(e){}
-  const isEmri=kdUa?.siparis_foy?.is_emri||{};
-  const kesim=isEmri.kesim||{};
-  const dikim=isEmri.dikim||{};
-  const kalitePaket=isEmri.kalite_paket||{};
-  const kesimRows=kesim.rows||[];
-
-  // Kumaş bilgisi — kumas_kutuphanesi'nden bul
-  let kumasKarti={};
-  const kalemStokKodlari=kalemler.map(k=>k.stok_kodu||k.kod).filter(Boolean);
-  if(kalemStokKodlari.length){
-    kumasKarti=(dataCache.kumas_kutuphanesi||[]).find(k=>kalemStokKodlari.includes(k.desen_kodu))||{};
-  }
-
-  const fmt=v=>v||'—';
-  const sec=(v,alt='—')=>String(v||'').trim()||alt;
-
-  // PDF HTML içeriği
-  const bodyHtml=`
-  <div style="font-size:12px;color:#111;line-height:1.6">
-
-    <!-- SİPARİŞ BİLGİLERİ + ÜRÜN -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px">
-        <div style="font-size:9px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:8px">📋 SİPARİŞ BİLGİLERİ</div>
-        <table style="width:100%;font-size:11px;border-collapse:collapse">
-          <tr><td style="padding:2px 0;color:#6b7280;width:45%">Sipariş No</td><td style="padding:2px 0;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(sip.sno||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Müşteri</td><td style="padding:2px 0;font-weight:700">${pdfEsc(sip.firma||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Durum</td><td style="padding:2px 0;font-weight:600">${pdfEsc(sip.durum||'BEKLEMEDE')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Sipariş Tarihi</td><td style="padding:2px 0">${pdfEsc(sip.starih||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Termin</td><td style="padding:2px 0;font-weight:700;color:${terminRenk}">${pdfEsc(sip.ttarih||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Termin Durumu</td><td style="padding:2px 0;font-weight:700;color:${terminRenk}">${pdfEsc(terminTxt)}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Toplam Adet</td><td style="padding:2px 0;font-weight:800;font-size:14px;color:#4f46e5">${topAdet.toLocaleString('tr-TR')}</td></tr>
-        </table>
-      </div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px">
-        <div style="font-size:9px;font-weight:800;color:#0891b2;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:8px">🏁 KUMAŞ / ÜRÜN BİLGİSİ</div>
-        <table style="width:100%;font-size:11px;border-collapse:collapse">
-          <tr><td style="padding:2px 0;color:#6b7280;width:45%">Desen Kodu</td><td style="padding:2px 0;font-weight:700;font-family:monospace">${pdfEsc(kumasKarti.desen_kodu||kalemler[0]?.stok_kodu||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Ürün Adı</td><td style="padding:2px 0;font-weight:600">${pdfEsc(kumasKarti.kumas_cinsi||kumasKarti.urun_adi||kalemler[0]?.ad||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Kumaş Cinsi</td><td style="padding:2px 0">${pdfEsc(kumasKarti.kumas_cinsi||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Tarak No</td><td style="padding:2px 0">${pdfEsc(kumasKarti.tarak_no||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Tarak Eni</td><td style="padding:2px 0">${pdfEsc(kumasKarti.tarak_eni||'—')}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Mamül En × Boy</td><td style="padding:2px 0">${kumasKarti.mamul_en&&kumasKarti.mamul_boy?kumasKarti.mamul_en+'cm × '+kumasKarti.mamul_boy+'cm':'—'}</td></tr>
-          <tr><td style="padding:2px 0;color:#6b7280">Gramaj</td><td style="padding:2px 0">${kumasKarti.mamul_gramaj?kumasKarti.mamul_gramaj+' g':'—'}</td></tr>
-        </table>
-      </div>
-    </div>
-
-    <!-- ÜRÜN KALEMLERİ -->
-    <div style="margin-bottom:14px">
-      <div style="font-size:9px;font-weight:800;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📦 ÜRÜN KALEMLERİ</div>
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead>
-          <tr style="background:#f1f5f9">
-            <th style="padding:6px 8px;text-align:left;border:1px solid #e2e8f0">#</th>
-            <th style="padding:6px 8px;text-align:left;border:1px solid #e2e8f0">Ürün Adı</th>
-            <th style="padding:6px 8px;text-align:center;border:1px solid #e2e8f0">Ebat</th>
-            <th style="padding:6px 8px;text-align:center;border:1px solid #e2e8f0">Renk</th>
-            <th style="padding:6px 8px;text-align:right;border:1px solid #e2e8f0">Adet</th>
-            <th style="padding:6px 8px;text-align:left;border:1px solid #e2e8f0">Renk Kodları</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${kalemler.map((k,i)=>{
-            const rkodlar=[k.rkod1,k.rkod2,k.rkod3,k.rkod4,k.rkod5,k.rkod6].filter(Boolean).join(' | ');
-            return `<tr style="background:${i%2?'#f8fafc':'#fff'}">
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;color:#9ca3af">${i+1}</td>
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;font-weight:600">${pdfEsc(k.ad||k.kod||'—')}</td>
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center">${pdfEsc(k.ebat||k.olcu||'—')}</td>
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center">${pdfEsc(k.renk||'—')}</td>
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#4f46e5">${parseInt(k.miktar)||0}</td>
-              <td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:10px;font-family:monospace;color:#6b7280">${pdfEsc(rkodlar||'—')}</td>
-            </tr>`;
-          }).join('')}
-          <tr style="background:#f1f5f9;font-weight:800">
-            <td colspan="4" style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right">TOPLAM</td>
-            <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:#4f46e5">${topAdet}</td>
-            <td style="padding:6px 8px;border:1px solid #e2e8f0"></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- TEKNİK BİLGİLER: KESİM / DİKİM / KALİTE-PAKET -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
-
-      <!-- KESİM -->
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-        <div style="background:#8b5cf6;color:#fff;padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.04em">✂️ KESİM TALİMATI</div>
-        <div style="padding:10px;font-size:11px">
-          ${sec(kesim.aciklama)?`<div style="margin-bottom:6px;color:#374151">${pdfEsc(sec(kesim.aciklama))}</div>`:''}
-          ${kesim.pastal_eni?`<div><span style="color:#6b7280">Pastal Eni:</span> <b>${pdfEsc(sec(kesim.pastal_eni))} cm</b></div>`:''}
-          ${kesim.pastal_boyu?`<div><span style="color:#6b7280">Pastal Boyu:</span> <b>${pdfEsc(sec(kesim.pastal_boyu))} cm</b></div>`:''}
-          ${kesim.kat_sayisi?`<div><span style="color:#6b7280">Kat Sayısı:</span> <b>${pdfEsc(sec(kesim.kat_sayisi))}</b></div>`:''}
-          ${kesim.masina?`<div><span style="color:#6b7280">Makine:</span> <b>${pdfEsc(sec(kesim.masina))}</b></div>`:''}
-          ${kesimRows.length?`<div style="margin-top:6px;font-size:10px;color:#6b7280;font-weight:700">KALEMLER</div>
-          ${kesimRows.map((r,ri)=>`<div style="background:#f8f5ff;border-radius:5px;padding:4px 6px;margin-top:3px;font-size:10px">
-            <b>${ri+1}.</b> ${pdfEsc(r.urun||'')} ${r.kesilecek_adet?'→ <b>'+r.kesilecek_adet+' adet</b>':''}
-            ${r.birim_uzunluk?'· '+r.birim_uzunluk+' cm':''}
-            ${r.kesim_talimat?'<div style="color:#7c3aed;font-size:9px">'+pdfEsc(r.kesim_talimat)+'</div>':''}
-          </div>`).join('')}`:''}
-          ${!sec(kesim.aciklama)&&!kesimRows.length?`<div style="color:#9ca3af;font-size:11px;text-align:center;padding:10px 0">Bilgi girilmemiş</div>`:''}
-        </div>
-      </div>
-
-      <!-- DİKİM -->
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-        <div style="background:#ec4899;color:#fff;padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.04em">🪡 DİKİM TALİMATI</div>
-        <div style="padding:10px;font-size:11px">
-          ${dikim.hat?`<div><span style="color:#6b7280">Hat / Model:</span> <b>${pdfEsc(dikim.hat)}</b></div>`:''}
-          ${dikim.makine?`<div><span style="color:#6b7280">Makine:</span> <b>${pdfEsc(dikim.makine)}</b></div>`:''}
-          ${dikim.iplik?`<div><span style="color:#6b7280">İplik:</span> <b>${pdfEsc(dikim.iplik)}</b></div>`:''}
-          ${dikim.dikiş_sıklığı||dikim.dikis_sikligi?`<div><span style="color:#6b7280">Dikiş Sıklığı:</span> <b>${pdfEsc(dikim.dikiş_sıklığı||dikim.dikis_sikligi)}</b></div>`:''}
-          ${dikim.aciklama?`<div style="margin-top:5px;color:#374151;background:#fff1f7;border-radius:5px;padding:5px 7px">${pdfEsc(dikim.aciklama)}</div>`:''}
-          ${dikim.not?`<div style="margin-top:4px;font-size:10px;color:#be185d">${pdfEsc(dikim.not)}</div>`:''}
-          ${!dikim.hat&&!dikim.aciklama?`<div style="color:#9ca3af;font-size:11px;text-align:center;padding:10px 0">Bilgi girilmemiş</div>`:''}
-        </div>
-      </div>
-
-      <!-- KALİTE & PAKET -->
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-        <div style="background:#10b981;color:#fff;padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.04em">📦 KALİTE & PAKET</div>
-        <div style="padding:10px;font-size:11px">
-          ${kalitePaket.kalite_seviye?`<div><span style="color:#6b7280">Kalite Seviyesi:</span> <b>${pdfEsc(kalitePaket.kalite_seviye)}</b></div>`:''}
-          ${kalitePaket.paket_tipi?`<div><span style="color:#6b7280">Paket Tipi:</span> <b>${pdfEsc(kalitePaket.paket_tipi)}</b></div>`:''}
-          ${kalitePaket.koli_adet?`<div><span style="color:#6b7280">Koli Adeti:</span> <b>${pdfEsc(kalitePaket.koli_adet)}</b></div>`:''}
-          ${kalitePaket.koli_tipi?`<div><span style="color:#6b7280">Koli Tipi:</span> <b>${pdfEsc(kalitePaket.koli_tipi)}</b></div>`:''}
-          ${kalitePaket.etiket?`<div><span style="color:#6b7280">Etiket:</span> <b>${pdfEsc(kalitePaket.etiket)}</b></div>`:''}
-          ${kalitePaket.aciklama?`<div style="margin-top:5px;color:#374151;background:#f0fdf4;border-radius:5px;padding:5px 7px">${pdfEsc(kalitePaket.aciklama)}</div>`:''}
-          ${kalitePaket.not?`<div style="margin-top:4px;font-size:10px;color:#065f46">${pdfEsc(kalitePaket.not)}</div>`:''}
-          ${!kalitePaket.kalite_seviye&&!kalitePaket.aciklama?`<div style="color:#9ca3af;font-size:11px;text-align:center;padding:10px 0">Bilgi girilmemiş</div>`:''}
-        </div>
-      </div>
-    </div>
-
-    ${sip.notlar?`
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px">
-      <div style="font-size:9px;font-weight:700;color:#92400e;margin-bottom:4px">📝 SİPARİŞ NOTLARI</div>
-      <div style="font-size:11px;color:#374151">${pdfEsc(sip.notlar)}</div>
-    </div>`:''}
-  </div>`;
-
-  // PDF elementi oluştur
-  const el=document.createElement('div');
-  el.innerHTML=`
-  <div style="font-family:'Segoe UI',Arial,sans-serif;color:#111;padding:10mm 10mm">
-    <div style="border:1px solid #d1d5db;border-radius:10px;padding:14px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #e5e9f2;padding-bottom:10px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <img src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks" style="height:36px;max-width:150px;object-fit:contain">
-          <div>
-            <div style="font-size:15px;font-weight:800;letter-spacing:.02em">SİPARİŞ & İŞ EMRİ</div>
-            <div style="font-size:10px;color:#6b7280">Simteks Tekstil — Teknik Föy</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:14px;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(sip.sno||'—')}</div>
-          <div style="font-size:10px;color:#6b7280">${new Date().toLocaleString('tr-TR')}</div>
-        </div>
-      </div>
-      ${bodyHtml}
-      <div style="margin-top:16px;border-top:1px solid #e5e9f2;padding-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:11px;color:#374151">
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">HAZIRLAYAN</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">KONTROL</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">ONAY / TARİH</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
-      </div>
-    </div>
-  </div>`;
-
-  const dosyaAdi='siparis_'+String(sip.sno||'form').replace(/[^\w\-]+/g,'_')+'_'+new Date().toLocaleDateString('tr-TR').replace(/\./g,'')+'.pdf';
-
-  // DOM'a ekle — html2canvas için gerekli
-  el.style.cssText='position:fixed;left:-9999px;top:0;z-index:-1;background:#fff';
-  document.body.appendChild(el);
-
-  // Logo yükle bekle
-  const imgs=el.querySelectorAll('img');
-  await Promise.all([...imgs].map(img=>new Promise(res=>{
-    if(img.complete)res();
-    else{img.onload=res;img.onerror=res;}
-  })));
-
-  html2pdf().set({
-    margin:[5,5,5,5],
-    filename:dosyaAdi,
-    image:{type:'jpeg',quality:0.98},
-    html2canvas:{scale:2,useCORS:true,allowTaint:true,logging:false,backgroundColor:'#ffffff'},
-    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
-  }).from(el).outputPdf('blob').then(async(blob)=>{
-    document.body.removeChild(el);
-    const file=new File([blob],dosyaAdi,{type:'application/pdf'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{
-        await navigator.share({files:[file],title:'Sipariş Formu — '+String(sip.sno||''),text:'Simteks Tekstil'});
-        showToast('✅ Paylaşıldı');
-        return;
-      }catch(e){if(e.name!=='AbortError')console.warn(e);}
-    }
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download=dosyaAdi;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('✅ PDF indirildi');
-  }).catch(err=>{
-    document.body.removeChild(el);
-    showToast('❌ PDF hatası: '+err.message);
-  });
-}
-
-
-// ═══════════════════════════════════════════
-// EXCEL İNDİR
-// ═══════════════════════════════════════════
-function siparisExcelById(id){
-  const sip=(dataCache.siparisler||[]).find(s=>s.id==id);
-  if(!sip){showToast('⚠️ Sipariş bulunamadı');return;}
-  siparisExcel(sip);
+  if(typeof html2pdf==='undefined'){showToast('PDF yuklenemedi');return;}
+  showToast('PDF hazirlaniyor...');
+  const doc=siparisHtmlBelge(sip, await getKdK(sip.id));
+  await paylasPdf(doc, 'siparis_'+String(sip.sno||'form').replace(/[^\w-]+/g,'_')+'.pdf', 'portrait');
 }
 
 async function siparisExcel(sip){
-  // Excel yerine PDF ile aynı format — XLSX kütüphanesi olmadan çalışır
-  // Basit ama etkili: HTML tablosunu CSV olarak değil, görsel tablo olarak ver
-  // Aslında kullanıcı "Excel formatında" istedi → HTML table → Excel açar
-  if(typeof html2pdf==='undefined'){showToast('PDF kütüphanesi yüklenemedi');return;}
-  showToast('Excel hazırlanıyor...');
+  if(typeof html2pdf==='undefined'){showToast('PDF yuklenemedi');return;}
+  showToast('Excel hazirlaniyor...');
+  const doc=siparisHtmlBelge(sip, await getKdK(sip.id));
+  await paylasPdf(doc, 'excel_'+String(sip.sno||'form').replace(/[^\w-]+/g,'_')+'.pdf', 'landscape');
+}
 
+async function getKdK(sipId){
+  try{return await kdGet(sipId,'KD_KONFEKSIYON');}catch{return {};}
+}
+
+function siparisHtmlBelge(sip, kdK){
   const kalemler=parseKalemler(sip);
   const topAdet=parseInt(sip.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
   const today=new Date();
   const gun=sip.ttarih?Math.ceil((new Date(sip.ttarih)-today)/86400000):null;
-  const terminTxt=gun===null?'—':gun<0?Math.abs(gun)+' gün GECİKMİŞ':gun===0?'BUGÜN':gun+' gün kaldı';
+  const terminTxt=gun===null?'—':gun<0?Math.abs(gun)+' gun GECIKTI':gun===0?'BUGÜN':gun+' gun kaldi';
   const terminRenk=gun===null?'#667085':gun<0?'#ef4444':gun<=3?'#f59e0b':'#10b981';
-  let kdK={};
-  try{kdK=await kdGet(sip.id,'KD_KONFEKSIYON');}catch(e){}
   const kes=parseInt(kdK.kesim_toplam)||0;
   const dik=parseInt(kdK.dikim_toplam)||0;
   const kk=parseInt(kdK.kk_gecen)||0;
   const kol=parseInt(kdK.koli_toplam)||0;
   const hat=parseInt(kdK.hatali_toplam)||0;
 
-  const td=(val,opts='')=>`<td style="border:1px solid #d1d5db;padding:6px 10px;font-size:11px;${opts}">${pdfEsc(String(val===null||val===undefined?'—':val))}</td>`;
-  const th=(val,opts='')=>`<th style="border:1px solid #d1d5db;padding:7px 10px;font-size:10px;background:#f1f5f9;font-weight:700;text-align:left;${opts}">${pdfEsc(String(val||''))}</th>`;
-
-  const el=document.createElement('div');
-  el.innerHTML=`<div style="font-family:Segoe UI,Arial,sans-serif;padding:8mm 10mm;color:#111">
-    <div style="border:1px solid #d1d5db;border-radius:8px;overflow:hidden">
-
-      <!-- HEADER -->
-      <div style="background:#1e3a5f;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
-        <div style="display:flex;align-items:center;gap:12px">
-          <img src="https://simtekstekstil.com.tr/resimler/logo.png" style="height:32px;object-fit:contain;filter:brightness(0) invert(1)">
-          <div>
-            <div style="color:#fff;font-size:15px;font-weight:800;letter-spacing:.02em">SİPARİŞ FORMU</div>
-            <div style="color:#93c5fd;font-size:10px">Simteks Tekstil Üretim Takip</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="color:#fff;font-size:16px;font-weight:800;font-family:monospace">${pdfEsc(sip.sno||'—')}</div>
-          <div style="color:#93c5fd;font-size:10px">${new Date().toLocaleString('tr-TR')}</div>
-        </div>
-      </div>
-
-      <!-- SİPARİŞ + ÜRETİM BİLGİ -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb">
-        <div style="padding:12px 16px;border-right:1px solid #e5e7eb">
-          <div style="font-size:9px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">SİPARİŞ BİLGİLERİ</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <tr><td style="padding:3px 0;color:#6b7280;width:42%">Sipariş No</td><td style="padding:3px 0;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(sip.sno||'—')}</td></tr>
-            <tr><td style="padding:3px 0;color:#6b7280">Müşteri</td><td style="padding:3px 0;font-weight:700">${pdfEsc(sip.firma||'—')}</td></tr>
-            <tr><td style="padding:3px 0;color:#6b7280">Durum</td><td style="padding:3px 0;font-weight:600">${pdfEsc(sip.durum||'BEKLEMEDE')}</td></tr>
-            <tr><td style="padding:3px 0;color:#6b7280">Sipariş Tarihi</td><td style="padding:3px 0">${pdfEsc(sip.starih||'—')}</td></tr>
-            <tr><td style="padding:3px 0;color:#6b7280">Termin</td><td style="padding:3px 0;font-weight:700;color:${terminRenk}">${pdfEsc(sip.ttarih||'—')} · ${terminTxt}</td></tr>
-            <tr><td style="padding:3px 0;color:#6b7280">Toplam Adet</td><td style="padding:3px 0;font-weight:800;font-size:15px;color:#4f46e5">${topAdet}</td></tr>
-          </table>
-        </div>
-        <div style="padding:12px 16px">
-          <div style="font-size:9px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRETİM DURUMU</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            ${[['✂️ Kesim',kes,'#8b5cf6'],['🪡 Dikim',dik,'#ec4899'],['🔍 Kalite',kk,'#f59e0b'],['📦 Koli',kol,'#10b981'],['⚠️ Hatalı',hat,'#ef4444']].map(([l,v,c])=>`
-            <tr>
-              <td style="padding:3px 0;color:#6b7280;width:42%">${l}</td>
-              <td style="padding:3px 0">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div style="flex:1;height:5px;background:#f3f4f6;border-radius:3px">
-                    <div style="height:100%;width:${topAdet>0?Math.min(100,Math.round(v/topAdet*100)):0}%;background:${c};border-radius:3px"></div>
-                  </div>
-                  <span style="font-weight:700;color:${c};width:36px;text-align:right">${v}</span>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </table>
-        </div>
-      </div>
-
-      <!-- ÜRÜN KALEMLERİ -->
-      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb">
-        <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRÜN KALEMLERİ</div>
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr>
-              ${th('#','width:24px')}
-              ${th('Ürün Adı','min-width:120px')}
-              ${th('Ebat','text-align:center')}
-              ${th('Renk','text-align:center')}
-              ${th('Sipariş','text-align:right')}
-              ${th('Kesim','text-align:right;color:#8b5cf6')}
-              ${th('Dikim','text-align:right;color:#ec4899')}
-              ${th('Koli','text-align:right;color:#10b981')}
-              ${th('Renk Kodları','')}
-            </tr>
-          </thead>
-          <tbody>
-            ${kalemler.map((k,i)=>{
-              const ki=kdK['kalem_'+i]||{};
-              const rkodlar=[k.rkod1,k.rkod2,k.rkod3,k.rkod4,k.rkod5,k.rkod6].filter(Boolean).join(' · ');
-              return `<tr style="background:${i%2?'#f9fafb':'#fff'}">
-                ${td(i+1,'color:#9ca3af;text-align:center')}
-                ${td(k.ad||k.kod||'—','font-weight:600')}
-                ${td(k.ebat||k.olcu||'—','text-align:center')}
-                ${td(k.renk||'—','text-align:center')}
-                ${td(parseInt(k.miktar)||0,'text-align:right;font-weight:700;color:#4f46e5')}
-                ${td(parseInt(ki.kesilen)||0,'text-align:right;color:#8b5cf6')}
-                ${td(parseInt(ki.dikilen)||0,'text-align:right;color:#ec4899')}
-                ${td(parseInt(ki.kolide)||0,'text-align:right;color:#10b981')}
-                ${td(rkodlar||'—','font-size:10px;font-family:monospace;color:#6b7280')}
-              </tr>`;
-            }).join('')}
-            <tr style="background:#f1f5f9;font-weight:800">
-              ${td('','border:none')}
-              ${td('TOPLAM','font-weight:800;color:#374151')}
-              ${td('')}${td('')}
-              ${td(topAdet,'text-align:right;font-weight:800;color:#4f46e5')}
-              ${td(kes,'text-align:right;color:#8b5cf6')}
-              ${td(dik,'text-align:right;color:#ec4899')}
-              ${td(kol,'text-align:right;color:#10b981')}
-              ${td('')}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      ${sip.notlar?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
-        <span style="font-size:10px;font-weight:700;color:#92400e">📝 NOT: </span>
-        <span style="font-size:11px;color:#374151">${pdfEsc(sip.notlar)}</span>
-      </div>`:''}
-
-      <!-- İMZA -->
-      <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-        ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`
-        <div>
-          <div style="font-size:9px;color:#9ca3af;font-weight:700;margin-bottom:18px">${l}</div>
-          <div style="border-top:1px solid #d1d5db"></div>
-        </div>`).join('')}
-      </div>
-
-    </div>
+  const td=(v,s='')=>`<td style="border:1px solid #d1d5db;padding:5px 8px;font-size:11px;${s}">${pdfEsc(String(v===null||v===undefined?'':v))}</td>`;
+  const th=(v,s='')=>`<th style="border:1px solid #d1d5db;padding:6px 8px;font-size:10px;background:#f1f5f9;font-weight:700;text-align:left;${s}">${pdfEsc(String(v||''))}</th>`;
+  const pct=(v,t)=>t>0?Math.min(100,Math.round(v/t*100)):0;
+  const bar=(label,val,renk)=>`<div style="margin-bottom:7px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#374151;margin-bottom:2px"><span>${label}</span><span style="font-weight:700">${val} adet (${pct(val,topAdet)}%)</span></div>
+    <div style="height:5px;background:#e5e7eb;border-radius:3px"><div style="height:100%;width:${pct(val,topAdet)}%;background:${renk};border-radius:3px"></div></div>
   </div>`;
 
-  const dosyaAdi=`siparis_${String(sip.sno||'form').replace(/[^\w\-]+/g,'_')}_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'')}.pdf`;
-  const excelDosyaAdi=dosyaAdi.replace('.pdf','.xlsx_goruntu.pdf');
+  const html=`<div style="font-family:Segoe UI,Arial,sans-serif;padding:10mm;color:#111">
+  <div style="border:1px solid #d1d5db;border-radius:8px;overflow:hidden">
 
-  const excelDosya='excel_'+String(sip.sno||'form').replace(/[^\w\-]+/g,'_')+'_'+new Date().toLocaleDateString('tr-TR').replace(/\./g,'')+'.pdf';
+    <div style="background:#1e3a5f;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="background:#fff;border-radius:4px;padding:4px 8px;font-size:13px;font-weight:800;color:#1e3a5f;font-family:serif">SİMTEKS</div>
+        <div><div style="color:#fff;font-size:14px;font-weight:800">SİPARİŞ FORMU</div><div style="color:#93c5fd;font-size:10px">Simteks Tekstil Üretim Takip</div></div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:#fff;font-size:16px;font-weight:800;font-family:monospace">${pdfEsc(sip.sno||'—')}</div>
+        <div style="color:#93c5fd;font-size:10px">${new Date().toLocaleString('tr-TR')}</div>
+      </div>
+    </div>
 
-  el.style.cssText='position:fixed;left:-9999px;top:0;z-index:-1;background:#fff';
-  document.body.appendChild(el);
+    <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb">
+      <div style="padding:12px 16px;border-right:1px solid #e5e7eb">
+        <div style="font-size:9px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">SİPARİŞ BİLGİLERİ</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <tr><td style="padding:3px 0;color:#6b7280;width:40%">Sipariş No</td><td style="padding:3px 0;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(sip.sno||'—')}</td></tr>
+          <tr><td style="padding:3px 0;color:#6b7280">Müşteri</td><td style="padding:3px 0;font-weight:700">${pdfEsc(sip.firma||'—')}</td></tr>
+          <tr><td style="padding:3px 0;color:#6b7280">Durum</td><td style="padding:3px 0;font-weight:600">${pdfEsc(sip.durum||'BEKLEMEDE')}</td></tr>
+          <tr><td style="padding:3px 0;color:#6b7280">Sipariş Tarihi</td><td style="padding:3px 0">${pdfEsc(sip.starih||'—')}</td></tr>
+          <tr><td style="padding:3px 0;color:#6b7280">Termin</td><td style="padding:3px 0;font-weight:700;color:${terminRenk}">${pdfEsc(sip.ttarih||'—')} · ${terminTxt}</td></tr>
+          <tr><td style="padding:3px 0;color:#6b7280">Toplam Adet</td><td style="padding:3px 0;font-weight:800;font-size:15px;color:#4f46e5">${topAdet}</td></tr>
+        </table>
+      </div>
+      <div style="padding:12px 16px">
+        <div style="font-size:9px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRETİM DURUMU</div>
+        ${bar('✂️ Kesim',kes,'#8b5cf6')}
+        ${bar('🪡 Dikim',dik,'#ec4899')}
+        ${bar('🔍 Kalite',kk,'#f59e0b')}
+        ${bar('📦 Koli',kol,'#10b981')}
+        ${hat>0?`<div style="font-size:11px;color:#ef4444;font-weight:700;margin-top:4px">⚠️ Hatalı: ${hat} adet</div>`:''}
+      </div>
+    </div>
 
-  const imgs2=el.querySelectorAll('img');
-  await Promise.all([...imgs2].map(img=>new Promise(res=>{
-    if(img.complete)res();else{img.onload=res;img.onerror=res;}
-  })));
+    <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb">
+      <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRÜN KALEMLERİ</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${th('#','width:20px')}${th('Ürün Adı')}${th('Ebat','text-align:center')}${th('Renk','text-align:center')}${th('Sipariş','text-align:right')}${th('Kesim','text-align:right;color:#8b5cf6')}${th('Dikim','text-align:right;color:#ec4899')}${th('Koli','text-align:right;color:#10b981')}${th('Renk Kodları')}</tr></thead>
+        <tbody>
+          ${kalemler.map((k,i)=>{
+            const ki=kdK['kalem_'+i]||{};
+            const rk=[k.rkod1,k.rkod2,k.rkod3,k.rkod4,k.rkod5,k.rkod6].filter(Boolean).join(' · ');
+            return `<tr style="background:${i%2?'#f9fafb':'#fff'}">
+              ${td(i+1,'color:#9ca3af;text-align:center')}
+              ${td(k.ad||k.kod||'—','font-weight:600')}
+              ${td(k.ebat||k.olcu||'—','text-align:center')}
+              ${td(k.renk||'—','text-align:center')}
+              ${td(parseInt(k.miktar)||0,'text-align:right;font-weight:700;color:#4f46e5')}
+              ${td(parseInt(ki.kesilen)||0,'text-align:right;color:#8b5cf6')}
+              ${td(parseInt(ki.dikilen)||0,'text-align:right;color:#ec4899')}
+              ${td(parseInt(ki.kolide)||0,'text-align:right;color:#10b981')}
+              ${td(rk||'—','font-size:10px;font-family:monospace;color:#6b7280')}
+            </tr>`;
+          }).join('')}
+          <tr style="background:#f1f5f9;font-weight:800">
+            ${td('')}${td('TOPLAM','font-weight:800')}${td('')}${td('')}
+            ${td(topAdet,'text-align:right;font-weight:800;color:#4f46e5')}
+            ${td(kes,'text-align:right;color:#8b5cf6')}
+            ${td(dik,'text-align:right;color:#ec4899')}
+            ${td(kol,'text-align:right;color:#10b981')}
+            ${td('')}
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-  html2pdf().set({
-    margin:[5,5,5,5],
-    filename:excelDosya,
-    image:{type:'jpeg',quality:0.98},
-    html2canvas:{scale:2,useCORS:true,allowTaint:true,logging:false,backgroundColor:'#ffffff'},
-    jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}
-  }).from(el).outputPdf('blob').then(async(blob)=>{
-    document.body.removeChild(el);
-    const file=new File([blob],excelDosya,{type:'application/pdf'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{await navigator.share({files:[file],title:'Sipariş — '+String(sip.sno||'')});showToast('Paylaşıldı ✅');return;}
-      catch(e){if(e.name!=='AbortError')console.warn(e);}
-    }
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download=file.name;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Excel indirildi ✅');
-  }).catch(err=>{
-    document.body.removeChild(el);
-    showToast('❌ Hata: '+err.message);
-  });
+    ${sip.notlar?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a"><span style="font-size:10px;font-weight:700;color:#92400e">📝 NOT: </span><span style="font-size:11px">${pdfEsc(sip.notlar)}</span></div>`:''}
+
+    <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`<div><div style="font-size:9px;color:#9ca3af;font-weight:700;margin-bottom:18px">${l}</div><div style="border-top:1px solid #d1d5db"></div></div>`).join('')}
+    </div>
+  </div></div>`;
+
+  const el=document.createElement('div');
+  el.innerHTML=html;
+  return el;
 }
 
-// ═══════════════════════════════════════════
-// UTILITY FONKSİYONLAR
-// ═══════════════════════════════════════════
+async function paylasPdf(el, dosyaAdi, yonelim){
+  // DOM'a ekle - html2canvas için zorunlu
+  el.style.cssText='position:fixed;left:-9999px;top:0;width:210mm;background:#fff;z-index:-999';
+  document.body.appendChild(el);
 
+  // 200ms bekle - render için
+  await new Promise(r=>setTimeout(r,200));
 
+  try{
+    const blob = await html2pdf().set({
+      margin:[8,8,8,8],
+      filename:dosyaAdi,
+      image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',logging:false},
+      jsPDF:{unit:'mm',format:'a4',orientation:yonelim}
+    }).from(el).outputPdf('blob');
+
+    document.body.removeChild(el);
+
+    const file=new File([blob],dosyaAdi,{type:'application/pdf'});
+
+    // Web Share API ile paylaş
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file],title:dosyaAdi});
+        showToast('Paylasildi ✅');
+        return;
+      }catch(e){
+        if(e.name==='AbortError')return; // kullanıcı iptal etti
+      }
+    }
+
+    // Web Share yoksa indir
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=dosyaAdi;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('PDF indirildi ✅');
+
+  }catch(err){
+    if(document.body.contains(el))document.body.removeChild(el);
+    console.error('PDF hatasi:',err);
+    showToast('PDF hatasi: '+err.message);
+  }
+}
 
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
