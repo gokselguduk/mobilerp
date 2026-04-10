@@ -4943,10 +4943,100 @@ async function siparisExcel(sip){
   });
 }
 
-window.addEventListener('DOMContentLoaded',()=>{
-  if(!initSB())return;
-  if(tryRestoreSession())startApp();
-});
-</script>
-</body>
-</html>
+// ═══════════════════════════════════════════
+// UTILITY FONKSİYONLAR
+// ═══════════════════════════════════════════
+
+function showToast(msg,dur=3000){
+  let t=document.getElementById('toast-msg');
+  if(!t){t=document.createElement('div');t.id='toast-msg';t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1c2230;color:#e6edf3;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #30363d;transition:opacity .3s';document.body.appendChild(t);}
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',dur);
+}
+
+function showErr(msg){
+  const el=document.getElementById('login-err');
+  if(el){el.textContent=msg;el.style.display='block';}
+}
+
+function showLoginErr(msg){showErr(msg);}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function kisaTarih(v){
+  if(!v)return'—';
+  const d=new Date(v);
+  return isNaN(d)?String(v).slice(0,10):d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:'2-digit'});
+}
+
+function parseSno(s){
+  const str=String(s||'').toUpperCase().trim();
+  const m1=str.match(/[A-Z]+(\d+)$/);
+  if(m1)return +m1[1];
+  const m2=str.match(/(\d{4})\s*\/\s*(\d+)/);
+  if(m2)return +m2[1]*10000 + +m2[2];
+  const m3=str.match(/(\d+)/);
+  if(m3)return +m3[1];
+  return 0;
+}
+
+function sortSno(arr){
+  return [...arr].sort((a,b)=>parseSno(b.sno)-parseSno(a.sno));
+}
+
+function durumTag(d){
+  const map={
+    'TAMAMLANDI':'tag-green','URETIMDE':'tag-blue','BEKLEMEDE':'tag-amber',
+    'IPTAL':'tag-red','SEVK EDİLDİ':'tag-green','PLANLANDI':'tag-violet'
+  };
+  const cls=map[d]||'tag-gray';
+  return `<span class="tag ${cls}">${esc(d||'BEKLEMEDE')}</span>`;
+}
+
+function parseKalemler(s){
+  let k=[];
+  try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch{}
+  if(!Array.isArray(k))k=[];
+  return k;
+}
+
+function kdKey(sipId,tip){return tip+'_'+sipId;}
+
+async function kdGet(sipId,tip,force=false){
+  const key=kdKey(sipId,tip);
+  if(!force&&_kdCache[key])return _kdCache[key];
+  try{
+    const{data,error}=await sb.from('siparis_akis')
+      .select('id,notlar,created_at')
+      .eq('siparis_id',sipId)
+      .eq('islem',tip)
+      .eq('kalem_ad',tip)
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(error)throw error;
+    let kd={};
+    if(data&&data[0]){try{kd=JSON.parse(data[0].notlar||'{}');}catch{}}
+    _kdCache[key]=kd;
+    return kd;
+  }catch(e){console.error('kdGet hata:',e);return _kdCache[key]||{};}
+}
+
+async function kdSet(sipId,tip,kd){
+  const key=kdKey(sipId,tip);
+  _kdCache[key]=kd;
+  const notlar=JSON.stringify(kd);
+  const{data:existing}=await sb.from('siparis_akis')
+    .select('id')
+    .eq('siparis_id',sipId)
+    .eq('islem',tip)
+    .eq('kalem_ad',tip)
+    .limit(1);
+  if(existing&&existing[0]){
+    await sb.from('siparis_akis').update({notlar,created_at:new Date().toISOString()}).eq('id',existing[0].id);
+  } else {
+    await sb.from('siparis_akis').insert([{siparis_id:sipId,islem:tip,kalem_ad:tip,notlar,miktar:0}]);
+  }
+}
+
+
+
