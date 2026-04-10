@@ -646,17 +646,24 @@ async function startApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('topbar').style.display='flex';
   document.getElementById('app').style.display='block';
-  // Kullanıcı bilgilerini göster
   document.getElementById('topbar-user').textContent=currentUser.display_name||currentUser.username;
   document.getElementById('drawer-user-name').textContent=currentUser.display_name||currentUser.username;
   document.getElementById('drawer-user-role').textContent=currentUser.role==='admin'?'Yönetici':'Kullanıcı';
-  // Yetkisiz menüleri gizle
   applyNavPermissions();
-  // Veri yükle
-  await loadAllData();
-  // Dashboard'u render et
+  // Önce sayfayı aç, loading göster
   const savedPage=localStorage.getItem('erp_current_page')||'DASHBOARD';
-  goPage(canAccess(savedPage)?savedPage:'DASHBOARD');
+  const targetPage=canAccess(savedPage)?savedPage:'DASHBOARD';
+  goPage(targetPage);
+  // Veri yükle — timeout ile
+  try{
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Zaman aşımı')),15000));
+    await Promise.race([loadAllData(),timeout]);
+  }catch(e){
+    console.error('startApp veri hatası:',e);
+    showToast('⚠️ Veri yüklenemedi, yenile butonuna bas');
+  }
+  // Her halükarda render et
+  renderPage(targetPage);
 }
 
 function applyNavPermissions(){
