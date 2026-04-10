@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Simteks ERP — Görüntüleme</title>
+<title>Simteks ERP</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="erp-config.js"></script>
 <style>
@@ -226,13 +226,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .stok-item-ad{font-size:12px;font-weight:700;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stok-item-miktar{font-size:14px;font-weight:800;flex-shrink:0}
 .stok-item-meta{font-size:10px;color:var(--text3)}
-
-/* ═══ READONLY MODE ═══ */
-.save-btn { display: none !important; }
-.form-section { pointer-events: none; opacity: 0.6; }
-#nav-SIPARIS_GIRIS, #nav-DEPO_HAREKET, #nav-TEZGAH_GIRIS,
-#nav-IPLIK_KART_GIRIS, #nav-KUMAS_KART_GIRIS, #nav-MAMUL_KART_GIRIS,
-#nav-MALIYET_HESAP { display: none !important; }
 </style>
 </head>
 <body>
@@ -806,39 +799,41 @@ function renderDashboard(){
 
   const aktif=sip.filter(s=>s.durum!=='TAMAMLANDI');
   const geciken=aktif.filter(s=>s.ttarih&&new Date(s.ttarih)<today);
-  const yakinda=aktif.filter(s=>{if(!s.ttarih)return false;const g=Math.ceil((new Date(s.ttarih)-today)/86400000);return g>=0&&g<=3;});
   const bekleyen=todos.filter(t=>t.status!=='TAMAMLANDI');
-  const kritik=bekleyen.filter(t=>t.priority==='KRİTİK');
+  const kritik=bekleyen.filter(t=>t.priority==='KRİTİK'||t.priority==='ACİL');
+  const doluTez=tezgahlar.filter(t=>(t.siparis_no||'').trim());
   const musait=tezgahlar.filter(t=>!(t.siparis_no||'').trim()).length;
   const numuneler=(dataCache.kumas_kutuphanesi||[]).filter(k=>k.ana_grup==='NUMUNE'||(k.desen_kodu||'').toUpperCase().startsWith('NU'));
+  const nuBekleyen=numuneler.filter(n=>!n.kalite||n.kalite==='BEKLEMEDE');
 
-  // Son 5 aktif sipariş termin sırasına göre
-  const terminliSip=aktif.filter(s=>s.ttarih).sort((a,b)=>new Date(a.ttarih)-new Date(b.ttarih)).slice(0,5);
-  const terminsisSip=aktif.filter(s=>!s.ttarih).slice(0,3);
+  // Termin yaklaşanlar — tüm aktif siparişler termin sırasıyla
+  const terminSirali=aktif.filter(s=>s.ttarih).sort((a,b)=>new Date(a.ttarih)-new Date(b.ttarih));
 
-  // Son 5 iplik hareketi
+  // Son hareketler
   const son5Iplik=[...iplik].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,5);
   const son5Kumas=[...kumas].filter(k=>!k.mamul_flag).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,5);
 
+  // Gantt için 30 günlük pencere
+  const GANTT_GUN=30;
+  const ganttBaslangic=new Date(today);
+  const ganttBitis=new Date(today);
+  ganttBitis.setDate(ganttBitis.getDate()+GANTT_GUN);
+
   el.innerHTML=`
-  <!-- Tarih başlığı -->
+  <!-- Başlık -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <div>
-      <div style="font-size:20px;font-weight:800;color:var(--text)">Genel Bakış</div>
+      <div style="font-size:20px;font-weight:800">Genel Bakış</div>
       <div style="font-size:10px;color:var(--text3);margin-top:2px">${today.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
     <button onclick="refreshData()" style="background:none;border:1px solid var(--border2);border-radius:9px;color:var(--text3);width:36px;height:36px;font-size:16px;cursor:pointer">↻</button>
   </div>
 
-  <!-- Öncelik KPI -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+  <!-- KPI Grid -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
     <div class="kpi-box" onclick="goPage('SIPARIS_LISTE')" style="cursor:pointer;border-left:3px solid var(--red)">
       <div class="kpi-val" style="color:var(--red)">${geciken.length}</div>
       <div class="kpi-lbl">Geciken Sipariş</div>
-    </div>
-    <div class="kpi-box" onclick="goPage('SIPARIS_LISTE')" style="cursor:pointer;border-left:3px solid var(--amber)">
-      <div class="kpi-val" style="color:var(--amber)">${yakinda.length}</div>
-      <div class="kpi-lbl">3 Günde Bitiyor</div>
     </div>
     <div class="kpi-box" onclick="goPage('SIPARIS_LISTE')" style="cursor:pointer;border-left:3px solid var(--accent)">
       <div class="kpi-val" style="color:var(--accent)">${aktif.length}</div>
@@ -848,81 +843,142 @@ function renderDashboard(){
       <div class="kpi-val" style="color:var(--violet)">${kritik.length}</div>
       <div class="kpi-lbl">Kritik Görev</div>
     </div>
-    <div class="kpi-box" onclick="goPage('TEZGAH_YONETIMI')" style="cursor:pointer;border-left:3px solid var(--green)">
-      <div class="kpi-val" style="color:var(--green)">${musait}</div>
-      <div class="kpi-lbl">Müsait Tezgah</div>
-    </div>
     <div class="kpi-box" onclick="goPage('NUMUNE_URETIM')" style="cursor:pointer;border-left:3px solid var(--cyan)">
-      <div class="kpi-val" style="color:var(--cyan)">${numuneler.length}</div>
-      <div class="kpi-lbl">Numune</div>
+      <div class="kpi-val" style="color:var(--cyan)">${nuBekleyen.length}</div>
+      <div class="kpi-lbl">Numune Bekleyen</div>
     </div>
   </div>
 
-  <!-- Yaklaşan terminler -->
-  ${terminliSip.length?`
-  <div class="sec-title">⏰ Yaklaşan Terminler</div>
-  <div class="card">
-    ${terminliSip.map(s=>{
+  <!-- Termin Takvimi -->
+  ${terminSirali.length?`
+  <div class="sec-title" style="margin-bottom:8px">📅 Termin Takvimi</div>
+  <div class="card" style="margin-bottom:14px">
+    ${terminSirali.slice(0,8).map(s=>{
       const gun=Math.ceil((new Date(s.ttarih)-today)/86400000);
-      const renk=gun<0?'var(--red)':gun<=2?'var(--amber)':'var(--green)';
-      const kalemler=parseKalemler(s);
-      const adet=parseInt(s.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
-      return `<div class="siparis-item" onclick="openSiparisDetay(${s.id})">
-        <div class="siparis-dot" style="background:${renk}"></div>
-        <div class="siparis-info">
-          <div class="siparis-no">${esc(s.sno||'—')}</div>
-          <div class="siparis-firma">${esc(s.firma||'—')}</div>
-          <div class="siparis-tags">${durumTag(s.durum)}<span class="tag" style="background:${renk}22;color:${renk}">${gun<0?Math.abs(gun)+' gün gecikmiş':gun===0?'Bugün':gun+' gün'}</span></div>
+      const pct=Math.max(0,Math.min(100,Math.round((1-gun/30)*100)));
+      const renk=gun<0?'var(--red)':gun<=3?'var(--amber)':gun<=7?'var(--orange)':'var(--green)';
+      const etiket=gun<0?Math.abs(gun)+' gün GECİKMİŞ':gun===0?'BUGÜN':gun+' gün kaldı';
+      const adet=parseInt(s.miktar)||parseKalemler(s).reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
+      return `<div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="openSiparisDetay(${s.id})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:5px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:1px">${esc(s.sno||'—')} · <span style="color:var(--text2);font-weight:500">${esc(s.firma||'—')}</span></div>
+            <div style="font-size:10px;color:var(--text3)">${s.ttarih} · ${adet} adet</div>
+          </div>
+          <span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px;background:${renk}22;color:${renk};white-space:nowrap;flex-shrink:0">${etiket}</span>
         </div>
-        <div class="siparis-right"><div class="siparis-adet">${adet||'—'}</div><div class="siparis-adet-lbl">adet</div></div>
+        <div style="height:3px;background:var(--surface3);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${gun<0?100:Math.max(5,100-gun*3)}%;background:${renk};border-radius:2px;transition:width .3s"></div>
+        </div>
+      </div>`;
+    }).join('')}
+    ${terminSirali.length>8?`<div style="padding:10px 14px;font-size:11px;color:var(--text3);text-align:center;cursor:pointer" onclick="goPage('SIPARIS_LISTE')">+${terminSirali.length-8} sipariş daha →</div>`:''}
+  </div>`:''}
+
+  <!-- Kritik Görevler -->
+  ${kritik.length?`
+  <div class="sec-title" style="margin-bottom:8px">🔴 Kritik Görevler</div>
+  <div class="card" style="margin-bottom:14px">
+    ${kritik.slice(0,4).map(t=>`
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px" onclick="goPage('TODO_LISTE')">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.task||'—')}</div>
+        ${t.assigned_to?`<div style="font-size:10px;color:var(--text3);margin-top:1px">👤 ${esc(t.assigned_to)}</div>`:''}
+      </div>
+      <span class="tag tag-red" style="flex-shrink:0">${esc(t.priority||'')}</span>
+    </div>`).join('')}
+    ${kritik.length>4?`<div style="padding:9px 14px;font-size:11px;color:var(--text3);text-align:center;cursor:pointer" onclick="goPage('TODO_LISTE')">+${kritik.length-4} görev daha →</div>`:''}
+  </div>`:''}
+
+  <!-- Tezgah Gantt -->
+  ${tezgahlar.length?`
+  <div class="sec-title" style="margin-bottom:8px">🏭 Tezgah Durumu — ${GANTT_GUN} Günlük</div>
+  <div class="card" style="margin-bottom:14px;overflow:hidden;cursor:pointer" onclick="goPage('TEZGAH_YONETIMI')">
+    <!-- Gün başlıkları -->
+    <div style="display:flex;padding:6px 14px 4px;border-bottom:1px solid var(--border);background:var(--surface2)">
+      <div style="width:54px;flex-shrink:0;font-size:8px;color:var(--text3);font-weight:700">TEZGAH</div>
+      <div style="flex:1;position:relative;height:14px">
+        ${[0,7,14,21,28].map(g=>{
+          const d=new Date(today);d.setDate(d.getDate()+g);
+          const pct=Math.round(g/GANTT_GUN*100);
+          return `<span style="position:absolute;left:${pct}%;font-size:8px;color:var(--text3);transform:translateX(-50%)">${d.getDate()}/${d.getMonth()+1}</span>`;
+        }).join('')}
+      </div>
+    </div>
+    <!-- Tezgah satırları -->
+    ${tezgahlar.map(t=>{
+      const dolu=!!(t.siparis_no||'').trim();
+      const sip=aktif.find(s=>String(s.sno||'').trim()===String(t.siparis_no||'').trim());
+      let barLeft=0,barWidth=100,barRenk='var(--amber)';
+      if(dolu&&sip?.ttarih){
+        const terminGun=Math.ceil((new Date(sip.ttarih)-today)/86400000);
+        barWidth=Math.max(5,Math.min(100,Math.round(terminGun/GANTT_GUN*100)));
+        barRenk=terminGun<0?'var(--red)':terminGun<=3?'var(--amber)':'var(--green)';
+      }
+      return `<div style="display:flex;align-items:center;padding:5px 14px;border-bottom:1px solid var(--border)">
+        <div style="width:54px;flex-shrink:0;font-size:10px;font-weight:800;color:${dolu?'var(--amber)':'var(--green)'}">${esc(t.tezgah_no||'?')}</div>
+        <div style="flex:1;height:16px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative">
+          ${dolu?`<div style="position:absolute;left:0;top:0;height:100%;width:${barWidth}%;background:${barRenk};border-radius:4px;opacity:.85;display:flex;align-items:center;padding:0 6px">
+            <span style="font-size:8px;font-weight:700;color:#0d1117;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.siparis_no||'')}</span>
+          </div>`:`<div style="position:absolute;left:0;top:0;height:100%;width:100%;display:flex;align-items:center;padding:0 6px"><span style="font-size:8px;color:var(--green);font-weight:700">MÜSAİT</span></div>`}
+        </div>
+      </div>`;
+    }).join('')}
+    <div style="padding:7px 14px;font-size:10px;color:var(--text3);display:flex;gap:12px">
+      <span>🟢 Müsait: ${musait}</span>
+      <span>🟡 Dolu: ${doluTez.length}</span>
+      <span>📊 Toplam: ${tezgahlar.length}</span>
+    </div>
+  </div>`:''}
+
+  <!-- Numune Özet -->
+  ${numuneler.length?`
+  <div class="sec-title" style="margin-bottom:8px">🔬 Numune Özet</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:14px;cursor:pointer" onclick="goPage('NUMUNE_URETIM')">
+    ${[
+      {l:'Bekleyen',v:numuneler.filter(n=>!n.kalite||n.kalite==='BEKLEMEDE').length,c:'var(--amber)'},
+      {l:'Tezgahta',v:numuneler.filter(n=>n.kalite==='TEZGAHTA').length,c:'var(--cyan)'},
+      {l:'Onaylı',v:numuneler.filter(n=>n.kalite==='ONAYLANDI').length,c:'var(--green)'},
+      {l:'Başarısız',v:numuneler.filter(n=>n.kalite==='BAŞARISIZ').length,c:'var(--red)'},
+    ].map(x=>`<div class="kpi-box" style="text-align:center;border-top:2px solid ${x.c}">
+      <div class="kpi-val" style="color:${x.c};font-size:20px">${x.v}</div>
+      <div class="kpi-lbl" style="font-size:8px">${x.l}</div>
+    </div>`).join('')}
+  </div>`:''}
+
+  <!-- Son İplik Hareketleri -->
+  ${son5Iplik.length?`
+  <div class="sec-title" style="margin-bottom:8px">🧶 Son İplik Hareketleri</div>
+  <div class="card" style="margin-bottom:14px">
+    ${son5Iplik.map(i=>{
+      const kg=parseFloat(i.miktar_kg)||0;
+      const renk=kg>0?'var(--green)':'var(--red)';
+      return `<div style="padding:9px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="goPage('IPLIK')">
+        <div style="min-width:0;flex:1">
+          <div style="font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.iplik_no||i.cins||'—')}</div>
+          <div style="font-size:10px;color:var(--text3)">${esc(i.marka||'—')} · ${esc(i.renk||'—')} · ${kisaTarih(i.created_at)}</div>
+        </div>
+        <div style="font-size:14px;font-weight:800;color:${renk};flex-shrink:0;margin-left:8px">${kg>0?'+':''}${kg.toFixed(1)} kg</div>
       </div>`;
     }).join('')}
   </div>`:''}
 
-  <!-- Bekleyen görevler -->
-  ${bekleyen.length?`
-  <div class="sec-title">✅ Bekleyen Görevler (${bekleyen.length})</div>
-  <div class="card">
-    ${bekleyen.slice(0,5).map(t=>`
-    <div style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="goPage('TODO_LISTE')">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.task||'—')}</div>
-        ${t.priority?`<span class="tag ${t.priority==='KRİTİK'?'tag-red':t.priority==='YÜKSEK'?'tag-amber':'tag-gray'}">${esc(t.priority)}</span>`:''}
-      </div>
-      ${t.assigned_to?`<div style="font-size:10px;color:var(--text3);margin-top:2px">👤 ${esc(t.assigned_to)}</div>`:''}
-    </div>`).join('')}
-    ${bekleyen.length>5?`<div style="padding:10px 14px;font-size:11px;color:var(--text3);text-align:center;cursor:pointer" onclick="goPage('TODO_LISTE')">+${bekleyen.length-5} daha → Görevlere git</div>`:''}
-  </div>`:''}
-
-  <!-- Tezgah durumu -->
-  ${tezgahlar.length?`
-  <div class="sec-title">🏭 Tezgah Durumu (${tezgahlar.length})</div>
-  <div class="card">
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
-      ${tezgahlar.slice(0,12).map(t=>{
-        const dolu=!!(t.siparis_no||'').trim();
-        return `<div style="padding:10px 8px;text-align:center;background:var(--surface);cursor:pointer" onclick="goPage('TEZGAH_YONETIMI')">
-          <div style="font-size:11px;font-weight:800;color:${dolu?'var(--amber)':'var(--green)'}">${esc(t.tezgah_no||'?')}</div>
-          <div style="font-size:9px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dolu?esc(t.siparis_no||''):'Müsait'}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${tezgahlar.length>12?`<div style="padding:8px;text-align:center;font-size:11px;color:var(--text3);cursor:pointer" onclick="goPage('TEZGAH_YONETIMI')">Tümünü gör →</div>`:''}
-  </div>`:''}
-
-  <!-- Son iplik hareketleri -->
-  ${son5Iplik.length?`
-  <div class="sec-title">🧶 Son İplik Hareketleri</div>
-  <div class="card">
-    ${son5Iplik.map(i=>{
-      const kg=parseFloat(i.miktar_kg)||0;
-      const renk=kg>0?'var(--green)':'var(--red)';
-      return `<div class="stok-item" onclick="goPage('IPLIK')">
-        <div class="stok-item-top">
-          <div class="stok-item-ad">${esc(i.iplik_no||i.cins||'—')}</div>
-          <div class="stok-item-miktar" style="color:${renk}">${kg>0?'+':''}${kg.toFixed(1)} kg</div>
+  <!-- Son Kumaş Hareketleri -->
+  ${son5Kumas.length?`
+  <div class="sec-title" style="margin-bottom:8px">🪡 Son Kumaş Hareketleri</div>
+  <div class="card" style="margin-bottom:32px">
+    ${son5Kumas.map(k=>{
+      const kg=parseFloat(k.miktar_kg)||0;
+      const mt=parseFloat(k.miktar_mt)||0;
+      const renk=kg>0||mt>0?'var(--green)':'var(--red)';
+      const mikStr=kg!==0?`${kg>0?'+':''}${kg.toFixed(1)} kg`:(mt!==0?`${mt>0?'+':''}${mt.toFixed(1)} mt`:'—');
+      return `<div style="padding:9px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="goPage('KUMAS')">
+        <div style="min-width:0;flex:1">
+          <div style="font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.kumas_cinsi||k.stok_kodu||'—')}</div>
+          <div style="font-size:10px;color:var(--text3)">${esc(k.marka||'—')} · ${esc(k.renk||'—')} · ${kisaTarih(k.created_at)}</div>
         </div>
-        <div class="stok-item-meta">${esc(i.marka||'—')} · ${esc(i.renk||'—')} · ${kisaTarih(i.created_at)}</div>
+        <div style="font-size:14px;font-weight:800;color:${renk};flex-shrink:0;margin-left:8px">${mikStr}</div>
       </div>`;
     }).join('')}
   </div>`:''}`;
@@ -3914,20 +3970,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(!initSB())return;
   if(tryRestoreSession())startApp();
 });
-
-// READONLY MODE OVERRIDES
-function sgKaydet(){showToast('🔒 Görüntüleme modu');}
-function sgSiparisiTamamla(){showToast('🔒 Görüntüleme modu');}
-function depoKaydet(){showToast('🔒 Görüntüleme modu');}
-function boyaKaydet(){showToast('🔒 Görüntüleme modu');}
-function dtKaydet(){showToast('🔒 Görüntüleme modu');}
-function konfKaydet(){showToast('🔒 Görüntüleme modu');}
-function todoKaydet(){showToast('🔒 Görüntüleme modu');}
-function todoToggle(){showToast('🔒 Görüntüleme modu');}
-function tezgahKaydet(){showToast('🔒 Görüntüleme modu');}
-function kartKaydet(){showToast('🔒 Görüntüleme modu');}
-function malKaydet(){showToast('🔒 Görüntüleme modu');}
-function uaKalemKaydet(){showToast('🔒 Görüntüleme modu');}
 </script>
 </body>
 </html>
