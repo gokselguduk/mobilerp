@@ -4931,19 +4931,6 @@ async function siparisExcel(sip){
   });
 }
 
-// ═══════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════
-function initSB(){
-  const c=window.__ERP_SUPABASE;
-  if(!c||!c.url||!c.anonKey){
-    document.getElementById('login-screen').innerHTML+='<div style="margin-top:20px;padding:14px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:12px;color:var(--red);font-size:13px;max-width:340px;text-align:center">erp-config.js yapılandırılmamış.</div>';
-    return false;
-  }
-  sb=supabase.createClient(c.url.trim(),c.anonKey.trim());
-  return true;
-}
-
 window.addEventListener('DOMContentLoaded',()=>{
   if(!initSB())return;
   if(tryRestoreSession())startApp();
