@@ -1395,22 +1395,18 @@ function openSiparisDetay(id){
   showModal('siparis-detay-modal',`
     <div class="modal-handle"></div>
     <div class="modal-head">
-      <!-- Başlık satırı -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <div>
-          <div class="modal-title">${esc(s.sno||'—')}</div>
-          <div class="modal-sub">${esc(s.firma||'—')}</div>
-        </div>
-        <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">
+      <div style="margin-bottom:8px">
+        <div class="modal-title">${esc(s.sno||'—')}</div>
+        <div class="modal-sub">${esc(s.firma||'—')}</div>
+        <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
           ${durumTag(s.durum)}
-          ${gun!==null?`<span class="tag" style="background:${terminRenk}22;color:${terminRenk};font-size:9px">${gun<0?Math.abs(gun)+' gün geç':gun===0?'Bugün':gun+' gün'}</span>`:''}
+          ${gun!==null?`<span class="tag" style="background:${terminRenk}22;color:${terminRenk}">${gun<0?Math.abs(gun)+' gün gecikmiş':gun===0?'Bugün':gun+' gün kaldı'}</span>`:''}
         </div>
       </div>
-      <!-- Aksiyon butonları -->
-      <div style="display:flex;gap:6px;margin-top:8px">
-        ${canAccess('SIPARIS_GIRIS')?`<button onclick="editSiparis(${s.id})" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">✏️ Düzenle</button>`:''}
-        <button onclick="siparisPdfById(${s.id})" style="flex:1;background:var(--red);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">📄 PDF</button>
-        <button onclick="siparisExcelById(${s.id})" style="flex:1;background:#1d6f42;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">📊 Excel</button>
+      <div style="display:grid;grid-template-columns:${canAccess('SIPARIS_GIRIS')?'1fr 1fr 1fr':'1fr 1fr'};gap:7px">
+        ${canAccess('SIPARIS_GIRIS')?`<button onclick="editSiparis(${s.id})" style="background:var(--surface2);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:12px;font-weight:700;padding:11px 6px;cursor:pointer;text-align:center">✏️<br><span style="font-size:10px">Düzenle</span></button>`:''}
+        <button onclick="siparisPdfById(${s.id})" style="background:#dc2626;border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:700;padding:11px 6px;cursor:pointer;text-align:center">📄<br><span style="font-size:10px">PDF</span></button>
+        <button onclick="siparisExcelById(${s.id})" style="background:#1d6f42;border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:700;padding:11px 6px;cursor:pointer;text-align:center">📊<br><span style="font-size:10px">Excel</span></button>
       </div>
     </div>
     <div class="modal-body">
@@ -4936,3 +4932,6 @@ async function siparisExcel(sip){
 }
 
 
+</script>
+</body>
+</html>
