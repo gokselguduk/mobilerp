@@ -5001,6 +5001,15 @@ function durumTag(d){
   return `<span class="tag ${cls}">${esc(d||'BEKLEMEDE')}</span>`;
 }
 
+function durumColor(d){
+  const map={
+    'TAMAMLANDI':'var(--green)','URETIMDE':'var(--accent)',
+    'BEKLEMEDE':'var(--amber)','IPTAL':'var(--red)',
+    'SEVK EDİLDİ':'var(--green)','PLANLANDI':'var(--violet)'
+  };
+  return map[d]||'var(--text3)';
+}
+
 function parseKalemler(s){
   let k=[];
   try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch{}
