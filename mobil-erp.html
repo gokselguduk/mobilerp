@@ -682,13 +682,18 @@ async function loadAllData(){
       sb.from('todo_list').select('*').order('created_at',{ascending:false}),
       sb.from('tezgahlar').select('*').order('tezgah_no',{ascending:true}),
     ]);
+    if(sip.error)throw sip.error;
     dataCache.siparisler=sortSno(sip.data||[]);
     dataCache.iplik_stok=iplik.data||[];
     dataCache.kumas_stok=kumas.data||[];
     dataCache.kumas_kutuphanesi=kartlar.data||[];
     dataCache.todo_list=todos.data||[];
     dataCache.tezgahlar=tez.data||[];
-  }catch(e){console.error('Veri yükleme hatası:',e);}
+    console.log('Veri yüklendi — sipariş:',dataCache.siparisler.length,'tezgah:',dataCache.tezgahlar.length);
+  }catch(e){
+    console.error('Veri yükleme hatası:',e);
+    showToast('❌ Veri yüklenemedi: '+(e.message||e));
+  }
 }
 
 async function refreshData(){
