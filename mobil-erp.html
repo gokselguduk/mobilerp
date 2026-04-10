@@ -4757,36 +4757,35 @@ async function siparisPdf(sip){
     ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`<div><div style="font-size:8px;color:#9ca3af;font-weight:700;margin-bottom:20px">${l}</div><div style="border-top:1px solid #d1d5db"></div></div>`).join('')}
   </div>`;
 
-  // Overlay göster
-  const overlay=document.createElement('div');
-  overlay.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-direction:column;gap:10px';
-  overlay.innerHTML='<div class="spinner" style="width:32px;height:32px;border-width:3px"></div><div>PDF oluşturuluyor…</div>';
-  document.body.appendChild(overlay);
+  // Print CSS ekle
+  let printStyle=document.getElementById('pdf-print-style');
+  if(!printStyle){
+    printStyle=document.createElement('style');
+    printStyle.id='pdf-print-style';
+    printStyle.textContent=`@media print{
+      body > *:not(#pdf-content){display:none!important;}
+      #pdf-content{display:block!important;position:static!important;width:100%!important;opacity:1!important;z-index:auto!important;}
+      @page{margin:10mm;size:A4 portrait;}
+    }`;
+    document.head.appendChild(printStyle);
+  }
 
-  // DOM'a ekle ve PDF al
+  el.id='pdf-content';
+  el.style.cssText='display:none;width:190mm;padding:0;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff';
   document.body.appendChild(el);
-  
-  // Render garantisi
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  await new Promise(r=>setTimeout(r,800));
 
-  const dosyaAdi='siparis_'+String(sip.sno||'form').replace(/[^\w-]+/g,'_')+'.pdf';
-  html2pdf().set({
-    margin:0,
-    filename:dosyaAdi,
-    image:{type:'jpeg',quality:0.97},
-    html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:false,allowTaint:true,logging:false,
-      windowWidth:el.scrollWidth,windowHeight:el.scrollHeight},
-    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
-  }).from(el).save().then(()=>{
-    document.body.removeChild(el);
-    document.body.removeChild(overlay);
-    showToast('✅ PDF indirildi');
-  }).catch(e=>{
+  // Kısa bekle sonra yazdır
+  await new Promise(r=>setTimeout(r,200));
+  el.style.display='block';
+  await new Promise(r=>requestAnimationFrame(r));
+
+  window.print();
+
+  // Yazdırma sonrası temizle
+  setTimeout(()=>{
     if(document.body.contains(el))document.body.removeChild(el);
-    if(document.body.contains(overlay))document.body.removeChild(overlay);
-    showToast('❌ Hata: '+e.message);
-  });
+  },2000);
+  showToast('💡 "PDF olarak kaydet" seçeneğini kullan');
 }
 
 
