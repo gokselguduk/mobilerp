@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Simteks ERP</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+// erp-config.js yüklenemezse hata vermesin
+window.__ERP_SUPABASE = window.__ERP_SUPABASE || null;
+</script>
+<script src="erp-config.js" onerror="console.warn('erp-config.js yuklenemedi')"></script>
 <style>
 /* ═══════════════════════════════════════════
    DESIGN TOKENS
