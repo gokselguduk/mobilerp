@@ -4688,41 +4688,19 @@ async function paylasPdf(el, dosyaAdi, yonelim){
   el.style.cssText='position:fixed;left:-9999px;top:0;width:210mm;background:#fff;z-index:-999';
   document.body.appendChild(el);
   await new Promise(r=>setTimeout(r,300));
-
-  const opt={
-    margin:[8,8,8,8],
-    filename:dosyaAdi,
-    image:{type:'jpeg',quality:0.95},
-    html2canvas:{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',logging:false},
-    jsPDF:{unit:'mm',format:'a4',orientation:yonelim}
-  };
-
   try{
-    // Önce blob al, Web Share dene
-    const worker=html2pdf().set(opt).from(el);
-    worker.outputPdf('blob').then(async blob=>{
-      if(document.body.contains(el))document.body.removeChild(el);
-      const file=new File([blob],dosyaAdi,{type:'application/pdf'});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){
-        try{await navigator.share({files:[file],title:dosyaAdi});showToast('Paylaşıldı ✅');return;}
-        catch(e){if(e.name==='AbortError')return;}
-      }
-      // İndir
-      const url=URL.createObjectURL(new Blob([blob],{type:'application/pdf'}));
-      const a=document.createElement('a');a.href=url;a.download=dosyaAdi;
-      document.body.appendChild(a);a.click();document.body.removeChild(a);
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
-      showToast('✅ İndirildi: '+dosyaAdi);
-    }).catch(err=>{
-      if(document.body.contains(el))document.body.removeChild(el);
-      // Fallback: direkt kaydet
-      console.warn('blob failed, trying save:',err);
-      html2pdf().set(opt).from(el).save().then(()=>showToast('✅ PDF kaydedildi'));
-    });
+    await html2pdf().set({
+      margin:[8,8,8,8],
+      filename:dosyaAdi,
+      image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2,useCORS:false,allowTaint:true,backgroundColor:'#ffffff',logging:false},
+      jsPDF:{unit:'mm',format:'a4',orientation:yonelim}
+    }).from(el).save();
+    if(document.body.contains(el))document.body.removeChild(el);
+    showToast('✅ İndirildi — Dosyalar klasöründen paylaşabilirsin');
   }catch(err){
     if(document.body.contains(el))document.body.removeChild(el);
     showToast('❌ Hata: '+err.message);
-    console.error(err);
   }
 }
 
