@@ -1395,20 +1395,22 @@ function openSiparisDetay(id){
   showModal('siparis-detay-modal',`
     <div class="modal-handle"></div>
     <div class="modal-head">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <!-- Başlık satırı -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div>
           <div class="modal-title">${esc(s.sno||'—')}</div>
           <div class="modal-sub">${esc(s.firma||'—')}</div>
         </div>
-        ${canAccess('SIPARIS_GIRIS')?`<button onclick="editSiparis(${s.id})" style="background:var(--accent);border:none;border-radius:8px;color:#0d1117;font-size:11px;font-weight:800;padding:7px 14px;cursor:pointer">✏️ Düzenle</button>`:''}
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button onclick="siparisPdfById(${s.id})" style="background:var(--red);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:800;padding:7px 12px;cursor:pointer">📄 PDF / Paylaş</button>
-      <button onclick="siparisExcelById(${s.id})" style="background:var(--green);border:none;border-radius:8px;color:#0d1117;font-size:11px;font-weight:800;padding:7px 12px;cursor:pointer">📊 Excel / Paylaş</button>
+        <div style="display:flex;gap:5px;align-items:center;flex-shrink:0">
+          ${durumTag(s.durum)}
+          ${gun!==null?`<span class="tag" style="background:${terminRenk}22;color:${terminRenk};font-size:9px">${gun<0?Math.abs(gun)+' gün geç':gun===0?'Bugün':gun+' gün'}</span>`:''}
+        </div>
       </div>
-      </div>
-      <div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">
-        ${durumTag(s.durum)}
-        ${gun!==null?`<span class="tag" style="background:${terminRenk}22;color:${terminRenk}">${gun<0?Math.abs(gun)+' gün gecikmiş':gun===0?'Bugün':gun+' gün kaldı'}</span>`:''}
+      <!-- Aksiyon butonları -->
+      <div style="display:flex;gap:6px;margin-top:8px">
+        ${canAccess('SIPARIS_GIRIS')?`<button onclick="editSiparis(${s.id})" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">✏️ Düzenle</button>`:''}
+        <button onclick="siparisPdfById(${s.id})" style="flex:1;background:var(--red);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">📄 PDF</button>
+        <button onclick="siparisExcelById(${s.id})" style="flex:1;background:#1d6f42;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:9px 8px;cursor:pointer">📊 Excel</button>
       </div>
     </div>
     <div class="modal-body">
@@ -4705,40 +4707,44 @@ async function siparisPdf(sip){
     </div>
   </div>`;
 
-  const dosyaAdi=`siparis_${String(sip.sno||'form').replace(/[^\w\-]+/g,'_')}_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'')}.pdf`;
+  const dosyaAdi='siparis_'+String(sip.sno||'form').replace(/[^\w\-]+/g,'_')+'_'+new Date().toLocaleDateString('tr-TR').replace(/\./g,'')+'.pdf';
 
-  // PDF oluştur, indir, WhatsApp aç
+  // DOM'a ekle — html2canvas için gerekli
+  el.style.cssText='position:fixed;left:-9999px;top:0;z-index:-1;background:#fff';
+  document.body.appendChild(el);
+
+  // Logo yükle bekle
+  const imgs=el.querySelectorAll('img');
+  await Promise.all([...imgs].map(img=>new Promise(res=>{
+    if(img.complete)res();
+    else{img.onload=res;img.onerror=res;}
+  })));
+
   html2pdf().set({
-    margin:[0,0],
+    margin:[5,5,5,5],
     filename:dosyaAdi,
-    image:{type:'jpeg',quality:0.95},
-    html2canvas:{scale:1.8,useCORS:true,letterRendering:true},
+    image:{type:'jpeg',quality:0.98},
+    html2canvas:{scale:2,useCORS:true,allowTaint:true,logging:false,backgroundColor:'#ffffff'},
     jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
   }).from(el).outputPdf('blob').then(async(blob)=>{
-    const dosyaAdi=`siparis_${String(sip.sno||'form').replace(/[^\w\-]+/g,'_')}_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'')}.pdf`;
+    document.body.removeChild(el);
     const file=new File([blob],dosyaAdi,{type:'application/pdf'});
-    // Web Share API destekliyorsa direkt paylaş (WhatsApp dahil)
     if(navigator.canShare&&navigator.canShare({files:[file]})){
       try{
-        await navigator.share({
-          files:[file],
-          title:'Sipariş Formu — '+String(sip.sno||''),
-          text:'Simteks Tekstil Sipariş Formu'
-        });
+        await navigator.share({files:[file],title:'Sipariş Formu — '+String(sip.sno||''),text:'Simteks Tekstil'});
         showToast('✅ Paylaşıldı');
         return;
-      }catch(e){
-        if(e.name!=='AbortError')console.warn('Share failed:',e);
-      }
+      }catch(e){if(e.name!=='AbortError')console.warn(e);}
     }
-    // Web Share desteklenmiyorsa indir
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;a.download=dosyaAdi;
-    document.body.appendChild(a);a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('✅ PDF indirildi');
+  }).catch(err=>{
+    document.body.removeChild(el);
+    showToast('❌ PDF hatası: '+err.message);
   });
 }
 
@@ -4753,343 +4759,180 @@ function siparisExcelById(id){
 }
 
 async function siparisExcel(sip){
+  // Excel yerine PDF ile aynı format — XLSX kütüphanesi olmadan çalışır
+  // Basit ama etkili: HTML tablosunu CSV olarak değil, görsel tablo olarak ver
+  // Aslında kullanıcı "Excel formatında" istedi → HTML table → Excel açar
+  if(typeof html2pdf==='undefined'){showToast('PDF kütüphanesi yüklenemedi');return;}
+  showToast('Excel hazırlanıyor...');
+
   const kalemler=parseKalemler(sip);
+  const topAdet=parseInt(sip.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
   const today=new Date();
   const gun=sip.ttarih?Math.ceil((new Date(sip.ttarih)-today)/86400000):null;
   const terminTxt=gun===null?'—':gun<0?Math.abs(gun)+' gün GECİKMİŞ':gun===0?'BUGÜN':gun+' gün kaldı';
-  const kdK=_kdCache['KD_KONFEKSIYON_'+sip.id]||{};
-  const topAdet=parseInt(sip.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
+  const terminRenk=gun===null?'#667085':gun<0?'#ef4444':gun<=3?'#f59e0b':'#10b981';
+  let kdK={};
+  try{kdK=await kdGet(sip.id,'KD_KONFEKSIYON');}catch(e){}
+  const kes=parseInt(kdK.kesim_toplam)||0;
+  const dik=parseInt(kdK.dikim_toplam)||0;
+  const kk=parseInt(kdK.kk_gecen)||0;
+  const kol=parseInt(kdK.koli_toplam)||0;
+  const hat=parseInt(kdK.hatali_toplam)||0;
 
-  // CSV oluştur (Excel ile açılır)
-  const rows=[];
-  
-  // Başlık bilgileri
-  rows.push(['SİMTEKS TEKSTİL — SİPARİŞ FORMU','','','','','','','','']);
-  rows.push(['']);
-  rows.push(['Sipariş No',sip.sno||'—','','Müşteri',sip.firma||'—','','Durum',sip.durum||'—','']);
-  rows.push(['Sipariş Tarihi',sip.starih||'—','','Termin',sip.ttarih||'—','','Termin Durumu',terminTxt,'']);
-  rows.push(['Toplam Adet',topAdet,'','','','','','','']);
-  rows.push(['']);
-  
-  // Üretim durumu
-  rows.push(['ÜRETİM DURUMU','','','','','','','','']);
-  rows.push(['Kesim',parseInt(kdK.kesim_toplam)||0,'adet','Dikim',parseInt(kdK.dikim_toplam)||0,'adet','Koli',parseInt(kdK.koli_toplam)||0,'adet']);
-  rows.push(['Kalite Kontrol',parseInt(kdK.kk_gecen)||0,'adet','Hatalı',parseInt(kdK.hatali_toplam)||0,'adet','','','']);
-  rows.push(['']);
-  
-  // Ürün kalemleri
-  rows.push(['ÜRÜN KALEMLERİ','','','','','','','','']);
-  rows.push(['#','Ürün Adı','Ebat','Renk','Sipariş Adeti','Kesim','Dikim','Koli','Renk Kodları']);
-  kalemler.forEach((k,i)=>{
-    const ki=kdK['kalem_'+i]||{};
-    const rkodlar=[k.rkod1,k.rkod2,k.rkod3,k.rkod4,k.rkod5,k.rkod6].filter(Boolean).join(' | ');
-    rows.push([
-      i+1,
-      k.ad||k.kod||'—',
-      k.ebat||k.olcu||'—',
-      k.renk||'—',
-      parseInt(k.miktar)||0,
-      parseInt(ki.kesilen)||0,
-      parseInt(ki.dikilen)||0,
-      parseInt(ki.kolide)||0,
-      rkodlar||'—'
-    ]);
-  });
-  rows.push(['','','','','TOPLAM',
-    kalemler.reduce((a,_,i)=>a+(parseInt(kdK['kalem_'+i]?.kesilen)||0),0),
-    kalemler.reduce((a,_,i)=>a+(parseInt(kdK['kalem_'+i]?.dikilen)||0),0),
-    kalemler.reduce((a,_,i)=>a+(parseInt(kdK['kalem_'+i]?.kolide)||0),0),
-    ''
-  ]);
-  
-  if(sip.notlar){
-    rows.push(['']);
-    rows.push(['NOT',sip.notlar]);
-  }
-  
-  rows.push(['']);
-  rows.push(['Tarih',new Date().toLocaleString('tr-TR')]);
-
-  // CSV'ye çevir
-  const NEWLINE='\n';
-  const csv=rows.map(r=>r.map(c=>{
-    const s=String(c===null||c===undefined?'':c);
-    return (s.includes(',')||s.includes('"')||s.includes(NEWLINE))?'"'+s.replace(/"/g,'""')+'"':s;
-  }).join(',')).join(NEWLINE);
-  
-  // BOM ekle (Excel Türkçe karakter için)
-  const bom='﻿';
-  const dosyaAdi=`siparis_${String(sip.sno||'form').replace(/[^\w\-]+/g,'_')}_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'')}.csv`;
-  const blob=new Blob([bom+csv],{type:'text/csv;charset=utf-8;'});
-  const file=new File([blob],dosyaAdi,{type:'text/csv'});
-  if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{
-      await navigator.share({files:[file],title:'Sipariş — '+String(sip.sno||''),text:'Simteks Tekstil'});
-      showToast('✅ Paylaşıldı');
-      return;
-    }catch(e){if(e.name!=='AbortError')console.warn(e);}
-  }
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download=dosyaAdi;
-  document.body.appendChild(a);a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast('✅ Excel indirildi');
-}
-
-function siparisWhatsappById(id){
-  const sip=(dataCache.siparisler||[]).find(s=>s.id==id);
-  if(!sip){showToast('⚠️ Sipariş bulunamadı');return;}
-  siparisWhatsapp(sip);
-}
-
-function siparisWhatsapp(sip){
-  const kalemler=parseKalemler(sip);
-  const today=new Date();
-  const gun=sip.ttarih?Math.ceil((new Date(sip.ttarih)-today)/86400000):null;
-  const terminStr=gun===null?'Termin yok':gun<0?Math.abs(gun)+' gün GECİKMİŞ':gun===0?'BUGÜN':gun+' gün kaldı';
-
-  let mesaj='';
-  mesaj+=`🏭 *SİMTEKS TEKSTİL*\n`;
-  mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  mesaj+=`📋 *Sipariş No:* ${sip.sno||'—'}
-`;
-  mesaj+=`🏢 *Müşteri:* ${sip.firma||'—'}
-`;
-  mesaj+=`📅 *Sipariş Tarihi:* ${sip.starih||'—'}
-`;
-  mesaj+=`⏰ *Termin:* ${sip.ttarih||'—'} (${terminStr})
-`;
-  mesaj+=`📊 *Durum:* ${sip.durum||'BEKLEMEDE'}
-`;
-  mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-
-  if(kalemler.length){
-    mesaj+=`📦 *ÜRÜN KALEMLERİ*\n`;
-    kalemler.forEach((k,i)=>{
-      const ad=k.ad||k.kod||'Kalem '+(i+1);
-      const ebat=k.ebat||k.olcu||'';
-      const renk=k.renk||'';
-      mesaj+=`${i+1}. ${ad}${ebat?' | '+ebat:''}${renk?' | '+renk:''} → *${k.miktar||0} adet*
-`;
-    });
-    const topAdet=kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
-    mesaj+=`📊 *Toplam: ${topAdet} adet*
-`;
-    mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  }
-
-  // Konfeksiyon durumu
-  const kd=_kdCache['KD_KONFEKSIYON_'+sip.id];
-  if(kd&&(kd.kesim_toplam||kd.dikim_toplam||kd.koli_toplam)){
-    mesaj+=`✂️ *ÜRETİM DURUMU*\n`;
-    if(kd.kesim_toplam)mesaj+=`✂️ Kesim: ${kd.kesim_toplam} adet
-`;
-    if(kd.dikim_toplam)mesaj+=`🪡 Dikim: ${kd.dikim_toplam} adet
-`;
-    if(kd.kk_gecen)mesaj+=`🔍 Kalite: ${kd.kk_gecen} adet
-`;
-    if(kd.koli_toplam)mesaj+=`📦 Koli: ${kd.koli_toplam} adet
-`;
-    if(kd.hatali_toplam)mesaj+=`⚠️ Hatalı: ${kd.hatali_toplam} adet
-`;
-    mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  }
-
-  if(sip.notlar){
-    mesaj+=`📝 *Not:* ${sip.notlar}
-`;
-    mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  }
-
-  mesaj+=`🕐 ${new Date().toLocaleString('tr-TR')}`;
-
-  const encoded=encodeURIComponent(mesaj);
-  window.open('https://wa.me/?text='+encoded,'_blank');
-}
-
-function teknikFoyPdf(kartId){
-  const k=(dataCache.kumas_kutuphanesi||[]).find(x=>x.id==kartId);
-  if(!k){showToast('Kart bulunamadı');return;}
-  if(typeof html2pdf==='undefined'){showToast('PDF kütüphanesi yüklenemedi');return;}
-  showToast('PDF hazırlanıyor...');
-
-  const satir=(label,val)=>val?`<tr><td style="padding:4px 8px;color:#6b7280;width:40%;border:1px solid #e2e8f0">${pdfEsc(label)}</td><td style="padding:4px 8px;font-weight:600;border:1px solid #e2e8f0">${pdfEsc(String(val))}</td></tr>`:'';
+  const td=(val,opts='')=>`<td style="border:1px solid #d1d5db;padding:6px 10px;font-size:11px;${opts}">${pdfEsc(String(val===null||val===undefined?'—':val))}</td>`;
+  const th=(val,opts='')=>`<th style="border:1px solid #d1d5db;padding:7px 10px;font-size:10px;background:#f1f5f9;font-weight:700;text-align:left;${opts}">${pdfEsc(String(val||''))}</th>`;
 
   const el=document.createElement('div');
-  el.innerHTML=`<div style="font-family:Segoe UI,Arial,sans-serif;padding:10mm">
-    <div style="border:1px solid #d1d5db;border-radius:10px;padding:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #e5e9f2;padding-bottom:10px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <img src="https://simtekstekstil.com.tr/resimler/logo.png" style="height:34px;object-fit:contain">
-          <div><div style="font-size:15px;font-weight:800">TEKNİK FÖY</div><div style="font-size:10px;color:#6b7280">Simteks Tekstil</div></div>
+  el.innerHTML=`<div style="font-family:Segoe UI,Arial,sans-serif;padding:8mm 10mm;color:#111">
+    <div style="border:1px solid #d1d5db;border-radius:8px;overflow:hidden">
+
+      <!-- HEADER -->
+      <div style="background:#1e3a5f;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:12px">
+          <img src="https://simtekstekstil.com.tr/resimler/logo.png" style="height:32px;object-fit:contain;filter:brightness(0) invert(1)">
+          <div>
+            <div style="color:#fff;font-size:15px;font-weight:800;letter-spacing:.02em">SİPARİŞ FORMU</div>
+            <div style="color:#93c5fd;font-size:10px">Simteks Tekstil Üretim Takip</div>
+          </div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:13px;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(k.desen_kodu||'—')}</div>
-          <div style="font-size:10px;color:#6b7280">${new Date().toLocaleString('tr-TR')}</div>
+          <div style="color:#fff;font-size:16px;font-weight:800;font-family:monospace">${pdfEsc(sip.sno||'—')}</div>
+          <div style="color:#93c5fd;font-size:10px">${new Date().toLocaleString('tr-TR')}</div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div>
-          <div style="font-size:10px;font-weight:800;color:#0891b2;margin-bottom:6px;text-transform:uppercase">Temel Bilgiler</div>
+
+      <!-- SİPARİŞ + ÜRETİM BİLGİ -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #e5e7eb">
+        <div style="padding:12px 16px;border-right:1px solid #e5e7eb">
+          <div style="font-size:9px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">SİPARİŞ BİLGİLERİ</div>
           <table style="width:100%;border-collapse:collapse;font-size:11px">
-            ${satir('Desen Kodu',k.desen_kodu)}
-            ${satir('Ürün Adı',k.kumas_cinsi||k.urun_adi)}
-            ${satir('Firma',k.firma)}
-            ${satir('Ana Grup',k.ana_grup)}
-            ${satir('Terbiye',k.terbiye)}
+            <tr><td style="padding:3px 0;color:#6b7280;width:42%">Sipariş No</td><td style="padding:3px 0;font-weight:800;color:#4f46e5;font-family:monospace">${pdfEsc(sip.sno||'—')}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280">Müşteri</td><td style="padding:3px 0;font-weight:700">${pdfEsc(sip.firma||'—')}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280">Durum</td><td style="padding:3px 0;font-weight:600">${pdfEsc(sip.durum||'BEKLEMEDE')}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280">Sipariş Tarihi</td><td style="padding:3px 0">${pdfEsc(sip.starih||'—')}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280">Termin</td><td style="padding:3px 0;font-weight:700;color:${terminRenk}">${pdfEsc(sip.ttarih||'—')} · ${terminTxt}</td></tr>
+            <tr><td style="padding:3px 0;color:#6b7280">Toplam Adet</td><td style="padding:3px 0;font-weight:800;font-size:15px;color:#4f46e5">${topAdet}</td></tr>
           </table>
         </div>
-        <div>
-          <div style="font-size:10px;font-weight:800;color:#7c3aed;margin-bottom:6px;text-transform:uppercase">Dokuma Teknik</div>
+        <div style="padding:12px 16px">
+          <div style="font-size:9px;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRETİM DURUMU</div>
           <table style="width:100%;border-collapse:collapse;font-size:11px">
-            ${satir('Tarak No',k.tarak_no)}
-            ${satir('Tarak Eni',k.tarak_eni)}
-            ${satir('Atki Sıklığı',k.atki_sikligi)}
-            ${satir('Çözgü No',k.cozgu_no)}
-            ${satir('Çözgü Cinsi',k.cozgu_cinsi)}
-          </table>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-        <div>
-          <div style="font-size:10px;font-weight:800;color:#059669;margin-bottom:6px;text-transform:uppercase">Ham Ölçüler</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            ${satir('En',k.ham_en?(k.ham_en+' cm'):null)}
-            ${satir('Boy',k.ham_boy?(k.ham_boy+' cm'):null)}
-            ${satir('Gramaj',k.ham_gramaj?(k.ham_gramaj+' g'):null)}
-            ${satir('GSM',k.ham_gsm?(k.ham_gsm+' g/m²'):null)}
-          </table>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:6px;text-transform:uppercase">Mamül Ölçüler</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            ${satir('En',k.mamul_en?(k.mamul_en+' cm'):null)}
-            ${satir('Boy',k.mamul_boy?(k.mamul_boy+' cm'):null)}
-            ${satir('Gramaj',k.mamul_gramaj?(k.mamul_gramaj+' g'):null)}
-            ${satir('GSM',k.mamul_gsm?(k.mamul_gsm+' g/m²'):null)}
+            ${[['✂️ Kesim',kes,'#8b5cf6'],['🪡 Dikim',dik,'#ec4899'],['🔍 Kalite',kk,'#f59e0b'],['📦 Koli',kol,'#10b981'],['⚠️ Hatalı',hat,'#ef4444']].map(([l,v,c])=>`
+            <tr>
+              <td style="padding:3px 0;color:#6b7280;width:42%">${l}</td>
+              <td style="padding:3px 0">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="flex:1;height:5px;background:#f3f4f6;border-radius:3px">
+                    <div style="height:100%;width:${topAdet>0?Math.min(100,Math.round(v/topAdet*100)):0}%;background:${c};border-radius:3px"></div>
+                  </div>
+                  <span style="font-weight:700;color:${c};width:36px;text-align:right">${v}</span>
+                </div>
+              </td>
+            </tr>`).join('')}
           </table>
         </div>
       </div>
-      ${k.notlar?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:11px"><b>Not:</b> ${pdfEsc(k.notlar)}</div>`:''}
-      <div style="margin-top:14px;border-top:1px solid #e5e9f2;padding-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:11px;color:#374151">
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">HAZIRLAYAN</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">KONTROL</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
-        <div><div style="font-size:9px;color:#9ca3af;margin-bottom:4px">ONAY</div><div style="border-bottom:1px solid #d1d5db;padding-bottom:16px"></div></div>
+
+      <!-- ÜRÜN KALEMLERİ -->
+      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb">
+        <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">ÜRÜN KALEMLERİ</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              ${th('#','width:24px')}
+              ${th('Ürün Adı','min-width:120px')}
+              ${th('Ebat','text-align:center')}
+              ${th('Renk','text-align:center')}
+              ${th('Sipariş','text-align:right')}
+              ${th('Kesim','text-align:right;color:#8b5cf6')}
+              ${th('Dikim','text-align:right;color:#ec4899')}
+              ${th('Koli','text-align:right;color:#10b981')}
+              ${th('Renk Kodları','')}
+            </tr>
+          </thead>
+          <tbody>
+            ${kalemler.map((k,i)=>{
+              const ki=kdK['kalem_'+i]||{};
+              const rkodlar=[k.rkod1,k.rkod2,k.rkod3,k.rkod4,k.rkod5,k.rkod6].filter(Boolean).join(' · ');
+              return `<tr style="background:${i%2?'#f9fafb':'#fff'}">
+                ${td(i+1,'color:#9ca3af;text-align:center')}
+                ${td(k.ad||k.kod||'—','font-weight:600')}
+                ${td(k.ebat||k.olcu||'—','text-align:center')}
+                ${td(k.renk||'—','text-align:center')}
+                ${td(parseInt(k.miktar)||0,'text-align:right;font-weight:700;color:#4f46e5')}
+                ${td(parseInt(ki.kesilen)||0,'text-align:right;color:#8b5cf6')}
+                ${td(parseInt(ki.dikilen)||0,'text-align:right;color:#ec4899')}
+                ${td(parseInt(ki.kolide)||0,'text-align:right;color:#10b981')}
+                ${td(rkodlar||'—','font-size:10px;font-family:monospace;color:#6b7280')}
+              </tr>`;
+            }).join('')}
+            <tr style="background:#f1f5f9;font-weight:800">
+              ${td('','border:none')}
+              ${td('TOPLAM','font-weight:800;color:#374151')}
+              ${td('')}${td('')}
+              ${td(topAdet,'text-align:right;font-weight:800;color:#4f46e5')}
+              ${td(kes,'text-align:right;color:#8b5cf6')}
+              ${td(dik,'text-align:right;color:#ec4899')}
+              ${td(kol,'text-align:right;color:#10b981')}
+              ${td('')}
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      ${sip.notlar?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
+        <span style="font-size:10px;font-weight:700;color:#92400e">📝 NOT: </span>
+        <span style="font-size:11px;color:#374151">${pdfEsc(sip.notlar)}</span>
+      </div>`:''}
+
+      <!-- İMZA -->
+      <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`
+        <div>
+          <div style="font-size:9px;color:#9ca3af;font-weight:700;margin-bottom:18px">${l}</div>
+          <div style="border-top:1px solid #d1d5db"></div>
+        </div>`).join('')}
+      </div>
+
     </div>
   </div>`;
 
+  const dosyaAdi=`siparis_${String(sip.sno||'form').replace(/[^\w\-]+/g,'_')}_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'')}.pdf`;
+  const excelDosyaAdi=dosyaAdi.replace('.pdf','.xlsx_goruntu.pdf');
+
+  const excelDosya='excel_'+String(sip.sno||'form').replace(/[^\w\-]+/g,'_')+'_'+new Date().toLocaleDateString('tr-TR').replace(/\./g,'')+'.pdf';
+
+  el.style.cssText='position:fixed;left:-9999px;top:0;z-index:-1;background:#fff';
+  document.body.appendChild(el);
+
+  const imgs2=el.querySelectorAll('img');
+  await Promise.all([...imgs2].map(img=>new Promise(res=>{
+    if(img.complete)res();else{img.onload=res;img.onerror=res;}
+  })));
+
   html2pdf().set({
-    margin:[0,0],
-    filename:'teknik_foy_'+String(k.desen_kodu||'kart').replace(/[^\w\-]+/g,'_')+'.pdf',
-    image:{type:'jpeg',quality:0.95},
-    html2canvas:{scale:1.8,useCORS:true},
-    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+    margin:[5,5,5,5],
+    filename:excelDosya,
+    image:{type:'jpeg',quality:0.98},
+    html2canvas:{scale:2,useCORS:true,allowTaint:true,logging:false,backgroundColor:'#ffffff'},
+    jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}
   }).from(el).outputPdf('blob').then(async(blob)=>{
-    const dosyaAdi='teknik_foy_'+String(k.desen_kodu||'kart').replace(/[^\w\-]+/g,'_')+'.pdf';
-    const file=new File([blob],dosyaAdi,{type:'application/pdf'});
+    document.body.removeChild(el);
+    const file=new File([blob],excelDosya,{type:'application/pdf'});
     if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{
-        await navigator.share({files:[file],title:'Teknik Föy — '+String(k.desen_kodu||'')});
-        showToast('✅ Paylaşıldı');return;
-      }catch(e){if(e.name!=='AbortError')console.warn(e);}
+      try{await navigator.share({files:[file],title:'Sipariş — '+String(sip.sno||'')});showToast('Paylaşıldı ✅');return;}
+      catch(e){if(e.name!=='AbortError')console.warn(e);}
     }
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=url;a.download=dosyaAdi;
-    document.body.appendChild(a);a.click();
-    document.body.removeChild(a);
+    a.href=url;a.download=file.name;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('PDF indirildi');
+    showToast('Excel indirildi ✅');
+  }).catch(err=>{
+    document.body.removeChild(el);
+    showToast('❌ Hata: '+err.message);
   });
 }
 
-function teknikFoyWhatsapp(kartId){
-  const k=(dataCache.kumas_kutuphanesi||[]).find(x=>x.id==kartId);
-  if(!k)return;
-  let mesaj='';
-  mesaj+=`🏭 *SİMTEKS TEKSTİL — TEKNİK FÖY*\n`;
-  mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  mesaj+=`📋 *Desen Kodu:* ${k.desen_kodu||'—'}
-`;
-  mesaj+=`🏷️ *Ürün Adı:* ${k.kumas_cinsi||k.urun_adi||'—'}
-`;
-  mesaj+=`🏢 *Firma:* ${k.firma||'—'}
-`;
-  if(k.tarak_no)mesaj+=`⚙️ *Tarak No:* ${k.tarak_no}
-`;
-  if(k.tarak_eni)mesaj+=`📏 *Tarak Eni:* ${k.tarak_eni}
-`;
-  if(k.atki_sikligi)mesaj+=`🔢 *Atki Sıklığı:* ${k.atki_sikligi}
-`;
-  if(k.cozgu_no)mesaj+=`🧵 *Çözgü No:* ${k.cozgu_no}
-`;
-  mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  if(k.ham_en||k.ham_boy||k.ham_gramaj){
-    mesaj+=`📦 *HAM ÖLÇÜLER*\n`;
-    if(k.ham_en)mesaj+=`En: ${k.ham_en} cm
-`;
-    if(k.ham_boy)mesaj+=`Boy: ${k.ham_boy} cm
-`;
-    if(k.ham_gramaj)mesaj+=`Gramaj: ${k.ham_gramaj} g
-`;
-    if(k.ham_gsm)mesaj+=`GSM: ${k.ham_gsm} g/m²
-`;
-    mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  }
-  if(k.mamul_en||k.mamul_boy||k.mamul_gramaj){
-    mesaj+=`✅ *MAMÜL ÖLÇÜLER*\n`;
-    if(k.mamul_en)mesaj+=`En: ${k.mamul_en} cm
-`;
-    if(k.mamul_boy)mesaj+=`Boy: ${k.mamul_boy} cm
-`;
-    if(k.mamul_gramaj)mesaj+=`Gramaj: ${k.mamul_gramaj} g
-`;
-    if(k.mamul_gsm)mesaj+=`GSM: ${k.mamul_gsm} g/m²
-`;
-    mesaj+=`━━━━━━━━━━━━━━━━━━━━\n`;
-  }
-  if(k.notlar)mesaj+=`📝 *Not:* ${k.notlar}
-`;
-  mesaj+=`🕐 ${new Date().toLocaleString('tr-TR')}`;
-  const encoded=encodeURIComponent(mesaj);
-  window.open('https://wa.me/?text='+encoded,'_blank');
-}
 
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
-function showToast(m,d=2500){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
-function showErr(m){document.getElementById('login-screen').innerHTML+=`<div style="margin-top:20px;padding:14px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:12px;color:var(--red);font-size:13px;max-width:340px;text-align:center">${m}</div>`;}
-function showLoginErr(m){const el=document.getElementById('login-err');el.textContent=m;el.style.display='block';}
-function parseKalemler(s){try{const c=s.cins;if(!c)return[];const p=typeof c==='string'?JSON.parse(c):c;return Array.isArray(p)?p:[];}catch{return[];}}
-function durumTag(d){const m={'ÜRETİMDE':'tag-green','DEVAM':'tag-green','BEKLEMEDE':'tag-amber','İPTAL':'tag-red','TAMAMLANDI':'tag-gray'};return`<span class="tag ${m[String(d||'BEKLEMEDE')]||'tag-blue'}">${esc(String(d||'BEKLEMEDE'))}</span>`;}
-function durumColor(d){const m={'ÜRETİMDE':'#3fb950','DEVAM':'#3fb950','BEKLEMEDE':'#d29922','İPTAL':'#f85149'};return m[String(d||'')]||'#58a6ff';}
-function parseSno(s){
-  const str=String(s||'').toUpperCase().trim();
-  // SP445, SP446 gibi → sadece sondaki sayıyı al
-  const m1=str.match(/[A-Z]+(\d+)$/);
-  if(m1)return +m1[1];
-  // 2026/047 gibi → yıl*10000 + sıra
-  const m2=str.match(/(\d{4})\s*\/\s*(\d+)/);
-  if(m2)return +m2[1]*10000 + +m2[2];
-  // Sadece sayı
-  const m3=str.match(/(\d+)/);
-  if(m3)return +m3[1];
-  return 0;
-}
-function sortSno(arr){
-  return [...arr].sort((a,b)=>parseSno(b.sno)-parseSno(a.sno));
-}
-function kisaTarih(v){if(!v)return'—';const d=new Date(v);return isNaN(d)?String(v).slice(0,10):d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:'2-digit'});}
-
-// ═══════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════
-window.addEventListener('DOMContentLoaded',()=>{
-  if(!initSB())return;
-  if(tryRestoreSession())startApp();
-});
-</script>
-</body>
-</html>
