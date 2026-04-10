@@ -806,7 +806,7 @@ function renderDashboard(){
   const musait=tezgahlar.filter(t=>!(t.siparis_no||'').trim()).length;
   const numuneler=(dataCache.kumas_kutuphanesi||[]).filter(k=>k.ana_grup==='NUMUNE'||(k.desen_kodu||'').toUpperCase().startsWith('NU'));
   const nuBekleyen=numuneler.filter(n=>!n.kalite||n.kalite==='BEKLEMEDE');
-  const terminSirali=aktif.filter(s=>s.ttarih).sort((a,b)=>new Date(a.ttarih)-new Date(b.ttarih));
+  const terminSirali=aktif.filter(s=>s.ttarih).sort((a,b)=>new Date(a.ttarih)-new Date(b.ttarih)); // termin sırasına göre (doğru)
   const GANTT_GUN=30;
 
   // Son hareketler
@@ -1349,7 +1349,7 @@ async function sgKaydet(){
     }else{
       const{data,error}=await sb.from('siparisler').insert([kayit]).select();
       if(error)throw error;
-      if(data&&data[0])dataCache.siparisler.unshift(data[0]);
+      if(data&&data[0]){dataCache.siparisler.unshift(data[0]);dataCache.siparisler=sortSno(dataCache.siparisler);}
       showToast('✅ Sipariş kaydedildi: '+sno);
     }
     sipGirisEditingId=null;
@@ -1839,7 +1839,7 @@ const KONF_ASAMALAR={
 
 async function renderKonfeksiyon(){
   const el=document.getElementById('page-KONFEKSIYON');
-  const aktif=(dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI');
+  const aktif=sortSno((dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI'));
   const opts=aktif.map(s=>`<option value="${s.id}" ${konfSeciliId==s.id?'selected':''}>${esc(s.sno||'—')} · ${esc(s.firma||'')}</option>`).join('');
 
   el.innerHTML=`
@@ -2553,7 +2553,7 @@ function raporSiparisHtml(sip,iplik,kumas,numuneler,today){
 
 // ── TEK SİPARİŞ RAPORU ──
 function raporTekSiparisFormHtml(sip){
-  const aktif=[...sip].sort((a,b)=>String(a.sno||'').localeCompare(String(b.sno||''),'tr',{numeric:true}));
+  const aktif=sortSno(sip);
   let html='<div style="background:var(--surface);border:1px solid rgba(88,166,255,.3);border-radius:12px;padding:12px 14px;margin-bottom:10px">';
   html+=`<select class="field-select" id="rapor-tek-sel" style="margin-bottom:8px">
     <option value="">— Sipariş seçin —</option>
@@ -3066,7 +3066,7 @@ let uaSeciliId=null;
 
 function renderUrunAgaci(){
   const el=document.getElementById('page-URUN_AGACI');
-  const aktif=(dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI');
+  const aktif=sortSno((dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI'));
   const opts=aktif.map(s=>`<option value="${s.id}" ${uaSeciliId==s.id?'selected':''}>${esc(s.sno||'—')} · ${esc(s.firma||'')}</option>`).join('');
   el.innerHTML=`
     <div style="font-size:18px;font-weight:800;margin-bottom:12px">🌿 Ürün Ağacı</div>
@@ -3893,7 +3893,7 @@ let boyaSeciliId=null, boyaTip='BOBİN';
 
 async function renderBoyahane(){
   const el=document.getElementById('page-BOYAHANE_URETIM');
-  const aktif=(dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI');
+  const aktif=sortSno((dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI'));
   const opts=aktif.map(s=>`<option value="${s.id}" ${boyaSeciliId==s.id?'selected':''}>${esc(s.sno||'—')} · ${esc(s.firma||'')}</option>`).join('');
 
   el.innerHTML=`
@@ -4031,7 +4031,7 @@ let dtSeciliId=null, dtKd={};
 
 async function renderDokumaTakip(){
   const el=document.getElementById('page-DOKUMA_TAKIP');
-  const aktif=(dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI');
+  const aktif=sortSno((dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI'));
   const opts=aktif.map(s=>`<option value="${s.id}" ${dtSeciliId==s.id?'selected':''}>${esc(s.sno||'—')} · ${esc(s.firma||'')}</option>`).join('');
 
   el.innerHTML=`
@@ -4715,8 +4715,22 @@ function showLoginErr(m){const el=document.getElementById('login-err');el.textCo
 function parseKalemler(s){try{const c=s.cins;if(!c)return[];const p=typeof c==='string'?JSON.parse(c):c;return Array.isArray(p)?p:[];}catch{return[];}}
 function durumTag(d){const m={'ÜRETİMDE':'tag-green','DEVAM':'tag-green','BEKLEMEDE':'tag-amber','İPTAL':'tag-red','TAMAMLANDI':'tag-gray'};return`<span class="tag ${m[String(d||'BEKLEMEDE')]||'tag-blue'}">${esc(String(d||'BEKLEMEDE'))}</span>`;}
 function durumColor(d){const m={'ÜRETİMDE':'#3fb950','DEVAM':'#3fb950','BEKLEMEDE':'#d29922','İPTAL':'#f85149'};return m[String(d||'')]||'#58a6ff';}
-function sortSno(arr){return [...arr].sort((a,b)=>{const pa=parseSno(a.sno),pb=parseSno(b.sno);return pa.y!==pb.y?pb.y-pa.y:pb.s-pa.s;});}
-function parseSno(s){const m=String(s||'').toUpperCase().match(/(\d{4})\s*\/\s*(\d+)/);return m?{y:+m[1],s:+m[2]}:{y:0,s:0};}
+function parseSno(s){
+  const str=String(s||'').toUpperCase().trim();
+  // SP445, SP446 gibi → sadece sondaki sayıyı al
+  const m1=str.match(/[A-Z]+(\d+)$/);
+  if(m1)return +m1[1];
+  // 2026/047 gibi → yıl*10000 + sıra
+  const m2=str.match(/(\d{4})\s*\/\s*(\d+)/);
+  if(m2)return +m2[1]*10000 + +m2[2];
+  // Sadece sayı
+  const m3=str.match(/(\d+)/);
+  if(m3)return +m3[1];
+  return 0;
+}
+function sortSno(arr){
+  return [...arr].sort((a,b)=>parseSno(b.sno)-parseSno(a.sno));
+}
 function kisaTarih(v){if(!v)return'—';const d=new Date(v);return isNaN(d)?String(v).slice(0,10):d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',year:'2-digit'});}
 
 // ═══════════════════════════════════════════
