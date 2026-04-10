@@ -4192,69 +4192,157 @@ async function uaSiparisYukle(id){
   await uaYukle(id);
 }
 
+// Ürün ağacı state — sayfa yenilemeden toggle çalışsın
+let _uaKdCache={}; // id → kd objesi bellekte
+
 async function uaYukle(id){
   const sip=(dataCache.siparisler||[]).find(s=>s.id==id);
   if(!sip)return;
   const kalemler=parseKalemler(sip);
-  const kd=await kdGet(id,'KD_URUN_AGACI');
   const ic=document.getElementById('ua-icerik');
   if(!ic)return;
+
+  ic.innerHTML='<div class="loading"><div class="spinner"></div><div>Yükleniyor…</div></div>';
+
+  // KD_URUN_AGACI'ni Supabase'den direkt çek
+  let kd={};
+  try{
+    const{data,error}=await sb.from('siparis_akis')
+      .select('id,notlar,created_at')
+      .eq('siparis_id',id)
+      .eq('islem','KD_URUN_AGACI')
+      .eq('kalem_ad','KD_URUN_AGACI')
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(!error&&data&&data[0]){
+      try{kd=JSON.parse(data[0].notlar||'{}');}catch{kd={};}
+    }
+  }catch(e){console.error(e);}
+  _uaKdCache[id]=kd;
+
   const ASAMALAR=['DOKUMA','KESİM','YIKAMA','DİKİM','NAKIŞ','BASKI','ÜTÜ','KALİTE','KOLİ','SEVK'];
-  ic.innerHTML=`
-    <div class="sec-title">${esc(sip.sno||'—')} · ${esc(sip.firma||'—')}</div>
-    ${kalemler.map((k,i)=>{
+
+  let html=`<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px">
+    ${esc(sip.sno||'—')} · ${esc(sip.firma||'—')}
+  </div>`;
+
+  if(!kalemler.length){
+    html+='<div class="empty"><div class="icon">📦</div>Ürün kalemi bulunamadı</div>';
+  } else {
+    kalemler.forEach((k,i)=>{
       const ua=kd['u_'+i]||{};
       const asamalar=ua.asamalar||[];
       const uretimYeri=ua.teknik_genel?.uretim_yeri||'';
       const baslik=[k.ad||k.kod||'Kalem '+(i+1),k.ebat||k.olcu,k.renk].filter(Boolean).join(' · ');
-      return `<div class="form-section" style="margin-bottom:10px">
-        <div class="form-section-head" style="display:flex;justify-content:space-between;align-items:center">
-          <span style="color:var(--accent)">${esc(baslik)}</span>
-          <span style="font-size:11px;color:var(--green)">${k.miktar||0} adet</span>
+
+      html+=`<div style="background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:12px;font-weight:800;color:var(--accent)">${esc(baslik)}</div>
+          <span style="font-size:11px;color:var(--green);font-weight:700">${k.miktar||0} adet</span>
         </div>
-        <div class="form-section-body">
-          <label class="field-label">Üretim Yeri</label>
-          <select class="field-select" id="ua-uretim-${i}" style="margin-bottom:10px">
-            <option value="" ${!uretimYeri?'selected':''}>— Seçin —</option>
-            <option value="SIMTEKS_KONF" ${uretimYeri==='SIMTEKS_KONF'?'selected':''}>Simteks Konfeksiyon</option>
-            <option value="FASON_KONF" ${uretimYeri==='FASON_KONF'?'selected':''}>Fason Konfeksiyon</option>
-            <option value="DOGRUDAN_SEVK" ${uretimYeri==='DOGRUDAN_SEVK'?'selected':''}>Doğrudan Sevk</option>
-          </select>
-          <label class="field-label">Üretim Aşamaları</label>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="ua-asamalar-${i}">
-            ${ASAMALAR.map(a=>{
-              const secili=asamalar.includes(a);
-              return `<button onclick="uaAsamaToggle(${i},'${a}',this)" style="padding:5px 10px;border-radius:7px;border:1px solid ${secili?'var(--accent)':'var(--border2)'};background:${secili?'rgba(88,166,255,.15)':'var(--surface2)'};color:${secili?'var(--accent)':'var(--text3)'};font-size:10px;font-weight:700;cursor:pointer" data-asama="${a}" data-secili="${secili}">${a}</button>`;
-            }).join('')}
-          </div>
-          <button onclick="uaKalemKaydet(${i},${id})" style="width:100%;background:var(--accent);border:none;border-radius:9px;color:#0d1117;font-size:12px;font-weight:800;padding:10px;cursor:pointer">💾 Kaydet</button>
+
+        <label class="field-label">Üretim Yeri</label>
+        <select class="field-select" id="ua-uretim-${i}" style="margin-bottom:12px">
+          <option value="" ${!uretimYeri?'selected':''}>— Seçin —</option>
+          <option value="SIMTEKS_KONF" ${uretimYeri==='SIMTEKS_KONF'?'selected':''}>Simteks Konfeksiyon</option>
+          <option value="FASON_KONF" ${uretimYeri==='FASON_KONF'?'selected':''}>Fason Konfeksiyon</option>
+          <option value="DOGRUDAN_SEVK" ${uretimYeri==='DOGRUDAN_SEVK'?'selected':''}>Doğrudan Sevk</option>
+        </select>
+
+        <label class="field-label">Üretim Aşamaları <span style="color:var(--text3);font-weight:400">(seç/kaldır)</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px" id="ua-asamalar-${i}">
+          ${ASAMALAR.map(a=>{
+            const secili=asamalar.includes(a);
+            return `<button type="button" onclick="uaAsamaToggle(${i},'${a}',this)"
+              data-asama="${a}" data-secili="${secili}"
+              style="padding:7px 12px;border-radius:8px;border:2px solid ${secili?'var(--accent)':'var(--border2)'};background:${secili?'rgba(88,166,255,.18)':'var(--surface2)'};color:${secili?'var(--accent)':'var(--text3)'};font-size:11px;font-weight:${secili?'800':'600'};cursor:pointer;transition:all .15s">
+              ${secili?'✓ ':''}${a}
+            </button>`;
+          }).join('')}
         </div>
+
+        ${asamalar.length?`<div style="font-size:10px;color:var(--text3);margin-bottom:8px">
+          Seçili: <span style="color:var(--accent);font-weight:700">${asamalar.join(' → ')}</span>
+        </div>`:''}
+
+        <button type="button" onclick="uaKalemKaydet(${i},${id})"
+          style="width:100%;background:var(--accent);border:none;border-radius:9px;color:#0d1117;font-size:13px;font-weight:800;padding:12px;cursor:pointer">
+          💾 Kaydet
+        </button>
       </div>`;
-    }).join('')||'<div class="empty"><div class="icon">📦</div>Ürün kalemi yok</div>'}`;
+    });
+  }
+
+  ic.innerHTML=html;
 }
 
 function uaAsamaToggle(kalemIdx,asama,btn){
   const secili=btn.getAttribute('data-secili')==='true';
   const yeni=!secili;
   btn.setAttribute('data-secili',String(yeni));
-  btn.style.background=yeni?'rgba(88,166,255,.15)':'var(--surface2)';
+  btn.style.background=yeni?'rgba(88,166,255,.18)':'var(--surface2)';
   btn.style.borderColor=yeni?'var(--accent)':'var(--border2)';
   btn.style.color=yeni?'var(--accent)':'var(--text3)';
+  btn.style.fontWeight=yeni?'800':'600';
+  btn.innerHTML=(yeni?'✓ ':'')+asama;
+
+  // Seçili aşamaları göster
+  const cont=document.getElementById('ua-asamalar-'+kalemIdx);
+  if(cont){
+    const seciliList=[];
+    cont.querySelectorAll('button[data-secili="true"]').forEach(b=>seciliList.push(b.getAttribute('data-asama')));
+    // Altındaki özet div'i güncelle
+    const ozet=cont.nextElementSibling;
+    if(ozet&&ozet.tagName==='DIV'&&ozet.style.fontSize==='10px'){
+      if(seciliList.length){
+        ozet.innerHTML=`Seçili: <span style="color:var(--accent);font-weight:700">${seciliList.join(' → ')}</span>`;
+        ozet.style.display='block';
+      } else {
+        ozet.style.display='none';
+      }
+    }
+  }
 }
 
 async function uaKalemKaydet(kalemIdx,siparisId){
-  const asamalar=[];
-  document.querySelectorAll(`#ua-asamalar-${kalemIdx} button[data-secili="true"]`).forEach(b=>asamalar.push(b.getAttribute('data-asama')));
-  const uretimYeri=document.getElementById('ua-uretim-'+kalemIdx)?.value||'';
-  const kd=await kdGet(siparisId,'KD_URUN_AGACI');
-  if(!kd['u_'+kalemIdx])kd['u_'+kalemIdx]={};
-  kd['u_'+kalemIdx].asamalar=asamalar;
-  if(!kd['u_'+kalemIdx].teknik_genel)kd['u_'+kalemIdx].teknik_genel={};
-  kd['u_'+kalemIdx].teknik_genel.uretim_yeri=uretimYeri;
+  const btn=event.currentTarget;
+  btn.disabled=true;btn.textContent='Kaydediliyor…';
+
   try{
+    // Seçili aşamaları topla
+    const asamalar=[];
+    document.querySelectorAll(`#ua-asamalar-${kalemIdx} button[data-secili="true"]`).forEach(b=>{
+      asamalar.push(b.getAttribute('data-asama'));
+    });
+    const uretimYeri=document.getElementById('ua-uretim-'+kalemIdx)?.value||'';
+
+    // Mevcut KD'yi al (bellekten)
+    let kd=_uaKdCache[siparisId]||{};
+
+    // Güncelle
+    if(!kd['u_'+kalemIdx])kd['u_'+kalemIdx]={};
+    kd['u_'+kalemIdx].asamalar=asamalar;
+    if(!kd['u_'+kalemIdx].teknik_genel)kd['u_'+kalemIdx].teknik_genel={};
+    kd['u_'+kalemIdx].teknik_genel.uretim_yeri=uretimYeri;
+
+    // Supabase'e kaydet — kdSet kullan
     await kdSet(siparisId,'KD_URUN_AGACI',kd);
+    _uaKdCache[siparisId]=kd;
+
+    btn.style.background='var(--green)';
+    btn.textContent='✅ Kaydedildi!';
     showToast('✅ Ürün ağacı kaydedildi');
-  }catch(e){showToast('❌ Hata: '+(e.message||e));}
+    setTimeout(()=>{
+      btn.disabled=false;
+      btn.style.background='var(--accent)';
+      btn.textContent='💾 Kaydet';
+    },2000);
+  }catch(e){
+    showToast('❌ Hata: '+(e.message||e));
+    btn.disabled=false;
+    btn.style.background='var(--accent)';
+    btn.textContent='💾 Kaydet';
+  }
 }
 
 const _diagLogLines=[];
