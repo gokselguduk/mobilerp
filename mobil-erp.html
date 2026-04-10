@@ -4544,13 +4544,7 @@ function closeModal(id){const el=document.getElementById(id);if(el)el.style.disp
 // ═══════════════════════════════════════════
 // PDF PAYLAŞIM
 // ═══════════════════════════════════════════
-function pdfEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-function siparisPdfById(id){
-  const sip=(dataCache.siparisler||[]).find(s=>s.id==id);
-  if(!sip){showToast('⚠️ Sipariş bulunamadı');return;}
-  siparisPdf(sip);
-}
 
 async function siparisPdf(sip){
   if(typeof html2pdf==='undefined'){showToast('⚠️ PDF kütüphanesi yüklenemedi');return;}
@@ -5011,41 +5005,13 @@ function parseKalemler(s){
 
 function kdKey(sipId,tip){return tip+'_'+sipId;}
 
-async function kdGet(sipId,tip,force=false){
-  const key=kdKey(sipId,tip);
-  if(!force&&_kdCache[key])return _kdCache[key];
-  try{
-    const{data,error}=await sb.from('siparis_akis')
-      .select('id,notlar,created_at')
-      .eq('siparis_id',sipId)
-      .eq('islem',tip)
-      .eq('kalem_ad',tip)
-      .order('created_at',{ascending:false})
-      .limit(1);
-    if(error)throw error;
-    let kd={};
-    if(data&&data[0]){try{kd=JSON.parse(data[0].notlar||'{}');}catch{}}
-    _kdCache[key]=kd;
-    return kd;
-  }catch(e){console.error('kdGet hata:',e);return _kdCache[key]||{};}
-}
-
-async function kdSet(sipId,tip,kd){
-  const key=kdKey(sipId,tip);
-  _kdCache[key]=kd;
-  const notlar=JSON.stringify(kd);
-  const{data:existing}=await sb.from('siparis_akis')
-    .select('id')
-    .eq('siparis_id',sipId)
-    .eq('islem',tip)
-    .eq('kalem_ad',tip)
-    .limit(1);
-  if(existing&&existing[0]){
-    await sb.from('siparis_akis').update({notlar,created_at:new Date().toISOString()}).eq('id',existing[0].id);
-  } else {
-    await sb.from('siparis_akis').insert([{siparis_id:sipId,islem:tip,kalem_ad:tip,notlar,miktar:0}]);
-  }
-}
-
-
-
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  if(!initSB())return;
+  if(tryRestoreSession())startApp();
+});
+</script>
+</body>
+</html>
