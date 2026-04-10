@@ -4626,7 +4626,7 @@ async function siparisPdf(sip){
   const pct=(v,t)=>t>0?Math.min(100,Math.round(v/t*100)):0;
 
   const el=document.createElement('div');
-  el.style.cssText='width:190mm;padding:10mm;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff;position:fixed;left:0;top:0;z-index:-9999;opacity:0.01';
+  el.style.cssText='width:190mm;padding:10mm;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff;position:fixed;left:0;top:0;z-index:99999';
 
   el.innerHTML=`
   <!-- HEADER -->
@@ -4757,25 +4757,34 @@ async function siparisPdf(sip){
     ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`<div><div style="font-size:8px;color:#9ca3af;font-weight:700;margin-bottom:20px">${l}</div><div style="border-top:1px solid #d1d5db"></div></div>`).join('')}
   </div>`;
 
+  // Overlay göster
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;flex-direction:column;gap:10px';
+  overlay.innerHTML='<div class="spinner" style="width:32px;height:32px;border-width:3px"></div><div>PDF oluşturuluyor…</div>';
+  document.body.appendChild(overlay);
+
   // DOM'a ekle ve PDF al
   document.body.appendChild(el);
   
-  // Render garantisi — requestAnimationFrame ile bekle
+  // Render garantisi
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  await new Promise(r=>setTimeout(r,500));
+  await new Promise(r=>setTimeout(r,800));
 
   const dosyaAdi='siparis_'+String(sip.sno||'form').replace(/[^\w-]+/g,'_')+'.pdf';
   html2pdf().set({
     margin:0,
     filename:dosyaAdi,
     image:{type:'jpeg',quality:0.97},
-    html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:false,allowTaint:true,logging:false},
+    html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:false,allowTaint:true,logging:false,
+      windowWidth:el.scrollWidth,windowHeight:el.scrollHeight},
     jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
   }).from(el).save().then(()=>{
     document.body.removeChild(el);
+    document.body.removeChild(overlay);
     showToast('✅ PDF indirildi');
   }).catch(e=>{
     if(document.body.contains(el))document.body.removeChild(el);
+    if(document.body.contains(overlay))document.body.removeChild(overlay);
     showToast('❌ Hata: '+e.message);
   });
 }
