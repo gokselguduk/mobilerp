@@ -4626,7 +4626,7 @@ async function siparisPdf(sip){
   const pct=(v,t)=>t>0?Math.min(100,Math.round(v/t*100)):0;
 
   const el=document.createElement('div');
-  el.style.cssText='width:190mm;padding:10mm;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff;position:absolute;left:0;top:0';
+  el.style.cssText='width:190mm;padding:10mm;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff;position:fixed;left:0;top:0;z-index:-9999;opacity:0.01';
 
   el.innerHTML=`
   <!-- HEADER -->
@@ -4759,7 +4759,10 @@ async function siparisPdf(sip){
 
   // DOM'a ekle ve PDF al
   document.body.appendChild(el);
-  await new Promise(r=>setTimeout(r,100));
+  
+  // Render garantisi — requestAnimationFrame ile bekle
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  await new Promise(r=>setTimeout(r,500));
 
   const dosyaAdi='siparis_'+String(sip.sno||'form').replace(/[^\w-]+/g,'_')+'.pdf';
   html2pdf().set({
