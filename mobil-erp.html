@@ -4757,35 +4757,31 @@ async function siparisPdf(sip){
     ${['HAZIRLAYAN','KONTROL','ONAY / TARİH'].map(l=>`<div><div style="font-size:8px;color:#9ca3af;font-weight:700;margin-bottom:20px">${l}</div><div style="border-top:1px solid #d1d5db"></div></div>`).join('')}
   </div>`;
 
-  // Print CSS ekle
-  let printStyle=document.getElementById('pdf-print-style');
-  if(!printStyle){
-    printStyle=document.createElement('style');
-    printStyle.id='pdf-print-style';
-    printStyle.textContent=`@media print{
-      body > *:not(#pdf-content){display:none!important;}
-      #pdf-content{display:block!important;position:static!important;width:100%!important;opacity:1!important;z-index:auto!important;}
-      @page{margin:10mm;size:A4 portrait;}
-    }`;
-    document.head.appendChild(printStyle);
-  }
-
-  el.id='pdf-content';
-  el.style.cssText='display:none;width:190mm;padding:0;font-family:Arial,sans-serif;font-size:11px;color:#111;background:#fff';
-  document.body.appendChild(el);
-
-  // Kısa bekle sonra yazdır
-  await new Promise(r=>setTimeout(r,200));
-  el.style.display='block';
-  await new Promise(r=>requestAnimationFrame(r));
-
-  window.print();
-
-  // Yazdırma sonrası temizle
-  setTimeout(()=>{
-    if(document.body.contains(el))document.body.removeChild(el);
-  },2000);
-  showToast('💡 "PDF olarak kaydet" seçeneğini kullan');
+  // Yeni pencerede aç — tarayıcının render motoru
+  const yeniPencere = window.open('', '_blank');
+  if(!yeniPencere){showToast('⚠️ Popup engelleyiciyi kapat');return;}
+  
+  yeniPencere.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Sipariş PDF - ${pdfEsc(sip.sno||'')}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;background:#fff;padding:10mm}
+      @media print{
+        .no-print{display:none!important}
+        body{padding:0}
+        @page{margin:8mm;size:A4 portrait}
+      }
+    </style>
+  </head><body>
+    <div class="no-print" style="background:#1e3a5f;color:#fff;padding:10px 16px;margin-bottom:12px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:700">📄 Sipariş Formu — ${pdfEsc(sip.sno||'')}</span>
+      <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;border-radius:6px;padding:8px 16px;font-weight:800;cursor:pointer;font-size:13px">🖨️ PDF Kaydet / Yazdır</button>
+    </div>
+    ${el.outerHTML}
+  </body></html>`);
+  yeniPencere.document.close();
+  showToast('✅ Yeni sekmede açıldı — PDF Kaydet butonuna bas');
 }
 
 
