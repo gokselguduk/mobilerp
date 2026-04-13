@@ -4587,6 +4587,15 @@ function closeModal(id){const el=document.getElementById(id);if(el)el.style.disp
 // ═══════════════════════════════════════════
 
 
+function siparisPdfById(id){
+  const sip=(dataCache.siparisler||[]).find(s=>String(s.id)===String(id));
+  if(!sip){showToast('Sipariş bulunamadı');return;}
+  siparisPdf(sip);
+}
+function siparisExcelById(id){siparisPdfById(id);}
+async function getKdK(sipId){try{return await kdGet(sipId,'KD_KONFEKSIYON');}catch{return{};}}
+async function getKdUa(sipId){try{return await kdGet(sipId,'KD_URUN_AGACI');}catch{return{};}}
+
 async function siparisPdf(sip){
   const jsPDF=window.jspdf?.jsPDF||window.jsPDF||window.jspdf;
   if(!jsPDF){showToast('PDF kütüphanesi yüklenemedi');return;}
