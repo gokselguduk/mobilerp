@@ -4952,98 +4952,170 @@ async function siparisPdf(sip){
   });
   y=doc.lastAutoTable.finalY+6;
 
-  // TEKNİK İŞ EMİRLERİ
-  if(y>240)doc.addPage();
-  doc.setFillColor(248,250,252);
+  // TEKNİK İŞ EMİRLERİ — Alt Alta
+  if(y>220)doc.addPage();
+  y+=4;
+  doc.setFillColor(30,58,95);
+  doc.rect(M,y,cW,7,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(255,255,255);
+  doc.text('TEKNIK IS EMIRLERI',M+3,y+5);
+  y+=9;
+
+  // ── 1. KESİM TALİMATI ──
+  doc.setFillColor(139,92,246);
   doc.rect(M,y,cW,6,'F');
-  doc.rect(M,y,cW,6,'S');
-  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(55,65,81);
-  doc.text('TEKNIK IS EMIRLERI',M+2,y+4);
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text('KESIM TALIMATI',M+3,y+4.2);
   y+=6;
 
-  const col3=cW/3;
-  const isEmriBaslik=(label,renk,x,yy)=>{
-    doc.setFillColor(...renk);
-    doc.rect(x,yy,col3,5,'F');
-    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7);
-    doc.text(label,x+2,yy+3.5);
-  };
-  const isEmriSatir=(k,v,x,yy)=>{
-    doc.setTextColor(107,114,128);doc.setFont('helvetica','normal');doc.setFontSize(7);
-    doc.text(k+':',x+2,yy);
-    doc.setTextColor(0,0,0);doc.setFont('helvetica','bold');
-    doc.text(t(v),x+col3/2,yy);
-    return yy+4;
-  };
-
-  const maxH=Math.max(
-    (kesimIE.pastal_eni?1:0)+(kesimIE.kat_sayisi?1:0)+(kesimIE.masina?1:0)+(kesimIE.aciklama?1:0)+kesimRows.slice(0,3).length,
-    (dikimIE.hat?1:0)+(dikimIE.makine?1:0)+(dikimIE.iplik?1:0)+(dikimIE.aciklama?1:0),
-    (kaliteIE.kalite_seviye?1:0)+(kaliteIE.paket_tipi?1:0)+(kaliteIE.koli_adet?1:0)+(kaliteIE.aciklama?1:0)
-  )*4+10;
-
   doc.setDrawColor(229,231,235);
-  doc.rect(M,y,col3,maxH,'S');
-  doc.rect(M+col3,y,col3,maxH,'S');
-  doc.rect(M+col3*2,y,col3,maxH,'S');
+  doc.rect(M,y,cW,0,'S'); // çizgi
 
-  // Kesim
-  isEmriBaslik('KESIM',[ 139,92,246],M,y);
-  let yK=y+8;
-  if(kesimIE.pastal_eni)yK=isEmriSatir('Pastal Eni',kesimIE.pastal_eni+' cm',M,yK);
-  if(kesimIE.pastal_boyu)yK=isEmriSatir('Pastal Boyu',kesimIE.pastal_boyu+' cm',M,yK);
-  if(kesimIE.kat_sayisi)yK=isEmriSatir('Kat Sayisi',kesimIE.kat_sayisi,M,yK);
-  if(kesimIE.masina)yK=isEmriSatir('Makine',kesimIE.masina,M,yK);
-  kesimRows.slice(0,3).forEach((r,i)=>{
-    doc.setTextColor(124,58,237);doc.setFont('helvetica','bold');doc.setFontSize(6);
-    doc.text((i+1)+'. '+t(r.urun||'')+(r.kesilecek_adet?' -> '+r.kesilecek_adet+' adet':''),M+2,yK);
-    yK+=3.5;
-  });
+  // Genel kesim bilgileri
+  let hasKesim=false;
+  if(kesimIE.pastal_eni||kesimIE.pastal_boyu||kesimIE.kat_sayisi||kesimIE.masina){
+    hasKesim=true;
+    const gInfo=[];
+    if(kesimIE.pastal_eni)gInfo.push('Pastal Eni: '+t(kesimIE.pastal_eni)+' cm');
+    if(kesimIE.pastal_boyu)gInfo.push('Pastal Boyu: '+t(kesimIE.pastal_boyu)+' cm');
+    if(kesimIE.kat_sayisi)gInfo.push('Kat Sayisi: '+t(kesimIE.kat_sayisi));
+    if(kesimIE.masina)gInfo.push('Makine: '+t(kesimIE.masina));
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(55,65,81);
+    const infoStr=gInfo.join('   |   ');
+    doc.text(infoStr,M+2,y+5);
+    y+=8;
+  }
   if(kesimIE.aciklama){
-    doc.setTextColor(100,100,100);doc.setFont('helvetica','normal');doc.setFontSize(6);
-    const lines=doc.splitTextToSize(t(kesimIE.aciklama),col3-4);
-    doc.text(lines,M+2,yK);
-  }
-  if(!kesimIE.pastal_eni&&!kesimIE.aciklama&&!kesimRows.length){
-    doc.setTextColor(156,163,175);doc.setFont('helvetica','italic');doc.setFontSize(7);
-    doc.text('Bilgi girilmemis',M+2,y+12);
+    hasKesim=true;
+    doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(100,100,100);
+    const aLines=doc.splitTextToSize(t(kesimIE.aciklama),cW-4);
+    doc.text(aLines,M+2,y+4);
+    y+=aLines.length*4+3;
   }
 
-  // Dikim
-  isEmriBaslik('DIKIM',[236,72,153],M+col3,y);
-  let yD=y+8;
-  if(dikimIE.hat)yD=isEmriSatir('Hat/Model',dikimIE.hat,M+col3,yD);
-  if(dikimIE.makine)yD=isEmriSatir('Makine',dikimIE.makine,M+col3,yD);
-  if(dikimIE.iplik)yD=isEmriSatir('Iplik',dikimIE.iplik,M+col3,yD);
-  if(dikimIE.dikis_sikligi)yD=isEmriSatir('Dik.Sikligi',dikimIE.dikis_sikligi,M+col3,yD);
+  // Kalem bazlı kesim tablosu
+  if(kalemler.length){
+    hasKesim=true;
+    // Tablo başlık
+    doc.setFillColor(245,243,255);
+    doc.rect(M,y,cW,5.5,'F');
+    doc.rect(M,y,cW,5.5,'S');
+    doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(109,40,217);
+    const cols=[
+      {x:M+1,w:45,label:'Urun Adi'},
+      {x:M+46,w:18,label:'Ebat'},
+      {x:M+64,w:18,label:'Renk'},
+      {x:M+82,w:20,label:'Kes.Olcusu'},
+      {x:M+102,w:20,label:'Kesilecek'},
+      {x:M+122,w:cW-123,label:'Not'},
+    ];
+    cols.forEach(c=>doc.text(c.label,c.x,y+3.8));
+    y+=5.5;
+
+    kalemler.forEach((k,i)=>{
+      const r=kesimRows[i]||{};
+      const ad=t(k.ad||k.kod||'Kalem '+(i+1));
+      const ebat=t(k.ebat||k.olcu||'—');
+      const renk=t(k.renk||'—');
+      const olcu=t(r.birim_uzunluk?r.birim_uzunluk+' cm':'—');
+      const adet=t(r.kesilecek_adet||k.miktar||'—');
+      const not=t(r.kesim_talimat||'');
+      const bg=i%2===0?[255,255,255]:[248,245,255];
+      const rowH=not?9:6;
+      doc.setFillColor(...bg);
+      doc.rect(M,y,cW,rowH,'F');
+      doc.rect(M,y,cW,rowH,'S');
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(30,30,30);
+      doc.text(ad,cols[0].x,y+4);
+      doc.text(ebat,cols[1].x,y+4);
+      doc.text(renk,cols[2].x,y+4);
+      doc.setFont('helvetica','bold');doc.setTextColor(109,40,217);
+      doc.text(olcu,cols[3].x,y+4);
+      doc.text(adet+' adet',cols[4].x,y+4);
+      if(not){
+        doc.setFont('helvetica','italic');doc.setFontSize(6);doc.setTextColor(124,58,237);
+        doc.text(not,cols[5].x,y+4);
+        doc.setFontSize(6);doc.setTextColor(120,120,120);
+        doc.text('Not: '+not,cols[0].x+2,y+7);
+      }
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(30,30,30);
+      doc.text(not?not.substring(0,30):'',cols[5].x,y+4);
+      y+=rowH;
+    });
+  }
+  if(!hasKesim&&!kalemler.length){
+    doc.setTextColor(156,163,175);doc.setFont('helvetica','italic');doc.setFontSize(7);
+    doc.text('Kesim bilgisi girilmemis',M+3,y+5);y+=8;
+  }
+  y+=5;
+
+  // ── 2. DİKİM TALİMATI ──
+  if(y>250)doc.addPage();
+  doc.setFillColor(236,72,153);
+  doc.rect(M,y,cW,6,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text('DIKIM TALIMATI',M+3,y+4.2);
+  y+=6;
+
+  if(dikimIE.hat||dikimIE.makine||dikimIE.iplik||dikimIE.dikis_sikligi){
+    const dInfo=[];
+    if(dikimIE.hat)dInfo.push('Hat/Model: '+t(dikimIE.hat));
+    if(dikimIE.makine)dInfo.push('Makine: '+t(dikimIE.makine));
+    if(dikimIE.iplik)dInfo.push('Iplik: '+t(dikimIE.iplik));
+    if(dikimIE.dikis_sikligi)dInfo.push('Dik.Sikligi: '+t(dikimIE.dikis_sikligi));
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(55,65,81);
+    doc.text(dInfo.join('   |   '),M+2,y+5);
+    y+=8;
+  }
   if(dikimIE.aciklama){
-    doc.setTextColor(100,100,100);doc.setFont('helvetica','normal');doc.setFontSize(6);
-    const lines=doc.splitTextToSize(t(dikimIE.aciklama),col3-4);
-    doc.text(lines,M+col3+2,yD);
+    doc.setFillColor(255,241,248);doc.rect(M,y,cW,0,'S');
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(80,80,80);
+    const dLines=doc.splitTextToSize(t(dikimIE.aciklama),cW-4);
+    doc.text(dLines,M+2,y+4);
+    y+=dLines.length*4+4;
+  }
+  if(dikimIE.not){
+    doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(190,24,93);
+    doc.text('Not: '+t(dikimIE.not),M+2,y+4);
+    y+=6;
   }
   if(!dikimIE.hat&&!dikimIE.aciklama){
     doc.setTextColor(156,163,175);doc.setFont('helvetica','italic');doc.setFontSize(7);
-    doc.text('Bilgi girilmemis',M+col3+2,y+12);
+    doc.text('Dikim bilgisi girilmemis',M+3,y+5);y+=8;
   }
+  y+=5;
 
-  // Kalite & Paket
-  isEmriBaslik('KALITE & PAKET',[16,185,129],M+col3*2,y);
-  let yP=y+8;
-  if(kaliteIE.kalite_seviye)yP=isEmriSatir('Kalite',kaliteIE.kalite_seviye,M+col3*2,yP);
-  if(kaliteIE.paket_tipi)yP=isEmriSatir('Paket',kaliteIE.paket_tipi,M+col3*2,yP);
-  if(kaliteIE.koli_adet)yP=isEmriSatir('Koli Adeti',kaliteIE.koli_adet,M+col3*2,yP);
-  if(kaliteIE.koli_tipi)yP=isEmriSatir('Koli Tipi',kaliteIE.koli_tipi,M+col3*2,yP);
-  if(kaliteIE.etiket)yP=isEmriSatir('Etiket',kaliteIE.etiket,M+col3*2,yP);
+  // ── 3. KALİTE & PAKET ──
+  if(y>250)doc.addPage();
+  doc.setFillColor(16,185,129);
+  doc.rect(M,y,cW,6,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text('KALITE & PAKET',M+3,y+4.2);
+  y+=6;
+
+  if(kaliteIE.kalite_seviye||kaliteIE.paket_tipi||kaliteIE.koli_adet||kaliteIE.koli_tipi||kaliteIE.etiket){
+    const kInfo=[];
+    if(kaliteIE.kalite_seviye)kInfo.push('Kalite: '+t(kaliteIE.kalite_seviye));
+    if(kaliteIE.paket_tipi)kInfo.push('Paket: '+t(kaliteIE.paket_tipi));
+    if(kaliteIE.koli_adet)kInfo.push('Koli: '+t(kaliteIE.koli_adet));
+    if(kaliteIE.koli_tipi)kInfo.push('Koli Tipi: '+t(kaliteIE.koli_tipi));
+    if(kaliteIE.etiket)kInfo.push('Etiket: '+t(kaliteIE.etiket));
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(55,65,81);
+    const kStr=doc.splitTextToSize(kInfo.join('   |   '),cW-4);
+    doc.text(kStr,M+2,y+5);
+    y+=kStr.length*5+4;
+  }
   if(kaliteIE.aciklama){
-    doc.setTextColor(100,100,100);doc.setFont('helvetica','normal');doc.setFontSize(6);
-    const lines=doc.splitTextToSize(t(kaliteIE.aciklama),col3-4);
-    doc.text(lines,M+col3*2+2,yP);
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(80,80,80);
+    const kLines=doc.splitTextToSize(t(kaliteIE.aciklama),cW-4);
+    doc.text(kLines,M+2,y+4);
+    y+=kLines.length*4+4;
   }
   if(!kaliteIE.kalite_seviye&&!kaliteIE.aciklama){
     doc.setTextColor(156,163,175);doc.setFont('helvetica','italic');doc.setFontSize(7);
-    doc.text('Bilgi girilmemis',M+col3*2+2,y+12);
+    doc.text('Kalite & paket bilgisi girilmemis',M+3,y+5);y+=8;
   }
-  y+=maxH+6;
+  y+=4;
 
   // NOT
   if(sip.notlar){
