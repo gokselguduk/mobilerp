@@ -4840,7 +4840,14 @@ async function siparisPdf(sip){
   const dikimIE=isEmri.dikim||{};
   const kaliteIE=isEmri.kalite_paket||{};
   const kesimRows=kesimIE.rows||[];
-  const t=s=>String(s===null||s===undefined?'':s).substring(0,80);
+  const tr=s=>String(s===null||s===undefined?'':s)
+    .replace(/ğ/g,'g').replace(/Ğ/g,'G')
+    .replace(/ü/g,'u').replace(/Ü/g,'U')
+    .replace(/ş/g,'s').replace(/Ş/g,'S')
+    .replace(/ı/g,'i').replace(/İ/g,'I')
+    .replace(/ö/g,'o').replace(/Ö/g,'O')
+    .replace(/ç/g,'c').replace(/Ç/g,'C');
+  const t=s=>tr(s).substring(0,80);
 
   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
   const W=210,M=12,cW=W-M*2;
@@ -5002,12 +5009,11 @@ async function siparisPdf(sip){
     doc.rect(M,y,cW,5.5,'S');
     doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(109,40,217);
     const cols=[
-      {x:M+1,w:45,label:'Urun Adi'},
-      {x:M+46,w:18,label:'Ebat'},
-      {x:M+64,w:18,label:'Renk'},
-      {x:M+82,w:20,label:'Kes.Olcusu'},
-      {x:M+102,w:20,label:'Kesilecek'},
-      {x:M+122,w:cW-123,label:'Not'},
+      {x:M+1,w:55,label:'Urun Adi'},
+      {x:M+57,w:25,label:'Ebat'},
+      {x:M+83,w:25,label:'Renk'},
+      {x:M+109,w:25,label:'Kes.Olcusu'},
+      {x:M+135,w:cW-136,label:'Kesilecek'},
     ];
     cols.forEach(c=>doc.text(c.label,c.x,y+3.8));
     y+=5.5;
@@ -5020,8 +5026,8 @@ async function siparisPdf(sip){
       const olcu=t(r.birim_uzunluk?r.birim_uzunluk+' cm':'—');
       const adet=t(r.kesilecek_adet||k.miktar||'—');
       const not=t(r.kesim_talimat||'');
+      const rowH=not?10:6;
       const bg=i%2===0?[255,255,255]:[248,245,255];
-      const rowH=not?9:6;
       doc.setFillColor(...bg);
       doc.rect(M,y,cW,rowH,'F');
       doc.rect(M,y,cW,rowH,'S');
@@ -5034,12 +5040,8 @@ async function siparisPdf(sip){
       doc.text(adet+' adet',cols[4].x,y+4);
       if(not){
         doc.setFont('helvetica','italic');doc.setFontSize(6);doc.setTextColor(124,58,237);
-        doc.text(not,cols[5].x,y+4);
-        doc.setFontSize(6);doc.setTextColor(120,120,120);
-        doc.text('Not: '+not,cols[0].x+2,y+7);
+        doc.text('Not: '+not,cols[0].x+2,y+8);
       }
-      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(30,30,30);
-      doc.text(not?not.substring(0,30):'',cols[5].x,y+4);
       y+=rowH;
     });
   }
