@@ -286,7 +286,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <div class="drawer-section">
     <div class="drawer-section-title">Sipariş</div>
-    <div class="nav-item" id="nav-SIPARIS_GIRIS" onclick="goPage('SIPARIS_GIRIS')">
+    <div class="nav-item" id="nav-SIPARIS_GIRIS" style="display:none" onclick="goPage('SIPARIS_GIRIS')">
       <span class="nav-icon">➕</span> Yeni Sipariş
     </div>
     <div class="nav-item" id="nav-SIPARIS_LISTE" onclick="goPage('SIPARIS_LISTE')">
@@ -353,13 +353,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-item" id="nav-KART_LISTE" onclick="goPage('KART_LISTE')">
       <span class="nav-icon">🗂️</span> Ürün Arşivi
     </div>
-    <div class="nav-item" id="nav-IPLIK_KART_GIRIS" onclick="goPage('IPLIK_KART_GIRIS')">
+    <div class="nav-item" id="nav-IPLIK_KART_GIRIS" style="display:none" onclick="goPage('IPLIK_KART_GIRIS')">
       <span class="nav-icon">🧶</span> İplik Kart
     </div>
-    <div class="nav-item" id="nav-KUMAS_KART_GIRIS" onclick="goPage('KUMAS_KART_GIRIS')">
+    <div class="nav-item" id="nav-KUMAS_KART_GIRIS" style="display:none" onclick="goPage('KUMAS_KART_GIRIS')">
       <span class="nav-icon">🪡</span> Kumaş Kart
     </div>
-    <div class="nav-item" id="nav-MAMUL_KART_GIRIS" onclick="goPage('MAMUL_KART_GIRIS')">
+    <div class="nav-item" id="nav-MAMUL_KART_GIRIS" style="display:none" onclick="goPage('MAMUL_KART_GIRIS')">
       <span class="nav-icon">📦</span> Mamül Kart
     </div>
   </div>
@@ -804,7 +804,7 @@ function renderPage(page){
     case 'DASHBOARD': renderDashboard();break;
     case 'SIPARIS_LISTE': renderSiparisListe(false);break;
     case 'SIPARIS_KAPANAN': renderSiparisListe(true);break;
-    case 'SIPARIS_GIRIS': renderSiparisGiris();break;
+    case 'SIPARIS_GIRIS': document.getElementById('page-SIPARIS_GIRIS').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
     case 'IPLIK': renderStok('iplik');break;
     case 'KUMAS': renderStok('kumas');break;
     case 'MAMUL_DEPO': renderStok('mamul');break;
@@ -823,9 +823,9 @@ function renderPage(page){
     case 'URUN_AGACI': renderUrunAgaci();break;
     case 'TEKNIK_FOY': renderTeknikFoy();break;
     case 'KART_LISTE': renderKartListe();break;
-    case 'IPLIK_KART_GIRIS': renderKartGiris('iplik');break;
-    case 'KUMAS_KART_GIRIS': renderKartGiris('kumas');break;
-    case 'MAMUL_KART_GIRIS': renderKartGiris('mamul');break;
+    case 'IPLIK_KART_GIRIS': document.getElementById('page-IPLIK_KART_GIRIS').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
+    case 'KUMAS_KART_GIRIS': document.getElementById('page-KUMAS_KART_GIRIS').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
+    case 'MAMUL_KART_GIRIS': document.getElementById('page-MAMUL_KART_GIRIS').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
     case 'PLANLAMA': renderPlanlama();break;
     case 'DIAGNOSTICS': renderDiagnostics();break;
     case 'YONETIM': renderYonetim();break;
@@ -1474,10 +1474,8 @@ function openSiparisDetay(id){
           ${gun!==null?`<span class="tag" style="background:${terminRenk}22;color:${terminRenk}">${gun<0?Math.abs(gun)+' gün gecikmiş':gun===0?'Bugün':gun+' gün kaldı'}</span>`:''}
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:${canAccess('SIPARIS_GIRIS')?'1fr 1fr 1fr':'1fr 1fr'};gap:7px">
-        ${canAccess('SIPARIS_GIRIS')?`<button onclick="editSiparis(${s.id})" style="background:var(--surface2);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:12px;font-weight:700;padding:11px 6px;cursor:pointer;text-align:center">✏️<br><span style="font-size:10px">Düzenle</span></button>`:''}
+      <div style="display:grid;grid-template-columns:1fr;gap:7px">
         <button onclick="siparisPdfById(${s.id})" style="background:#dc2626;border:none;border-radius:7px;color:#fff;font-size:10px;font-weight:700;padding:6px 8px;cursor:pointer">📄 PDF</button>
-
       </div>
     </div>
     <div class="modal-body">
