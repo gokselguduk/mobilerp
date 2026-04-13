@@ -327,6 +327,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-item" id="nav-KONFEKSIYON" onclick="goPage('KONFEKSIYON')">
       <span class="nav-icon">✂️</span> Konfeksiyon
     </div>
+    <div class="nav-item" id="nav-URUN_AGACI" onclick="goPage('URUN_AGACI')">
+      <span class="nav-icon">🌿</span> Ürün Ağacı
+    </div>
+    <div class="nav-item" id="nav-TEKNIK_FOY" onclick="goPage('TEKNIK_FOY')">
+      <span class="nav-icon">📋</span> Teknik Föy / İş Emirleri
+    </div>
     <div class="nav-item" id="nav-NUMUNE_URETIM" onclick="goPage('NUMUNE_URETIM')">
       <span class="nav-icon">🔬</span> Numune
     </div>
@@ -337,19 +343,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-item" id="nav-TEZGAH_YONETIMI" onclick="goPage('TEZGAH_YONETIMI')">
       <span class="nav-icon">🏭</span> Gantt Planlama
     </div>
-    <div class="nav-item" id="nav-TEZGAH_GIRIS" onclick="goPage('TEZGAH_GIRIS')">
+    <div class="nav-item" id="nav-TEZGAH_GIRIS" style="display:none" onclick="goPage('TEZGAH_GIRIS')">
       <span class="nav-icon">⚙️</span> Tezgah Tanımlama
     </div>
   </div>
 
   <div class="drawer-section">
     <div class="drawer-section-title">Ürün</div>
-    <div class="nav-item" id="nav-URUN_AGACI" onclick="goPage('URUN_AGACI')">
-      <span class="nav-icon">🌿</span> Ürün Ağacı
-    </div>
-    <div class="nav-item" id="nav-TEKNIK_FOY" onclick="goPage('TEKNIK_FOY')">
-      <span class="nav-icon">📄</span> Teknik Föy
-    </div>
     <div class="nav-item" id="nav-KART_LISTE" onclick="goPage('KART_LISTE')">
       <span class="nav-icon">🗂️</span> Ürün Arşivi
     </div>
@@ -2345,6 +2345,18 @@ function renderTodoListe(){
             <input class="field-input" id="todo-assigned" placeholder="Ad Soyad" style="margin-bottom:0">
           </div>
         </div>
+        <div class="field-row">
+          <div>
+            <label class="field-label">Bitiş Tarihi</label>
+            <input class="field-input" type="date" id="todo-bitis" style="margin-bottom:0">
+          </div>
+          <div>
+            <label class="field-label">İlgili Sipariş</label>
+            <input class="field-input" id="todo-siparis" placeholder="SP445..." style="margin-bottom:0">
+          </div>
+        </div>
+        <label class="field-label">Not / Açıklama</label>
+        <textarea class="field-textarea" id="todo-not" placeholder="Detay, açıklama..."></textarea>
         <button class="save-btn" style="background:var(--accent);color:#0d1117;margin-top:8px" onclick="todoKaydet()">💾 Görevi Kaydet</button>
       </div>
     </div>
@@ -2371,14 +2383,30 @@ function todoRows(todos){
   else if(todoFilter==='TAMAMLANDI')liste=todos.filter(t=>t.status==='TAMAMLANDI');
   if(!liste.length)return`<div class="empty"><div class="icon">✅</div>Görev bulunamadı</div>`;
   const pRenk={'KRİTİK':'var(--red)','ACİL':'var(--red)','YÜKSEK':'var(--amber)','NORMAL':'var(--text3)'};
+  const today=new Date().toISOString().slice(0,10);
   return`<div class="card">`+liste.map(t=>{
     const tam=t.status==='TAMAMLANDI';
     const renk=pRenk[t.priority||'NORMAL']||'var(--text3)';
-    return `<div style="padding:11px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
-      <button onclick="todoToggle(${t.id},'${tam?'BEKLEMEDE':'TAMAMLANDI'}')" style="width:20px;height:20px;border-radius:5px;border:2px solid ${tam?'var(--green)':'var(--border2)'};background:${tam?'var(--green)':'none'};cursor:pointer;flex-shrink:0;margin-top:2px;color:#0d1117;font-size:11px">${tam?'✓':''}</button>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;${tam?'text-decoration:line-through;color:var(--text3)':'color:var(--text)'}">${esc(t.task||'—')}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:2px">${t.assigned_to?'👤 '+esc(t.assigned_to):''} ${t.priority?'· <span style="color:'+renk+'">'+esc(t.priority)+'</span>':''}</div>
+    const gecikti=!tam&&t.due_date&&t.due_date<today;
+    const bugün=!tam&&t.due_date&&t.due_date===today;
+    const aciklama=t.description||'';
+    const siparis=t.notlar&&t.notlar.startsWith('Sipariş:')?t.notlar.replace('Sipariş:','').trim():'';
+    return `<div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <button onclick="todoToggle(${t.id},'${tam?'BEKLEMEDE':'TAMAMLANDI'}')" 
+          style="width:22px;height:22px;border-radius:6px;border:2px solid ${tam?'var(--green)':'var(--border2)'};background:${tam?'var(--green)':'none'};cursor:pointer;flex-shrink:0;margin-top:2px;color:#0d1117;font-size:12px;font-weight:800">${tam?'✓':''}</button>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;${tam?'text-decoration:line-through;color:var(--text3)':'color:var(--text)'};margin-bottom:3px">${esc(t.task||'—')}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:${aciklama?'5px':'0'}">
+            ${t.priority?`<span class="tag" style="background:${renk}22;color:${renk}">${esc(t.priority)}</span>`:''}
+            ${t.assigned_to?`<span class="tag tag-gray">👤 ${esc(t.assigned_to)}</span>`:''}
+            ${siparis?`<span class="tag tag-blue">📋 ${esc(siparis)}</span>`:''}
+            ${t.due_date?`<span class="tag" style="background:${gecikti?'var(--red)22':bugün?'var(--amber)22':'var(--surface2)'};color:${gecikti?'var(--red)':bugün?'var(--amber)':'var(--text3)'}">
+              📅 ${t.due_date}${gecikti?' ⚠️ Gecikti':bugün?' Bugün':''}</span>`:''}
+          </div>
+          ${aciklama?`<div style="font-size:11px;color:var(--text3);line-height:1.5;background:var(--surface2);border-radius:6px;padding:5px 8px">${esc(aciklama)}</div>`:''}
+        </div>
+        <button onclick="todoSil(${t.id})" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:2px 4px;flex-shrink:0" title="Sil">🗑</button>
       </div>
     </div>`;
   }).join('')+'</div>';
@@ -2394,13 +2422,28 @@ async function todoKaydet(){
       priority:document.getElementById('todo-priority')?.value||'NORMAL',
       assigned_to:document.getElementById('todo-assigned')?.value||'',
       status:'BEKLEMEDE',
-      kaynak_birim:'MOBIL_ERP',
+      due_date:document.getElementById('todo-bitis')?.value||null,
+      description:document.getElementById('todo-not')?.value||'',
+      notlar:document.getElementById('todo-siparis')?.value?'Sipariş: '+document.getElementById('todo-siparis').value:'',
       islem_gecmisi:`✨ ${new Date().toLocaleString('tr-TR')} — [${kullanici}]: Oluşturuldu`
     }]).select();
     if(error)throw error;
     if(data&&data[0])dataCache.todo_list.unshift(data[0]);
-    document.getElementById('todo-task').value='';
+    ['todo-task','todo-assigned','todo-bitis','todo-siparis','todo-not'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.value='';
+    });
+    document.getElementById('todo-priority').value='NORMAL';
     showToast('✅ Görev eklendi');
+    renderTodoListe();
+  }catch(e){showToast('❌ Hata: '+(e.message||e));}
+}
+
+async function todoSil(id){
+  if(!confirm('Bu görevi silmek istiyor musunuz?'))return;
+  try{
+    await sb.from('todo_list').delete().eq('id',id);
+    dataCache.todo_list=dataCache.todo_list.filter(t=>t.id!=id);
+    showToast('🗑 Görev silindi');
     renderTodoListe();
   }catch(e){showToast('❌ Hata: '+(e.message||e));}
 }
@@ -3105,7 +3148,7 @@ async function renderMaliyetListe(){
     // notlar veya description alanından çek
     const{data,error}=await sb.from('todo_list')
       .select('*')
-      .eq('kaynak_birim','MALIYET_HESAP')
+      .ilike('task','%Maliyet%')
       .order('created_at',{ascending:false})
       .limit(100);
     if(error)throw error;
