@@ -3157,60 +3157,142 @@ function renderUrunAgaci(){
 // ═══════════════════════════════════════════
 function renderTeknikFoy(){
   const el=document.getElementById('page-TEKNIK_FOY');
-  const kartlar=(dataCache.kumas_kutuphanesi||[]).filter(k=>k.ana_grup!=='NUMUNE');
+  const aktif=sortSno((dataCache.siparisler||[]).filter(s=>s.durum!=='TAMAMLANDI'));
+  // Teknik föy = sipariş bazlı iş emirleri
+  let tfSeciliId=window._tfSeciliId||null;
+  const opts=aktif.map(s=>`<option value="${s.id}" ${tfSeciliId==s.id?'selected':''}>${esc(s.sno||'—')} · ${esc(s.firma||'')}</option>`).join('');
   el.innerHTML=`
-    <div style="font-size:18px;font-weight:800;margin-bottom:12px">📄 Teknik Föy</div>
-    <input class="field-input" placeholder="🔍 Desen kodu, ürün adı ara…" oninput="teknikFoyAra(this.value)" style="margin-bottom:8px">
-    <div class="card" id="teknik-foy-liste">${teknikFoyRows(kartlar)}</div>`;
-  window._teknikFoyData=kartlar;
-}
-
-function teknikFoyAra(v){
-  const search=v.toLowerCase();
-  const data=search?(window._teknikFoyData||[]).filter(k=>JSON.stringify(k).toLowerCase().includes(search)):(window._teknikFoyData||[]);
-  const el=document.getElementById('teknik-foy-liste');
-  if(el)el.innerHTML=teknikFoyRows(data);
-}
-
-function teknikFoyRows(data){
-  if(!data.length)return`<div class="empty"><div class="icon">📄</div>Kayıt bulunamadı</div>`;
-  return data.slice(0,30).map(k=>`
-    <div style="padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="teknikFoyDetay(${k.id})">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:11px;font-family:monospace;color:var(--accent2);margin-bottom:1px">${esc(k.desen_kodu||'—')}</div>
-          <div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k.kumas_cinsi||k.urun_adi||'—')}</div>
-          <div style="font-size:10px;color:var(--text3)">${esc(k.firma||'—')} · ${esc(k.ana_grup||'—')}</div>
-        </div>
-        <span style="font-size:16px;color:var(--text3)">›</span>
-      </div>
-    </div>`).join('');
-}
-
-function teknikFoyDetay(id){
-  const k=(dataCache.kumas_kutuphanesi||[]).find(x=>x.id==id);
-  if(!k)return;
-  const alanlar=[
-    ['Desen Kodu',k.desen_kodu],['Ürün Adı',k.kumas_cinsi||k.urun_adi],['Firma',k.firma],
-    ['Ana Grup',k.ana_grup],['Tarak No',k.tarak_no],['Tarak Eni',k.tarak_eni],
-    ['Atki Sıklığı',k.atki_sikligi],['Çözgü No',k.cozgu_no],['Çözgü Cinsi',k.cozgu_cinsi],
-    ['Ham En',k.ham_en?k.ham_en+' cm':null],['Ham Boy',k.ham_boy?k.ham_boy+' cm':null],
-    ['Ham Gramaj',k.ham_gramaj?k.ham_gramaj+' g':null],['Ham GSM',k.ham_gsm?k.ham_gsm+' g/m²':null],
-    ['Mamül En',k.mamul_en?k.mamul_en+' cm':null],['Mamül Boy',k.mamul_boy?k.mamul_boy+' cm':null],
-    ['Mamül Gramaj',k.mamul_gramaj?k.mamul_gramaj+' g':null],['Mamül GSM',k.mamul_gsm?k.mamul_gsm+' g/m²':null],
-    ['Terbiye',k.terbiye],
-  ].filter(([,v])=>v);
-  showModal('teknik-foy-modal',`
-    <div class="modal-handle"></div>
-    <div class="modal-head">
-      <div class="modal-title">${esc(k.desen_kodu||'—')}</div>
-      <div class="modal-sub">${esc(k.kumas_cinsi||k.urun_adi||'—')}</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:12px">📋 Teknik Föy / İş Emirleri</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div class="sec-title" style="margin-bottom:6px">Sipariş Seç</div>
+      <select class="field-select" id="tf-sip-sel" onchange="tfSiparisYukle(this.value)" style="margin-bottom:0">
+        <option value="">— Sipariş seçin —</option>${opts}
+      </select>
     </div>
-    <div class="modal-body">
-      ${alanlar.map(([key,val])=>`<div class="info-row"><div class="info-key">${esc(key)}</div><div class="info-val">${esc(String(val||''))}</div></div>`).join('')}
-      ${k.notlar?`<div class="sec-title" style="margin-top:10px">Notlar</div><div style="font-size:12px;color:var(--text2);line-height:1.6;padding:8px;background:var(--surface2);border-radius:8px">${esc(k.notlar)}</div>`:''}
-      <button onclick="teknikFoyPdf(${k.id})" style="width:100%;background:var(--red);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:800;padding:12px;cursor:pointer;margin-top:12px">📄 PDF / Paylaş</button>
-    </div>`);
+    <div id="tf-icerik">${tfSeciliId?'<div class="loading"><div class="spinner"></div></div>':'<div class="empty"><div class="icon">📋</div>Sipariş seçin</div>'}</div>`;
+  if(tfSeciliId)tfYukle(tfSeciliId);
+}
+
+async function tfSiparisYukle(id){
+  window._tfSeciliId=id;
+  const ic=document.getElementById('tf-icerik');
+  if(!id){if(ic)ic.innerHTML='<div class="empty"><div class="icon">📋</div>Sipariş seçin</div>';return;}
+  if(ic)ic.innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  await tfYukle(id);
+}
+
+async function tfYukle(id){
+  const sip=(dataCache.siparisler||[]).find(s=>s.id==id);
+  if(!sip)return;
+  const ic=document.getElementById('tf-icerik');
+  if(!ic)return;
+
+  // KD_URUN_AGACI'nden is emirlerini çek
+  let kdUa={};
+  try{
+    const{data,error}=await sb.from('siparis_akis')
+      .select('id,notlar')
+      .eq('siparis_id',id)
+      .eq('islem','KD_URUN_AGACI')
+      .eq('kalem_ad','KD_URUN_AGACI')
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(!error&&data&&data[0])try{kdUa=JSON.parse(data[0].notlar||'{}');}catch{}
+  }catch(e){}
+
+  const isEmri=kdUa?.siparis_foy?.is_emri||{};
+  const kesim=isEmri.kesim||{};
+  const dikim=isEmri.dikim||{};
+  const kalite=isEmri.kalite_paket||{};
+  const kesimRows=kesim.rows||[];
+  const kalemler=parseKalemler(sip);
+  const topAdet=parseInt(sip.miktar)||kalemler.reduce((a,k)=>a+(parseInt(k.miktar)||0),0);
+
+  const alan=(label,val)=>val?`<div class="info-row"><div class="info-key">${esc(label)}</div><div class="info-val">${esc(String(val))}</div></div>`:'';
+  const sekBas=(ikon,baslik,renk)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid ${renk}">
+    <span style="font-size:16px">${ikon}</span>
+    <div style="font-size:13px;font-weight:800;color:${renk}">${baslik}</div>
+  </div>`;
+
+  let html=`
+  <!-- Sipariş özet -->
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div>
+        <div style="font-size:15px;font-weight:800">${esc(sip.sno||'—')}</div>
+        <div style="font-size:12px;color:var(--text2)">${esc(sip.firma||'—')}</div>
+      </div>
+      <div style="text-align:right">
+        ${durumTag(sip.durum)}
+        ${sip.ttarih?`<div style="font-size:10px;color:var(--text3);margin-top:4px">Termin: ${sip.ttarih}</div>`:''}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+      <div class="kpi-box" style="text-align:center"><div class="kpi-val" style="font-size:18px;color:var(--accent)">${topAdet}</div><div class="kpi-lbl">Toplam Adet</div></div>
+      <div class="kpi-box" style="text-align:center"><div class="kpi-val" style="font-size:18px;color:var(--cyan)">${kalemler.length}</div><div class="kpi-lbl">Kalem</div></div>
+      <div class="kpi-box" style="text-align:center"><div class="kpi-val" style="font-size:18px;color:var(--green)">${(kdUa?.siparis_foy?.sekme_onay?.kesim&&kdUa?.siparis_foy?.sekme_onay?.dikim?'✅':'⏳')}</div><div class="kpi-lbl">İş Emri</div></div>
+    </div>
+  </div>
+
+  <!-- KESİM İŞ EMRİ -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    ${sekBas('✂️','KESİM TALİMATI','var(--violet)')}
+    ${alan('Pastal Eni',kesim.pastal_eni?kesim.pastal_eni+' cm':null)}
+    ${alan('Pastal Boyu',kesim.pastal_boyu?kesim.pastal_boyu+' cm':null)}
+    ${alan('Kat Sayısı',kesim.kat_sayisi)}
+    ${alan('Makine',kesim.masina)}
+    ${kesim.aciklama?`<div style="margin-top:8px;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2)">${esc(kesim.aciklama)}</div>`:''}
+    ${kesimRows.length?`
+    <div style="margin-top:10px">
+      <div class="sec-title" style="margin-bottom:6px">Kalem Kesim Talimatları</div>
+      ${kesimRows.map((r,i)=>`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:11px">
+        <div style="font-weight:700;color:var(--violet);margin-bottom:4px">${i+1}. ${esc(r.urun||'Kalem '+(i+1))}${r.kesilecek_adet?' — <span style="color:var(--accent)">'+r.kesilecek_adet+' adet</span>':''}</div>
+        ${r.birim_uzunluk?`<div style="color:var(--text3)">Uzunluk: ${esc(r.birim_uzunluk)} cm</div>`:''}
+        ${r.kesim_talimat?`<div style="color:var(--text2);margin-top:3px">${esc(r.kesim_talimat)}</div>`:''}
+      </div>`).join('')}
+    </div>`:''}
+    ${!kesim.pastal_eni&&!kesim.aciklama&&!kesimRows.length?`<div style="color:var(--text3);font-size:12px;text-align:center;padding:10px">Ürün ağacından kesim bilgisi girilmemiş</div>`:''}
+    <button onclick="tfDuzenle('${id}','KESIM')" style="width:100%;margin-top:10px;background:var(--violet);border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:700;padding:10px;cursor:pointer">✏️ Kesim Bilgisi Düzenle</button>
+  </div>
+
+  <!-- DİKİM İŞ EMRİ -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    ${sekBas('🪡','DİKİM TALİMATI','var(--pink)')}
+    ${alan('Hat / Model',dikim.hat)}
+    ${alan('Makine',dikim.makine)}
+    ${alan('İplik',dikim.iplik)}
+    ${alan('Dikiş Sıklığı',dikim.dikis_sikligi||dikim['dikiş_sıklığı'])}
+    ${dikim.aciklama?`<div style="margin-top:8px;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2)">${esc(dikim.aciklama)}</div>`:''}
+    ${dikim.not?`<div style="margin-top:6px;font-size:11px;color:var(--pink)">${esc(dikim.not)}</div>`:''}
+    ${!dikim.hat&&!dikim.aciklama?`<div style="color:var(--text3);font-size:12px;text-align:center;padding:10px">Ürün ağacından dikim bilgisi girilmemiş</div>`:''}
+    <button onclick="tfDuzenle('${id}','DIKIM')" style="width:100%;margin-top:10px;background:var(--pink);border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:700;padding:10px;cursor:pointer">✏️ Dikim Bilgisi Düzenle</button>
+  </div>
+
+  <!-- KALİTE & PAKET İŞ EMRİ -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    ${sekBas('📦','KALİTE & PAKET','var(--green)')}
+    ${alan('Kalite Seviyesi',kalite.kalite_seviye)}
+    ${alan('Paket Tipi',kalite.paket_tipi)}
+    ${alan('Koli Adeti',kalite.koli_adet)}
+    ${alan('Koli Tipi',kalite.koli_tipi)}
+    ${alan('Etiket',kalite.etiket)}
+    ${kalite.aciklama?`<div style="margin-top:8px;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text2)">${esc(kalite.aciklama)}</div>`:''}
+    ${!kalite.kalite_seviye&&!kalite.aciklama?`<div style="color:var(--text3);font-size:12px;text-align:center;padding:10px">Ürün ağacından kalite bilgisi girilmemiş</div>`:''}
+    <button onclick="tfDuzenle('${id}','KALITE')" style="width:100%;margin-top:10px;background:var(--green);border:none;border-radius:9px;color:#0d1117;font-size:12px;font-weight:700;padding:10px;cursor:pointer">✏️ Kalite & Paket Düzenle</button>
+  </div>
+
+  <!-- PDF -->
+  <button onclick="siparisPdfById('${id}')" style="width:100%;background:var(--red);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:800;padding:13px;cursor:pointer;margin-bottom:32px">📄 İş Emri PDF İndir</button>`;
+
+  ic.innerHTML=html;
+}
+
+function tfDuzenle(sipId, sekme){
+  // Ürün ağacına yönlendir
+  window._uaSeciliId=sipId;
+  uaSeciliId=sipId;
+  goPage('URUN_AGACI');
+  showToast('Ürün ağacından '+sekme+' bilgisini güncelleyin');
 }
 
 // ═══════════════════════════════════════════
@@ -4293,6 +4375,12 @@ async function uaYukle(id){
   _uaKdCache[id]=kd;
 
   const ASAMALAR=['DOKUMA','KESİM','YIKAMA','DİKİM','NAKIŞ','BASKI','ÜTÜ','KALİTE','KOLİ','SEVK'];
+  const foy=kd.siparis_foy||{};
+  const isEmri=foy.is_emri||{};
+  const kesimIE=isEmri.kesim||{};
+  const dikimIE=isEmri.dikim||{};
+  const kaliteIE=isEmri.kalite_paket||{};
+  const kesimRows=kesimIE.rows||[];
 
   let html=`<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px">
     ${esc(sip.sno||'—')} · ${esc(sip.firma||'—')}
@@ -4327,28 +4415,163 @@ async function uaYukle(id){
             const secili=asamalar.includes(a);
             return `<button type="button" onclick="uaAsamaToggle(${i},'${a}',this)"
               data-asama="${a}" data-secili="${secili}"
-              style="padding:7px 12px;border-radius:8px;border:2px solid ${secili?'var(--accent)':'var(--border2)'};background:${secili?'rgba(88,166,255,.18)':'var(--surface2)'};color:${secili?'var(--accent)':'var(--text3)'};font-size:11px;font-weight:${secili?'800':'600'};cursor:pointer;transition:all .15s">
+              style="padding:7px 12px;border-radius:8px;border:2px solid ${secili?'var(--accent)':'var(--border2)'};background:${secili?'rgba(88,166,255,.18)':'var(--surface2)'};color:${secili?'var(--accent)':'var(--text3)'};font-size:11px;font-weight:${secili?'800':'600'};cursor:pointer">
               ${secili?'✓ ':''}${a}
             </button>`;
           }).join('')}
         </div>
-
-        ${asamalar.length?`<div style="font-size:10px;color:var(--text3);margin-bottom:8px">
-          Seçili: <span style="color:var(--accent);font-weight:700">${asamalar.join(' → ')}</span>
-        </div>`:''}
-
+        ${asamalar.length?`<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Seçili: <span style="color:var(--accent);font-weight:700">${asamalar.join(' → ')}</span></div>`:''}
         <button type="button" onclick="uaKalemKaydet(${i},${id})"
           style="width:100%;background:var(--accent);border:none;border-radius:9px;color:#0d1117;font-size:13px;font-weight:800;padding:12px;cursor:pointer">
-          💾 Kaydet
+          💾 Kalem Kaydet
         </button>
       </div>`;
     });
   }
 
+  // İŞ EMİRLERİ BÖLÜMÜ
+  html+=`<div style="font-size:14px;font-weight:800;color:var(--text);margin:16px 0 10px">🔧 İş Emirleri</div>`;
+
+  // KESİM
+  html+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:var(--violet);margin-bottom:10px">✂️ Kesim Talimatı</div>
+    <div class="field-row">
+      <div><label class="field-label">Pastal Eni (cm)</label><input class="field-input" id="ie-kesim-pastal-eni" value="${esc(kesimIE.pastal_eni||'')}" placeholder="0" style="margin-bottom:0"></div>
+      <div><label class="field-label">Pastal Boyu (cm)</label><input class="field-input" id="ie-kesim-pastal-boyu" value="${esc(kesimIE.pastal_boyu||'')}" placeholder="0" style="margin-bottom:0"></div>
+    </div>
+    <div class="field-row">
+      <div><label class="field-label">Kat Sayısı</label><input class="field-input" id="ie-kesim-kat" value="${esc(kesimIE.kat_sayisi||'')}" placeholder="0" style="margin-bottom:0"></div>
+      <div><label class="field-label">Makine</label><input class="field-input" id="ie-kesim-masina" value="${esc(kesimIE.masina||'')}" placeholder="Makine adı" style="margin-bottom:0"></div>
+    </div>
+    <label class="field-label" style="margin-top:8px">Kesim Açıklaması</label>
+    <textarea class="field-textarea" id="ie-kesim-aciklama" placeholder="Kesim talimatları…" style="margin-bottom:10px">${esc(kesimIE.aciklama||'')}</textarea>
+    ${kalemler.map((k,i)=>{
+      const r=kesimRows[i]||{};
+      const baslik=[k.ad||k.kod||'Kalem '+(i+1),k.ebat||k.olcu,k.renk].filter(Boolean).join(' · ');
+      return `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:700;color:var(--violet);margin-bottom:6px">${i+1}. ${esc(baslik)}</div>
+        <div class="field-row">
+          <div><label class="field-label">Kesilecek Adet</label><input class="field-input" id="ie-kesim-row-${i}-adet" value="${esc(r.kesilecek_adet||k.miktar||'')}" placeholder="0" style="margin-bottom:0"></div>
+          <div><label class="field-label">Birim Uzunluk (cm)</label><input class="field-input" id="ie-kesim-row-${i}-uzunluk" value="${esc(r.birim_uzunluk||'')}" placeholder="0" style="margin-bottom:0"></div>
+        </div>
+        <label class="field-label" style="margin-top:4px">Kesim Talimatı</label>
+        <input class="field-input" id="ie-kesim-row-${i}-talimat" value="${esc(r.kesim_talimat||'')}" placeholder="Bu kalem için özel talimat…" style="margin-bottom:0">
+      </div>`;
+    }).join('')}
+    <button onclick="uaIsEmriKaydet(${id},'kesim')" style="width:100%;background:var(--violet);border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:800;padding:11px;cursor:pointer;margin-top:6px">💾 Kesim Kaydet</button>
+  </div>`;
+
+  // DİKİM
+  html+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:var(--pink);margin-bottom:10px">🪡 Dikim Talimatı</div>
+    <div class="field-row">
+      <div><label class="field-label">Hat / Model</label><input class="field-input" id="ie-dikim-hat" value="${esc(dikimIE.hat||'')}" placeholder="Dikim hattı" style="margin-bottom:0"></div>
+      <div><label class="field-label">Makine</label><input class="field-input" id="ie-dikim-makine" value="${esc(dikimIE.makine||'')}" placeholder="Makine" style="margin-bottom:0"></div>
+    </div>
+    <div class="field-row">
+      <div><label class="field-label">İplik</label><input class="field-input" id="ie-dikim-iplik" value="${esc(dikimIE.iplik||'')}" placeholder="İplik no/cinsi" style="margin-bottom:0"></div>
+      <div><label class="field-label">Dikiş Sıklığı</label><input class="field-input" id="ie-dikim-sikligi" value="${esc(dikimIE.dikis_sikligi||'')}" placeholder="10/cm" style="margin-bottom:0"></div>
+    </div>
+    <label class="field-label" style="margin-top:8px">Dikim Açıklaması</label>
+    <textarea class="field-textarea" id="ie-dikim-aciklama" placeholder="Dikim talimatları…" style="margin-bottom:6px">${esc(dikimIE.aciklama||'')}</textarea>
+    <label class="field-label">Özel Not</label>
+    <input class="field-input" id="ie-dikim-not" value="${esc(dikimIE.not||'')}" placeholder="Not…" style="margin-bottom:10px">
+    <button onclick="uaIsEmriKaydet(${id},'dikim')" style="width:100%;background:var(--pink);border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:800;padding:11px;cursor:pointer">💾 Dikim Kaydet</button>
+  </div>`;
+
+  // KALİTE & PAKET
+  html+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:800;color:var(--green);margin-bottom:10px">📦 Kalite & Paket</div>
+    <div class="field-row">
+      <div><label class="field-label">Kalite Seviyesi</label>
+        <select class="field-select" id="ie-kalite-seviye" style="margin-bottom:0">
+          <option value="">— Seçin —</option>
+          ${['1.KALİTE','2.KALİTE','3.KALİTE','A KALİTE','B KALİTE'].map(v=>`<option value="${v}" ${kaliteIE.kalite_seviye===v?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div><label class="field-label">Paket Tipi</label><input class="field-input" id="ie-kalite-paket-tipi" value="${esc(kaliteIE.paket_tipi||'')}" placeholder="Poşet, koli…" style="margin-bottom:0"></div>
+    </div>
+    <div class="field-row">
+      <div><label class="field-label">Koli Adeti</label><input class="field-input" id="ie-kalite-koli-adet" value="${esc(kaliteIE.koli_adet||'')}" placeholder="0" style="margin-bottom:0"></div>
+      <div><label class="field-label">Koli Tipi</label><input class="field-input" id="ie-kalite-koli-tipi" value="${esc(kaliteIE.koli_tipi||'')}" placeholder="Koli tipi" style="margin-bottom:0"></div>
+    </div>
+    <label class="field-label" style="margin-top:8px">Etiket</label>
+    <input class="field-input" id="ie-kalite-etiket" value="${esc(kaliteIE.etiket||'')}" placeholder="Etiket bilgisi…">
+    <label class="field-label">Kalite & Paket Açıklaması</label>
+    <textarea class="field-textarea" id="ie-kalite-aciklama" placeholder="Kalite kontrol ve paketleme talimatları…" style="margin-bottom:6px">${esc(kaliteIE.aciklama||'')}</textarea>
+    <button onclick="uaIsEmriKaydet(${id},'kalite_paket')" style="width:100%;background:var(--green);border:none;border-radius:9px;color:#0d1117;font-size:12px;font-weight:800;padding:11px;cursor:pointer">💾 Kalite & Paket Kaydet</button>
+  </div>
+
+  <button onclick="siparisPdfById('${id}')" style="width:100%;background:var(--red);border:none;border-radius:10px;color:#fff;font-size:13px;font-weight:800;padding:13px;cursor:pointer;margin-bottom:32px">📄 İş Emri PDF İndir</button>`;
+
   ic.innerHTML=html;
 }
 
-function uaAsamaToggle(kalemIdx,asama,btn){
+async function uaIsEmriKaydet(siparisId, tip){
+  const btn=event.currentTarget;
+  btn.disabled=true;btn.textContent='Kaydediliyor…';
+
+  try{
+    // Mevcut KD'yi al
+    let kd=_uaKdCache[siparisId]||{};
+    if(!kd.siparis_foy)kd.siparis_foy={};
+    if(!kd.siparis_foy.is_emri)kd.siparis_foy.is_emri={};
+
+    const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';}
+
+    if(tip==='kesim'){
+      const kalemler=parseKalemler((dataCache.siparisler||[]).find(s=>s.id==siparisId)||{});
+      const rows=kalemler.map((_,i)=>({
+        urun:g('ie-kesim-row-'+i+'-talimat')?undefined:undefined,
+        kesilecek_adet:g('ie-kesim-row-'+i+'-adet'),
+        birim_uzunluk:g('ie-kesim-row-'+i+'-uzunluk'),
+        kesim_talimat:g('ie-kesim-row-'+i+'-talimat'),
+      }));
+      kd.siparis_foy.is_emri.kesim={
+        pastal_eni:g('ie-kesim-pastal-eni'),
+        pastal_boyu:g('ie-kesim-pastal-boyu'),
+        kat_sayisi:g('ie-kesim-kat'),
+        masina:g('ie-kesim-masina'),
+        aciklama:g('ie-kesim-aciklama'),
+        rows
+      };
+    } else if(tip==='dikim'){
+      kd.siparis_foy.is_emri.dikim={
+        hat:g('ie-dikim-hat'),
+        makine:g('ie-dikim-makine'),
+        iplik:g('ie-dikim-iplik'),
+        dikis_sikligi:g('ie-dikim-sikligi'),
+        aciklama:g('ie-dikim-aciklama'),
+        not:g('ie-dikim-not'),
+      };
+    } else if(tip==='kalite_paket'){
+      kd.siparis_foy.is_emri.kalite_paket={
+        kalite_seviye:g('ie-kalite-seviye'),
+        paket_tipi:g('ie-kalite-paket-tipi'),
+        koli_adet:g('ie-kalite-koli-adet'),
+        koli_tipi:g('ie-kalite-koli-tipi'),
+        etiket:g('ie-kalite-etiket'),
+        aciklama:g('ie-kalite-aciklama'),
+      };
+    }
+
+    await kdSet(siparisId,'KD_URUN_AGACI',kd);
+    _uaKdCache[siparisId]=kd;
+
+    btn.style.background='var(--green)';
+    btn.textContent='✅ Kaydedildi!';
+    showToast('✅ '+tip+' iş emri kaydedildi');
+    setTimeout(()=>{
+      btn.disabled=false;
+      btn.style.background='';
+      btn.textContent='💾 '+(tip==='kesim'?'Kesim':tip==='dikim'?'Dikim':'Kalite & Paket')+' Kaydet';
+    },2000);
+  }catch(e){
+    showToast('❌ Hata: '+(e.message||e));
+    btn.disabled=false;
+    btn.textContent='💾 Kaydet';
+  }
+}
   const secili=btn.getAttribute('data-secili')==='true';
   const yeni=!secili;
   btn.setAttribute('data-secili',String(yeni));
@@ -4367,7 +4590,7 @@ function uaAsamaToggle(kalemIdx,asama,btn){
     const ozet=cont.nextElementSibling;
     if(ozet&&ozet.tagName==='DIV'&&ozet.style.fontSize==='10px'){
       if(seciliList.length){
-        ozet.innerHTML=`Seçili: <span style="color:var(--accent);font-weight:700">${seciliList.join(' → ')}</span>`;
+        ozet.innerHTML='Seçili: <span style="color:var(--accent);font-weight:700">'+seciliList.join(' → ')+'</span>';
         ozet.style.display='block';
       } else {
         ozet.style.display='none';
