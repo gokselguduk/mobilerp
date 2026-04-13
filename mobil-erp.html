@@ -4570,6 +4570,8 @@ async function uaIsEmriKaydet(siparisId, tip){
     btn.textContent='💾 Kaydet';
   }
 }
+
+function uaAsamaToggle(kalemIdx,asama,btn){
   const secili=btn.getAttribute('data-secili')==='true';
   const yeni=!secili;
   btn.setAttribute('data-secili',String(yeni));
