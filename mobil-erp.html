@@ -308,7 +308,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-item" id="nav-MAMUL_DEPO" onclick="goPage('MAMUL_DEPO')">
       <span class="nav-icon">📦</span> Mamül Stoğu
     </div>
-    <div class="nav-item" id="nav-DEPO_HAREKET" onclick="goPage('DEPO_HAREKET')">
+    <div class="nav-item" id="nav-DEPO_HAREKET" style="display:none" onclick="goPage('DEPO_HAREKET')">
       <span class="nav-icon">🔄</span> Depo Giriş/Çıkış
     </div>
     <div class="nav-item" id="nav-DEPO_HAREKET_LISTE" onclick="goPage('DEPO_HAREKET_LISTE')">
@@ -369,7 +369,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="nav-item" id="nav-RAPORLAR" onclick="goPage('RAPORLAR')">
       <span class="nav-icon">📈</span> Raporlar
     </div>
-    <div class="nav-item" id="nav-MALIYET_HESAP" onclick="goPage('MALIYET_HESAP')">
+    <div class="nav-item" id="nav-MALIYET_HESAP" style="display:none" onclick="goPage('MALIYET_HESAP')">
       <span class="nav-icon">💰</span> Maliyet Hesap
     </div>
     <div class="nav-item" id="nav-MALIYET_LISTE" onclick="goPage('MALIYET_LISTE')">
@@ -808,7 +808,7 @@ function renderPage(page){
     case 'IPLIK': renderStok('iplik');break;
     case 'KUMAS': renderStok('kumas');break;
     case 'MAMUL_DEPO': renderStok('mamul');break;
-    case 'DEPO_HAREKET': renderDepoHareket();break;
+    case 'DEPO_HAREKET': document.getElementById('page-DEPO_HAREKET').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
     case 'DEPO_HAREKET_LISTE': renderDepoHareketListe();break;
     case 'KONFEKSIYON': renderKonfeksiyon();break;
     case 'DOKUMA_TAKIP': renderDokumaTakip();break;
@@ -818,7 +818,7 @@ function renderPage(page){
     case 'TEZGAH_GIRIS': renderTezgahGiris();break;
     case 'TODO_LISTE': renderTodoListe();break;
     case 'RAPORLAR': renderRaporlar();break;
-    case 'MALIYET_HESAP': renderMaliyetHesap();break;
+    case 'MALIYET_HESAP': document.getElementById('page-MALIYET_HESAP').innerHTML='<div class="empty"><div class="icon">🔒</div><div>Bu modül şu an kapalı</div></div>';break;
     case 'MALIYET_LISTE': renderMaliyetListe();break;
     case 'URUN_AGACI': renderUrunAgaci();break;
     case 'TEKNIK_FOY': renderTeknikFoy();break;
@@ -3102,27 +3102,46 @@ async function renderMaliyetListe(){
   const el=document.getElementById('page-MALIYET_LISTE');
   el.innerHTML='<div class="loading"><div class="spinner"></div></div>';
   try{
-    const{data,error}=await sb.from('todo_list').select('*').eq('kaynak_birim','MALIYET_HESAP').order('created_at',{ascending:false}).limit(50);
+    // notlar veya description alanından çek
+    const{data,error}=await sb.from('todo_list')
+      .select('*')
+      .eq('kaynak_birim','MALIYET_HESAP')
+      .order('created_at',{ascending:false})
+      .limit(100);
     if(error)throw error;
     const liste=data||[];
     el.innerHTML=`
       <div style="font-size:18px;font-weight:800;margin-bottom:12px">📑 Kayıtlı Maliyetler</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">${liste.length} kayıt bulundu</div>
       <div class="card">
-        ${liste.map(r=>{
-          let d={};try{d=JSON.parse(r.description||'{}');}catch{}
-          const topTRY=((d.kumas||0)*(d.tuketim||0)+(d.kesim||0)+(d.dikim||0)+(d.aksesuar||0)+(d.diger||0));
-          const topUSD=d.kur?topTRY/d.kur:0;
+        ${liste.length===0?'<div class="empty"><div class="icon">📑</div>Kayıtlı maliyet yok</div>':
+        liste.map(r=>{
+          // Hem description hem notlar alanını dene
+          let d={};
+          try{d=JSON.parse(r.description||r.notlar||'{}');}catch{}
+          const kumas=(d.kumas||0)*(d.tuketim||0);
+          const konfek=(d.kesim||0)+(d.dikim||0)+(d.kk||0);
+          const diger=(d.aksesuar||0)+(d.diger||0);
+          const topTRY=kumas+konfek+diger;
+          const kur=d.kur||0;
+          const topUSD=kur>0?topTRY/kur:0;
           return `<div style="padding:11px 14px;border-bottom:1px solid var(--border)">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
-              <div style="font-size:12px;font-weight:700">${esc(r.task||'—')}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.task||'—')}</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px">
+                  ${kumas>0?`Kumaş: ${kumas.toFixed(2)}₺ · `:''}${konfek>0?`Konfek: ${konfek.toFixed(2)}₺`:''}
+                </div>
+              </div>
               <div style="text-align:right;flex-shrink:0">
-                <div style="font-size:13px;font-weight:800;color:var(--green)">$${topUSD.toFixed(4)}</div>
-                <div style="font-size:10px;color:var(--text3)">${topTRY.toFixed(2)} ₺</div>
+                ${topUSD>0?`<div style="font-size:13px;font-weight:800;color:var(--green)">$${topUSD.toFixed(4)}</div>`:''}
+                ${topTRY>0?`<div style="font-size:11px;color:var(--text2);font-weight:700">${topTRY.toFixed(2)} ₺</div>`:''}
+                ${kur>0?`<div style="font-size:9px;color:var(--text3)">Kur: ${kur.toFixed(2)}</div>`:''}
               </div>
             </div>
             <div style="font-size:10px;color:var(--text3)">${kisaTarih(r.created_at)} · ${esc(r.assigned_to||'—')}</div>
           </div>`;
-        }).join('')||'<div class="empty"><div class="icon">📑</div>Kayıtlı maliyet yok</div>'}
+        }).join('')}
       </div>`;
   }catch(e){el.innerHTML=`<div class="empty"><div class="icon">⚠️</div>Hata: ${e.message}</div>`;}
 }
