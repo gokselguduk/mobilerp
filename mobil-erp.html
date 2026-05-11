@@ -1733,6 +1733,89 @@
                 border-right: none !important;
             }
         }
+
+        /* Numune formu — dar ekran (wizard + foto sütunu) */
+        @media (max-width: 900px) {
+            #inputs-grid.numune-layout {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 14px !important;
+                align-items: stretch !important;
+            }
+            #inputs-grid.numune-layout > div:last-child {
+                position: static !important;
+            }
+            #inputs-grid.numune-layout label[for="val-foto"] {
+                height: auto !important;
+                min-height: 180px;
+                max-height: 260px;
+            }
+        }
+        .nu-mobile-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+        .nu-mobile-konst { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+        .nu-mobile-ham { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .nu-atki-row { display: grid; grid-template-columns: 1fr 1fr 1fr 32px; gap: 8px; align-items: end; }
+        @media (max-width: 640px) {
+            .nu-mobile-2col { grid-template-columns: 1fr !important; }
+            .nu-mobile-konst { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+            .nu-mobile-ham { grid-template-columns: 1fr !important; }
+            .nu-atki-row { grid-template-columns: 1fr 1fr !important; }
+            #inputs-grid.numune-layout .wizard-step.panel-box { padding: 14px 12px !important; }
+            #inputs-grid.numune-layout .wizard-nav-btn { min-height: 44px; padding: 10px 16px !important; }
+            #inputs-grid.numune-layout #numune-step-2 .panel-head { flex-wrap: wrap; gap: 8px; }
+            .nu-nav-row { flex-direction: column !important; align-items: stretch !important; }
+            .nu-nav-row .wizard-nav-btn { width: 100%; justify-content: center; }
+            body[data-erp-mode="NUMUNE_URETIM"] #main-list .record-item { flex-wrap: wrap; align-items: flex-start; }
+            body[data-erp-mode="NUMUNE_URETIM"] #main-list .record-item > div:first-child { min-width: 0; flex: 1 1 100%; }
+        }
+        @media (max-width: 380px) {
+            .nu-mobile-konst { grid-template-columns: 1fr !important; }
+            .nu-atki-row { grid-template-columns: 1fr !important; }
+        }
+
+        /* Sipariş listesi — durum / filtre (dar ekran) */
+        @media (max-width: 640px) {
+            body[data-erp-mode="SIPARIS_LISTE"] #main-list > .siparis-liste-baslik,
+            body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > .siparis-liste-baslik {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                max-width: 100%;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] #main-list > div:first-child button.pill,
+            body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > div:first-child button.pill {
+                min-height: 40px;
+                padding: 8px 12px;
+                font-size: 11px;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .record-item.siparis-liste-row .siparis-lc-no .pill,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .record-item.siparis-liste-row .siparis-lc-no .pill {
+                font-size: 9px !important;
+                padding: 3px 8px !important;
+            }
+        }
+        @media (max-width: 480px) {
+            body[data-erp-mode="SIPARIS_LISTE"] .record-item.siparis-liste-row,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .record-item.siparis-liste-row {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 10px !important;
+                padding: 14px 12px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-ozet,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-ozet {
+                white-space: normal !important;
+                display: -webkit-box !important;
+                -webkit-line-clamp: 4;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-lc-gecmis,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-lc-gecmis {
+                align-self: flex-start;
+            }
+        }
+
         @media (max-width: 640px) {
             .top-header > div:last-child > div:first-child { display: none !important; }
             #current-title { max-width: 58vw; }
@@ -15124,6 +15207,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
     const prevMode = appMode;
     appMode = mode;
+    try { document.body.setAttribute('data-erp-mode', mode); } catch (e) {}
     erpClearTransientUi();
     saveUiState({ appMode: mode });
     if (!['KONFEKSIYON','KONFEKSIYON_PLANLAMA'].includes(mode)) konfStopLiveSync();
@@ -15563,6 +15647,7 @@ function renderInputs() {
     const notesContainer = document.getElementById('notes-container');
     if (!grid || !notesContainer) return;
 
+    grid.classList.remove('numune-layout');
     grid.innerHTML = '';
     notesContainer.innerHTML = '';
 
@@ -16269,6 +16354,7 @@ function renderInputs() {
     // --- NUMUNE ÜRETİM ---
     else if (appMode === 'NUMUNE_URETIM') {
         if (!editingId) getNextNumuneCode().then(code => { if (document.getElementById('val-kodu')) document.getElementById('val-kodu').value = code; });
+        grid.classList.add('numune-layout');
         grid.style.cssText = 'display:grid;grid-template-columns:1fr 240px;gap:14px;align-items:start';
         grid.innerHTML = `
 
@@ -16292,7 +16378,7 @@ function renderInputs() {
             <!-- ADIM 1: KİMLİK -->
             <div id="numune-step-1" class="wizard-step active panel-box" style="padding:18px 20px">
                 <div class="section-badge" style="--wizard-color:var(--cyan-c)">🧪 1. ADIM — NUMUNE KİMLİĞİ</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+                <div class="nu-mobile-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
                     <div class="field-req">
                         <label class="pro-label" style="color:var(--cyan-c)">NUMUNE NO <span class="req-star">★</span></label>
                         <input id="val-kodu" class="pro-input" readonly
@@ -16316,7 +16402,7 @@ function renderInputs() {
                         <input id="val-desen-adi" class="pro-input" placeholder="Desen adı...">
                     </div>
                 </div>
-                <div style="display:flex;justify-content:flex-end;margin-top:14px">
+                <div class="nu-nav-row" style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;flex-wrap:wrap">
                     <button onclick="_wizardGo('numune',1,2)" class="wizard-nav-btn" style="--wizard-color:var(--cyan-c)">İleri →</button>
                 </div>
             </div>
@@ -16328,7 +16414,7 @@ function renderInputs() {
                 <!-- Konstrüksiyon -->
                 <div style="margin-top:14px;margin-bottom:10px">
                     <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px;letter-spacing:0.08em">🔩 Dokuma Konstrüksiyon</div>
-                    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+                    <div class="nu-mobile-konst" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
                         <div>
                             <label class="pro-label" style="color:var(--emerald-c)">TARAK NO</label>
                             <input id="val-tarak-no" class="pro-input" placeholder="—"
@@ -16358,7 +16444,7 @@ function renderInputs() {
                 </div>
 
                 <!-- Ham & Mamül -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                <div class="nu-mobile-ham" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
                     <div class="panel-box" style="padding:12px 14px;border-left:3px solid var(--emerald-c);background:rgba(52,211,153,0.04)">
                         <div style="font-size:8px;font-weight:700;color:var(--emerald-c);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px">📐 Ham Ürün</div>
                         <div style="display:flex;flex-direction:column;gap:8px">
@@ -16388,7 +16474,7 @@ function renderInputs() {
                     <div id="atki-renk-container" style="padding:10px 12px;display:flex;flex-direction:column;gap:7px"></div>
                 </div>
 
-                <div style="display:flex;justify-content:space-between;margin-top:14px">
+                <div class="nu-nav-row" style="display:flex;justify-content:space-between;margin-top:14px;gap:10px;flex-wrap:wrap">
                     <button onclick="_wizardGo('numune',2,1)" class="wizard-nav-btn" style="--wizard-color:var(--text3)">← Geri</button>
                     <button onclick="_wizardGo('numune',2,3)" class="wizard-nav-btn" style="--wizard-color:var(--cyan-c)">İleri →</button>
                 </div>
@@ -16398,7 +16484,7 @@ function renderInputs() {
             <div id="numune-step-3" class="wizard-step panel-box" style="padding:18px 20px">
                 <div class="section-badge" style="--wizard-color:var(--cyan-c)">✅ 3. ADIM — ONAY & KAYIT</div>
                 <div id="numune-confirm-summary" style="margin-top:14px;display:flex;flex-direction:column;gap:6px"></div>
-                <div style="display:flex;justify-content:flex-start;margin-top:14px">
+                <div class="nu-nav-row" style="display:flex;justify-content:flex-start;margin-top:14px;gap:10px;flex-wrap:wrap">
                     <button onclick="_wizardGo('numune',3,2)" class="wizard-nav-btn" style="--wizard-color:var(--text3)">← Geri</button>
                 </div>
             </div>
@@ -22736,6 +22822,7 @@ function addAtkiRenk(no = '', cins = '', renk = '') {
     const container = document.getElementById('atki-renk-container');
     if (!container) return;
     const div = document.createElement('div');
+    div.className = 'nu-atki-row';
     div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:8px;align-items:end;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
     div.innerHTML = `
         <div>
