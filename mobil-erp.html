@@ -11189,6 +11189,11 @@ async function renderUrunAgaci() {
                     <option value="">— Seçin —</option>
                     ${sipOpts}
                 </select>
+                ${!teknikFoyModu && uaSeciliSiparisId ? `
+                    <button type="button" onclick="uaSevkiyataGit()" class="btn-pro btn-ghost-pro" style="padding:6px 10px;font-size:10px;white-space:nowrap">
+                        🚚 Sevkiyata Geç
+                    </button>
+                ` : ``}
                 ${teknikFoyModu ? `<span class="pill pill-cyan" style="margin-left:8px">İş emirleri ürün ağacı basamaklarına göre hazırlanır</span>` : ``}
                 ${bekleyenler.length > 0
                     ? `<span class="pill pill-amber" style="margin-left:auto">${bekleyenler.length} sipariş tanımsız</span>`
@@ -11234,6 +11239,14 @@ async function uaSelectSiparis(id) {
     // Cache'i doldur (renderUrunAgaci senkron map/every için)
     if (uaSeciliSiparisId) await sbKdGet(uaSeciliSiparisId, 'KD_URUN_AGACI');
     renderUrunAgaci();
+}
+
+async function uaSevkiyataGit() {
+    movementType = 'ÇIKIŞ';
+    depoKomutaHedef = null;
+    depoKomutaAsama = 'GRUP';
+    await setAppMode('DEPO_HAREKET');
+    showToast('Sevkiyat modu açıldı. Önce stok grubunu seçin.');
 }
 
 function uaTumUrunAgaciTamamMi(kalemler = []) {
