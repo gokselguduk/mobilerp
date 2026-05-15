@@ -5823,6 +5823,25 @@ function dtPushHareket(entry = {}) {
     dtSaveOpsData(data);
 }
 
+/** Dokuma Takip > Hareket Kayıtları: siparis_akis satırı dokuma/tezgah/haşıl ile ilgili mi? Konfeksiyon KD ve üretim adımları listelenmez. */
+function dtSiparisAkisDokumaHareketindeGoster(r) {
+    const islemRaw = String(r?.islem || '').trim();
+    const kalemRaw = String(r?.kalem_ad || '').trim();
+    const up = dtNormTxt(`${islemRaw} ${kalemRaw}`.replace(/\s+/g, ' ')).replace(/\s+/g, '');
+    if (!up) return false;
+    if (up.includes('KONFEKSIYON') || (up.includes('KONF') && up.includes('SIYON'))) return false;
+    if (up.includes('KD_KONFEKSIYON')) return false;
+    if (up.includes('URUNAGACI') || up.includes('URUN_AGACI')) return false;
+    const konfAdim = /(KES(IM|İM)|DIKIM|DİKİM|KALITE|KALİTE|KOL[Iİ]M|PAKET|YIKAMA|(^|[^A-Z])SEVK|NAKI[ŞS]|BASK[Iİ]|(^|[^A-Z])KK|UTU|ÜTÜ|SA[ÇC]AK|SACAK)/i;
+    if (konfAdim.test(islemRaw) && !up.includes('DOKUMA')) return false;
+    if (up.includes('KD_DOKUMA') || kalemRaw === 'KD_DOKUMA') return true;
+    if (up.includes('DOKUMA')) return true;
+    if (up.includes('LEVENT')) return true;
+    if (up.includes('HASIL')) return true;
+    if (up.includes('TEZGAH')) return true;
+    return false;
+}
+
 async function renderDokumaHareketListesi() {
     const data = dtLoadOpsData();
     const localSrc = Array.isArray(data.hareketler) ? data.hareketler : [];
@@ -5906,7 +5925,7 @@ async function renderDokumaHareketListesi() {
                 .order('created_at', { ascending: false })
                 .limit(3000);
             if (!akisErr && Array.isArray(akisRows)) {
-                dbSrc = dbSrc.concat(akisRows.map(r => {
+                dbSrc = dbSrc.concat(akisRows.filter(dtSiparisAkisDokumaHareketindeGoster).map(r => {
                     const sip = sipMap.get(String(r.siparis_id || ''));
                     const sipNo = String(sip?.sno || r.siparis_id || '').trim();
                     const islem = String(r.islem || 'Sipariş akışı').trim();
@@ -5931,10 +5950,9 @@ async function renderDokumaHareketListesi() {
                 }));
             }
 
-            const [iplikRes, kutuphaneRes, siparisRes, todoRes, tezgahRes] = await Promise.all([
+            const [iplikRes, kutuphaneRes, todoRes, tezgahRes] = await Promise.all([
                 sb.from('iplik_stok').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,stok_kodu,iplik_no,kaynak_birim,islem_turu,miktar_kg,miktar_mt,marka,cins').order('created_at', { ascending: false }).limit(2000),
                 sb.from('kumas_kutuphanesi').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,desen_kodu,desen_adi,urun_adi,kaynak_birim,firma').order('created_at', { ascending: false }).limit(1500),
-                sb.from('siparisler').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,sno,firma,miktar,kaynak_birim,durum').order('created_at', { ascending: false }).limit(1500),
                 sb.from('todo_list').select('id,created_at,updated_at,updated_by,islem_gecmisi,description,task,unit,status,kaynak_birim').order('created_at', { ascending: false }).limit(1500),
                 // Hareket kayitlari icin tezgah degisiklikleri "guncelleme" uzerinden izlenir.
                 // Bu nedenle updated_at'e gore sirala ki son plan degisiklikleri ustte gorunsun.
@@ -5943,12 +5961,17 @@ async function renderDokumaHareketListesi() {
             ]);
             if (!iplikRes.error && Array.isArray(iplikRes.data)) dbSrc = dbSrc.concat(pushGenRows(iplikRes.data, 'iplik_stok'));
             if (!kutuphaneRes.error && Array.isArray(kutuphaneRes.data)) dbSrc = dbSrc.concat(pushGenRows(kutuphaneRes.data, 'kumas_kutuphanesi'));
-            if (!siparisRes.error && Array.isArray(siparisRes.data)) dbSrc = dbSrc.concat(pushGenRows(siparisRes.data, 'siparisler', { surec: 'KONFEKSIYON' }));
             if (!todoRes.error && Array.isArray(todoRes.data)) dbSrc = dbSrc.concat(pushGenRows(todoRes.data, 'todo_list'));
             if (!tezgahRes.error && Array.isArray(tezgahRes.data)) dbSrc = dbSrc.concat(pushGenRows(tezgahRes.data, 'tezgahlar', { surec: 'DOKUMA' }));
         }
     } catch (e) {}
-    const src = [...dbSrc, ...localSrc].sort((a, b) => String(b?.ts || '').localeCompare(String(a?.ts || '')));
+    const konfKayitDisi = row => {
+        const sur = dtNormTxt(row?.surec || '');
+        const bir = dtNormTxt(row?.birim || '');
+        if (sur === 'KONFEKSIYON' || bir.includes('KONFEKSIYON')) return false;
+        return true;
+    };
+    const src = [...dbSrc, ...localSrc].filter(konfKayitDisi).sort((a, b) => String(b?.ts || '').localeCompare(String(a?.ts || '')));
     const sayac = depoSevkeHazirSayaçOzet(dataCache.kumas_stok || []);
     const f = dtHareketFiltre || {};
     const fTarihBas = String(f.tarih_bas || '').trim();
@@ -5987,7 +6010,7 @@ async function renderDokumaHareketListesi() {
     <div class="panel-box" style="padding:10px 12px;margin-bottom:10px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.06)">
         <div style="font-size:9px;font-weight:700;color:var(--emerald-c);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">Sevke Hazır Sayaç</div>
         <div style="font-size:10px;color:var(--text2);margin-top:4px">Dokuma giriş: ${sayac.dokumaGirisToplam} · Sevk edilen: ${sayac.sevkEdilen} · Bekleyen: ${sayac.bekleyen}</div>
-        <div style="font-size:9px;color:var(--text3);margin-top:2px">Konum: Dokuma Takip > Hareket Kayıtları</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:2px">Dokuma/tezgah/haşıl ve dokuma kaynaklı stok hareketleri; konfeksiyon paneli kayıtları bu listede yer almaz.</div>
     </div>
     <div class="panel-box" style="padding:0;overflow:hidden">
         <div class="panel-head">
