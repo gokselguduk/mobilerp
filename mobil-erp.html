@@ -8741,6 +8741,7 @@ async function renderSiparisKapama() {
     setTimeout(() => kapamaCanliAnaliz(), 0);
 }
 
+async function renderPlanlama() {
     if (appMode !== 'PLANLAMA') return;
     if (planlamaAltMode === 'KAPAMA') {
         await renderSiparisKapama();
