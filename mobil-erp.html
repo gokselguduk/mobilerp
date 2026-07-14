@@ -3702,8 +3702,8 @@ try {
     <button type="button" data-tab-mode="DEPO_HAREKET" onclick="erpMobileTabGo('DEPO_HAREKET')">
         <span class="ico">📦</span><span class="lbl">Depo</span>
     </button>
-    <button type="button" data-tab-mode="YIKAMA_TAKIP" onclick="erpMobileTabGo('YIKAMA_TAKIP')">
-        <span class="ico">💧</span><span class="lbl">Yıkama</span>
+    <button type="button" data-tab-mode="KONFEKSIYON" onclick="erpMobileTabGo('KONFEKSIYON')">
+        <span class="ico">🧵</span><span class="lbl">Konfeksiyon</span>
     </button>
     <button type="button" data-tab-mode="MENU" onclick="erpToggleMobileSidebar(true)">
         <span class="ico">☰</span><span class="lbl">Menü</span>
@@ -29042,19 +29042,19 @@ function erpCloseMobileSidebar() {
 
 function erpMobileTabGo(mode) {
     erpCloseMobileSidebar();
-    if (mode === 'YIKAMA_TAKIP' && typeof openYikamaTakip === 'function') {
-        openYikamaTakip();
-        return;
-    }
     if (mode === 'DEPO_HAREKET' && typeof erpUserCan === 'function' && !erpUserCan('DEPO_HAREKET')) {
         if (erpUserCan('IPLIK')) { setAppMode('IPLIK'); return; }
         if (erpUserCan('KUMAS')) { setAppMode('KUMAS'); return; }
         if (erpUserCan('MAMUL_DEPO')) { setAppMode('MAMUL_DEPO'); return; }
     }
-    if (mode === 'YIKAMA_TAKIP' && typeof erpUserCan === 'function' && !erpUserCan('YIKAMA_TAKIP')) {
-        if (erpUserCan('DOKUMA_TAKIP')) { setAppMode('DOKUMA_TAKIP'); return; }
-        if (erpUserCan('KONFEKSIYON')) { setAppMode('KONFEKSIYON'); return; }
-        if (erpUserCan('PLANLAMA')) { setAppMode('PLANLAMA'); return; }
+    if (mode === 'KONFEKSIYON' && typeof erpUserCan === 'function' && !erpUserCan('KONFEKSIYON')) {
+        if (erpUserCan('KONFEKSIYON_PLANLAMA')) { setAppMode('KONFEKSIYON_PLANLAMA'); return; }
+        if (erpUserCan('FASON_TAKIP')) { setAppMode('FASON_TAKIP'); return; }
+        if (erpUserCan('YIKAMA_TAKIP')) {
+            if (typeof openYikamaTakip === 'function') openYikamaTakip();
+            else setAppMode('YIKAMA_TAKIP');
+            return;
+        }
         setAppMode('DASHBOARD');
         return;
     }
@@ -29076,12 +29076,9 @@ function erpMobileTabbarSync(mode) {
         IPLIK: 'DEPO_HAREKET',
         KUMAS: 'DEPO_HAREKET',
         MAMUL_DEPO: 'DEPO_HAREKET',
-        YIKAMA_TAKIP: 'YIKAMA_TAKIP',
-        BOYAHANE_URETIM: 'YIKAMA_TAKIP',
-        DOKUMA_TAKIP: 'YIKAMA_TAKIP',
-        KONFEKSIYON: 'YIKAMA_TAKIP',
-        FASON_TAKIP: 'YIKAMA_TAKIP',
-        PLANLAMA: 'YIKAMA_TAKIP'
+        KONFEKSIYON: 'KONFEKSIYON',
+        KONFEKSIYON_PLANLAMA: 'KONFEKSIYON',
+        FASON_TAKIP: 'KONFEKSIYON'
     };
     const activeKey = activeMap[m] || '';
     bar.querySelectorAll('button[data-tab-mode]').forEach(btn => {
@@ -29092,7 +29089,7 @@ function erpMobileTabbarSync(mode) {
         }
         const can = key === 'DASHBOARD' || (typeof erpUserCan !== 'function') || erpUserCan(key)
             || (key === 'DEPO_HAREKET' && (erpUserCan('IPLIK') || erpUserCan('KUMAS') || erpUserCan('MAMUL_DEPO')))
-            || (key === 'YIKAMA_TAKIP' && (erpUserCan('BOYAHANE_URETIM') || erpUserCan('DOKUMA_TAKIP') || erpUserCan('KONFEKSIYON') || erpUserCan('PLANLAMA')));
+            || (key === 'KONFEKSIYON' && (erpUserCan('KONFEKSIYON_PLANLAMA') || erpUserCan('FASON_TAKIP')));
         btn.classList.toggle('erp-nav-denied', !can);
         btn.classList.toggle('active', can && key === activeKey);
     });
