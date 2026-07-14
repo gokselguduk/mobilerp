@@ -2,9 +2,16 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Simteks ERP">
+    <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
+    <meta name="theme-color" content="#111827">
+    <meta name="color-scheme" content="dark light">
     <title>Simteks Tekstil ERP</title>
     <script src="erp-config.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,7 +24,31 @@
     <script src="assets/erp_auth_tablo_fix.embed.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
-        body { font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background-color: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; margin:0; }
+        /* Uygulama hissi: pinch / double-tap zoom kapalı, kaydırma sınırlı */
+        html {
+            height: 100%;
+            height: 100dvh;
+            touch-action: manipulation;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            overscroll-behavior: none;
+        }
+        body {
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            margin: 0;
+            touch-action: manipulation;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        img, a, button, label { -webkit-user-drag: none; }
         aside { width: 280px; background: #1a2233; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; }
         .segment-item {
             cursor: pointer; border: none; outline: none; background: transparent;
@@ -3349,6 +3380,28 @@
 try {
     if (localStorage.getItem('erp_ui_skin') === 'workcube') document.body.classList.add('erp-skin-workcube');
 } catch (e) {}
+/* Mobil uygulama hissi: pinch / çift dokunuş zoom kilidi */
+(function erpMobileZoomLock() {
+    const lockViewport = () => {
+        let meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.name = 'viewport';
+            document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover');
+    };
+    lockViewport();
+    document.addEventListener('gesturestart', (e) => { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturechange', (e) => { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gestureend', (e) => { e.preventDefault(); }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) e.preventDefault();
+    }, { passive: false });
+})();
 </script>
 
 <aside class="erp-sidebar">
