@@ -3180,6 +3180,70 @@
             #current-title { max-width: 58vw; }
             #main-list { padding-bottom: 96px !important; }
         }
+
+        /* Mobil alt sekme çubuğu */
+        .erp-mobile-tabbar {
+            display: none;
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 120;
+            background: color-mix(in srgb, var(--surface) 94%, transparent);
+            border-top: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+            grid-template-columns: repeat(5, 1fr);
+            gap: 2px;
+        }
+        .erp-mobile-tabbar button {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text3);
+            min-height: 52px;
+            padding: 4px 2px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .erp-mobile-tabbar button .ico { font-size: 18px; line-height: 1; }
+        .erp-mobile-tabbar button .lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.02em; }
+        .erp-mobile-tabbar button.active {
+            color: var(--cyan-c);
+            background: rgba(34, 211, 238, 0.1);
+        }
+        .erp-mobile-tabbar button.erp-nav-denied { display: none !important; }
+        @media (max-width: 1024px) {
+            .erp-mobile-tabbar { display: grid; }
+            .content-scroll { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important; }
+            body[data-erp-mode="DASHBOARD"] .top-header { display: flex !important; }
+            .mobile-menu-btn {
+                display: inline-flex !important;
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+                background: rgba(34, 211, 238, 0.12);
+                border-color: rgba(34, 211, 238, 0.35);
+                color: var(--cyan-c);
+            }
+            .dash-hizli-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+                gap: 10px !important;
+                padding: 12px !important;
+            }
+        }
+        @media (max-width: 420px) {
+            .dash-hizli-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            }
+        }
         /* —— Görev panosu —— */
         .gorev-page { display: flex; flex-direction: column; gap: 14px; max-width: 1400px; }
         .gorev-page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -3627,6 +3691,24 @@ try {
         </div>
     </div>
 </main>
+
+<nav class="erp-mobile-tabbar" id="erp-mobile-tabbar" aria-label="Mobil menü">
+    <button type="button" data-tab-mode="DASHBOARD" onclick="erpMobileTabGo('DASHBOARD')">
+        <span class="ico">🏠</span><span class="lbl">Ana</span>
+    </button>
+    <button type="button" data-tab-mode="SIPARIS_LISTE" onclick="erpMobileTabGo('SIPARIS_LISTE')">
+        <span class="ico">🧾</span><span class="lbl">Sipariş</span>
+    </button>
+    <button type="button" data-tab-mode="DEPO_HAREKET" onclick="erpMobileTabGo('DEPO_HAREKET')">
+        <span class="ico">📦</span><span class="lbl">Depo</span>
+    </button>
+    <button type="button" data-tab-mode="YIKAMA_TAKIP" onclick="erpMobileTabGo('YIKAMA_TAKIP')">
+        <span class="ico">💧</span><span class="lbl">Yıkama</span>
+    </button>
+    <button type="button" data-tab-mode="MENU" onclick="erpToggleMobileSidebar(true)">
+        <span class="ico">☰</span><span class="lbl">Menü</span>
+    </button>
+</nav>
 
 <div id="detail-modal" onclick="closeModal(event)" style="display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center">
     <div class="modal-box" onclick="event.stopPropagation()">
@@ -11535,22 +11617,23 @@ function renderDashboard() {
             <div class="panel-head">
                 <div class="panel-head-title"><div class="panel-head-dot" style="background:var(--accent)"></div>Hızlı Erişim</div>
             </div>
-            <div style="padding:12px 16px;display:grid;grid-template-columns:repeat(8,1fr);gap:8px">
+            <div class="dash-hizli-grid" style="padding:12px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
                 ${[
+                    {mode:'SIPARIS_LISTE',icon:'📋',label:'Siparişler'},
                     {mode:'IPLIK',icon:'🧶',label:'İplik'},
                     {mode:'KUMAS',icon:'🏁',label:'Kumaş'},
                     {mode:'MAMUL_DEPO',icon:'🧥',label:'Mamül'},
-                    {mode:'KART_LISTE',icon:'📁',label:'Arşiv'},
-                    {mode:'SIPARIS_LISTE',icon:'📋',label:'Siparişler'},
-                    {mode:'TEZGAH_YONETIMI',icon:'🖥️',label:'Tezgah'},
+                    {mode:'YIKAMA_TAKIP',icon:'💧',label:'Yıkama', go:'openYikamaTakip'},
+                    {mode:'DEPO_HAREKET',icon:'📦',label:'Depo'},
                     {mode:'TODO_LISTE',icon:'✅',label:'Görevler'},
+                    {mode:'TEZGAH_YONETIMI',icon:'🖥️',label:'Tezgah'},
                 ].map(b=>`
-                <div onclick="setAppMode('${b.mode}')"
-                    style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border-radius:10px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);transition:all 0.12s;text-align:center"
+                <div onclick="${b.go ? (b.go + '()') : (`setAppMode('${b.mode}')`)}"
+                    style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px;border-radius:10px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);transition:all 0.12s;text-align:center;min-height:72px;justify-content:center"
                     onmouseover="this.style.background='var(--surface3)';this.style.borderColor='var(--border2)'"
                     onmouseout="this.style.background='var(--surface2)';this.style.borderColor='var(--border)'">
-                    <span style="font-size:20px">${b.icon}</span>
-                    <span style="font-size:9px;font-weight:500;color:var(--text2)">${b.label}</span>
+                    <span style="font-size:22px">${b.icon}</span>
+                    <span style="font-size:10px;font-weight:600;color:var(--text2)">${b.label}</span>
                 </div>`).join('')}
             </div>
         </div>
@@ -28957,6 +29040,64 @@ function erpCloseMobileSidebar() {
     document.body.classList.remove('mobile-sidebar-open');
 }
 
+function erpMobileTabGo(mode) {
+    erpCloseMobileSidebar();
+    if (mode === 'YIKAMA_TAKIP' && typeof openYikamaTakip === 'function') {
+        openYikamaTakip();
+        return;
+    }
+    if (mode === 'DEPO_HAREKET' && typeof erpUserCan === 'function' && !erpUserCan('DEPO_HAREKET')) {
+        if (erpUserCan('IPLIK')) { setAppMode('IPLIK'); return; }
+        if (erpUserCan('KUMAS')) { setAppMode('KUMAS'); return; }
+        if (erpUserCan('MAMUL_DEPO')) { setAppMode('MAMUL_DEPO'); return; }
+    }
+    if (mode === 'YIKAMA_TAKIP' && typeof erpUserCan === 'function' && !erpUserCan('YIKAMA_TAKIP')) {
+        if (erpUserCan('DOKUMA_TAKIP')) { setAppMode('DOKUMA_TAKIP'); return; }
+        if (erpUserCan('KONFEKSIYON')) { setAppMode('KONFEKSIYON'); return; }
+        if (erpUserCan('PLANLAMA')) { setAppMode('PLANLAMA'); return; }
+        setAppMode('DASHBOARD');
+        return;
+    }
+    setAppMode(mode);
+}
+
+function erpMobileTabbarSync(mode) {
+    const bar = document.getElementById('erp-mobile-tabbar');
+    if (!bar) return;
+    const m = String(mode || appMode || 'DASHBOARD');
+    const activeMap = {
+        DASHBOARD: 'DASHBOARD',
+        SIPARIS_LISTE: 'SIPARIS_LISTE',
+        SIPARIS_GIRIS: 'SIPARIS_LISTE',
+        SIPARIS_KAPANAN: 'SIPARIS_LISTE',
+        URUN_AGACI: 'SIPARIS_LISTE',
+        DEPO_HAREKET: 'DEPO_HAREKET',
+        DEPO_HAREKET_LISTE: 'DEPO_HAREKET',
+        IPLIK: 'DEPO_HAREKET',
+        KUMAS: 'DEPO_HAREKET',
+        MAMUL_DEPO: 'DEPO_HAREKET',
+        YIKAMA_TAKIP: 'YIKAMA_TAKIP',
+        BOYAHANE_URETIM: 'YIKAMA_TAKIP',
+        DOKUMA_TAKIP: 'YIKAMA_TAKIP',
+        KONFEKSIYON: 'YIKAMA_TAKIP',
+        FASON_TAKIP: 'YIKAMA_TAKIP',
+        PLANLAMA: 'YIKAMA_TAKIP'
+    };
+    const activeKey = activeMap[m] || '';
+    bar.querySelectorAll('button[data-tab-mode]').forEach(btn => {
+        const key = btn.getAttribute('data-tab-mode');
+        if (key === 'MENU') {
+            btn.classList.remove('active');
+            return;
+        }
+        const can = key === 'DASHBOARD' || (typeof erpUserCan !== 'function') || erpUserCan(key)
+            || (key === 'DEPO_HAREKET' && (erpUserCan('IPLIK') || erpUserCan('KUMAS') || erpUserCan('MAMUL_DEPO')))
+            || (key === 'YIKAMA_TAKIP' && (erpUserCan('BOYAHANE_URETIM') || erpUserCan('DOKUMA_TAKIP') || erpUserCan('KONFEKSIYON') || erpUserCan('PLANLAMA')));
+        btn.classList.toggle('erp-nav-denied', !can);
+        btn.classList.toggle('active', can && key === activeKey);
+    });
+}
+
 function sidebarFilterNav(term) {
     const nav = document.getElementById('main-nav');
     if (!nav) return;
@@ -29129,6 +29270,7 @@ async function setAppMode(mode, keepEditingId = false) {
     const prevMode = appMode;
     appMode = mode;
     try { document.body.setAttribute('data-erp-mode', mode); } catch (e) {}
+    try { erpMobileTabbarSync(mode); } catch (e) {}
     erpClearTransientUi();
     saveUiState({ appMode: mode });
     if (!['KONFEKSIYON','KONFEKSIYON_PLANLAMA'].includes(mode)) konfStopLiveSync();
@@ -29292,13 +29434,17 @@ async function setAppMode(mode, keepEditingId = false) {
 }
 
    if (mode === 'DASHBOARD') {
-    if (topHeader) topHeader.style.display = 'none';
-    if (listSection) listSection.style.display = 'none';
-    if (scrollArea2) scrollArea2.style.padding = '1.25rem 1.5rem';
+    if (topHeader) topHeader.style.display = 'flex';
+    // Liste başlık satırını gizle; #main-list açık kalsın (dashboard buraya yazılır)
+    const listHdrDash = document.querySelector('#list-title')?.parentElement;
+    if (listHdrDash) listHdrDash.style.display = 'none';
+    if (mainList) mainList.style.display = 'block';
+    if (scrollArea2) scrollArea2.style.padding = '0.8rem 0.7rem';
     if (formContainer) formContainer.style.display = 'none';
     if (ozetGrid) { ozetGrid.style.display = 'none'; }
     const dashRoot2 = document.getElementById('dashboard-root');
     if (dashRoot2) dashRoot2.style.display = '';
+    try { erpMobileTabbarSync(mode); } catch (e) {}
     renderDashboard();
     return;
 } else {
@@ -29306,7 +29452,8 @@ async function setAppMode(mode, keepEditingId = false) {
     if (listSection) listSection.style.display = 'flex';
     const listHdrTp = document.querySelector('#list-title')?.parentElement;
     if (listHdrTp) listHdrTp.style.display = '';
-    if (scrollArea2) scrollArea2.style.padding = '1.5rem 2rem';
+    if (mainList) mainList.style.display = 'block';
+    if (scrollArea2) scrollArea2.style.padding = '0.8rem 0.7rem';
     const dashRoot2 = document.getElementById('dashboard-root');
     if (dashRoot2) dashRoot2.style.display = 'none';
 }
@@ -33078,8 +33225,12 @@ function updateSiparisPreview() {
 }
 
 function normalizeSiparisBirim(v) {
-    const u = String(v || 'ADET').toUpperCase();
-    if (u === 'MT' || u === 'KG') return u;
+    const u = String(v || 'ADET').trim().toUpperCase()
+        .replace(/İ/g, 'I')
+        .replace(/Ş/g, 'S');
+    if (u === 'MT' || u === 'M' || u === 'METRE' || u === 'METER' || u === 'MTR') return 'MT';
+    if (u === 'KG' || u === 'KILO' || u === 'KILOGRAM' || u === 'KGS') return 'KG';
+    if (u === 'ADET' || u === 'AD' || u === 'ADT' || u === 'PCS' || u === 'PC') return 'ADET';
     return 'ADET';
 }
 
@@ -33148,7 +33299,7 @@ function siparisKalemleriKayittanOku(kayit) {
             rkod6: o.rkod6 || '',
             ebat: o.ebat || o.olcu || o.beden || nested.ebat || '',
             miktar: o.miktar ?? o.adet ?? o.qty ?? nested.miktar ?? '',
-            birim: o.birim || 'ADET'
+            birim: normalizeSiparisBirim(o.birim || o.kaynak_birim || 'ADET')
         };
     }).filter(Boolean);
 }
@@ -36696,25 +36847,6 @@ async function exportToPDF() {
     }).from(element).save();
 }
 
-function renderDashboard() {
-    if (appMode !== 'DASHBOARD') return;
-    const dashRoot = document.getElementById('dashboard-root');
-    if (dashRoot) dashRoot.remove();
-    const list = document.getElementById('main-list');
-    if (!list) return;
-
-    list.innerHTML = `
-    <div id="dashboard-root" style="display:flex;flex-direction:column;gap:18px;padding:4px 0">
-        <div class="panel-box" style="padding:28px 24px;min-height:220px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start">
-            <div style="font-size:10px;color:var(--text3);letter-spacing:0.12em;text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:10px">ANASAYFA TASARIMI SIFIRLANDI</div>
-            <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:10px">Yeni ana sayfa yerleşimi burada yeniden kurulacak.</div>
-            <div style="font-size:13px;line-height:1.7;color:var(--text2);max-width:760px">
-                Mevcut dashboard blokları kaldırıldı. Bundan sonraki kartlar, kutular ve sıralama bu alan üzerinde sıfırdan oluşturulabilir.
-            </div>
-        </div>
-    </div>`;
-}
-
 // --- ÖZET GÜNCELLEME ---
 function updateSummary() {
     const ipSum = (dataCache.iplik_stok||[]).reduce((a,c) => a + (parseFloat(c.miktar_kg)||0), 0);
@@ -38199,24 +38331,27 @@ function siparisFormuMiktarBirimParse(raw) {
     return { miktar: stokToNumber(s), birim };
 }
 
-/** Excel hücre biçimi — metin değil sayı + birim formatı (şablon: [$ad] [$mt]) */
+/** Excel hücre biçimi — sayı + birim (programdaki MT/KG/ADET ile aynı) */
 function siparisFormuExcelBirimNumFmt(birim, mevcutFmt) {
     const b = normalizeSiparisBirim(birim);
-    const fmt = String(mevcutFmt || '');
-    if (b === 'MT' && /\[(\$mt|mt)\]/i.test(fmt)) return fmt;
-    if (b === 'KG' && /(kg|\[(\$kg)\])/i.test(fmt)) return fmt;
-    if (b === 'ADET' && /\[(\$ad|ad)\]/i.test(fmt)) return fmt;
-    if (b === 'MT') return '#,##0.00 [$mt]';
-    if (b === 'KG') return '#,##0.00 [$kg]';
-    return '#,##0 [$ad]';
+    if (b === 'MT') return '#,##0.00" mt"';
+    if (b === 'KG') return '#,##0.00" kg"';
+    return '#,##0" adet"';
+}
+
+function siparisFormuBirimKisaEtiket(birim) {
+    const b = normalizeSiparisBirim(birim);
+    if (b === 'MT') return 'mt';
+    if (b === 'KG') return 'kg';
+    return 'adet';
 }
 
 function siparisFormuMiktarYaz(miktar, birim) {
     const m = parseFloat(miktar) || 0;
     if (!m) return '';
     const b = normalizeSiparisBirim(birim);
-    if (b === 'ADET') return Math.round(m);
-    return m;
+    if (b === 'ADET') return String(Math.round(m));
+    return String(m);
 }
 
 function siparisFormuKalemGecerli(k) {
@@ -38296,7 +38431,7 @@ function siparisFormuSfTekHucreRefParse(formula, sfName) {
     return { col: m[1].toUpperCase(), row: parseInt(m[2], 10) };
 }
 
-/** Genel Durum / No.N: SİPARİŞ FORMU'ndan tek hücre okuyan formüllere görünür sonuç yazar */
+/** Genel Durum / No.N: SİPARİŞ FORMU'ndan tek hücre okuyan formüllere görünür sonuç + birim biçimi yazar */
 function siparisFormuSfBaglantiSonuclariniGuncelle(wb) {
     const sfWs = siparisFormuWorksheetBulEj(wb);
     if (!sfWs) return;
@@ -38314,6 +38449,11 @@ function siparisFormuSfBaglantiSonuclariniGuncelle(wb) {
                 let sonuc = siparisFormuEjHucreDeger(src);
                 if (sonuc === null || sonuc === undefined) sonuc = '';
                 cell.value = { formula, result: sonuc };
+                const srcFmt = String(src.numFmt || src.style?.numFmt || '').trim();
+                if (srcFmt) {
+                    cell.numFmt = srcFmt;
+                    try { cell.style = Object.assign({}, cell.style || {}, { numFmt: srcFmt }); } catch (e) {}
+                }
             }
         }
     }
@@ -38377,7 +38517,18 @@ function siparisFormuVeriYaz(ws, veri) {
         siparisFormuHucreYaz(ws, row, 3, siparisFormuKalemUrunMetni(k));
         siparisFormuHucreYaz(ws, row, 7, k.renk || '');
         siparisFormuHucreYaz(ws, row, 8, k.ebat || '');
-        siparisFormuHucreYaz(ws, row, 9, siparisFormuMiktarYaz(k.miktar, k.birim));
+        const miktar = parseFloat(k.miktar) || 0;
+        const birim = normalizeSiparisBirim(k.birim);
+        const addr = XLSX.utils.encode_cell({ r: row - 1, c: 8 });
+        if (!miktar) {
+            delete ws[addr];
+        } else {
+            ws[addr] = {
+                t: 'n',
+                v: birim === 'ADET' ? Math.round(miktar) : miktar,
+                z: siparisFormuExcelBirimNumFmt(birim)
+            };
+        }
     });
     const renkSatirlar = veri.renkSatirlari || siparisFormuRenkSatirlariOlustur(veri.kalemler || []);
     H.renkVeriSatirlari.forEach((row, idx) => {
@@ -38716,7 +38867,9 @@ function siparisFormuEjMiktar(ws, row, col, miktar, birim) {
     if (!m) { cell.value = null; return; }
     const b = normalizeSiparisBirim(birim);
     cell.value = b === 'ADET' ? Math.round(m) : m;
-    cell.numFmt = siparisFormuExcelBirimNumFmt(b, cell.numFmt);
+    const fmt = siparisFormuExcelBirimNumFmt(b);
+    cell.numFmt = fmt;
+    try { cell.style = Object.assign({}, cell.style || {}, { numFmt: fmt }); } catch (e) {}
 }
 
 function siparisFormuVeriYazEj(ws, veri) {
@@ -38745,7 +38898,7 @@ function siparisFormuVeriYazEj(ws, veri) {
         siparisFormuEjHucre(ws, row, 3, siparisFormuKalemUrunMetni(k));
         siparisFormuEjHucre(ws, row, 7, k.renk || '');
         siparisFormuEjHucre(ws, row, 8, k.ebat || '');
-        siparisFormuEjMiktar(ws, row, 9, k.miktar, k.birim);
+        siparisFormuEjMiktar(ws, row, 9, k.miktar, k.birim || k.kaynak_birim || 'ADET');
     });
     const renkSatirlar = veri.renkSatirlari || siparisFormuRenkSatirlariOlustur(veri.kalemler || []);
     H.renkVeriSatirlari.forEach((row, idx) => {
