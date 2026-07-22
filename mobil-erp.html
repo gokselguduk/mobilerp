@@ -218,6 +218,90 @@
         .depo-arama-drop--mamul .depo-arama-drop__row {
             grid-template-columns: 72px minmax(100px, 1.4fr) minmax(72px, 1fr) minmax(64px, 0.9fr) 58px;
         }
+        .stok-kart-toolbar {
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+        }
+        .stok-kart-toolbar__head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .stok-kart-toolbar__title {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--text);
+        }
+        .stok-kart-toolbar__sub {
+            margin-top: 3px;
+            font-size: 9px;
+            color: var(--text3);
+            font-family: 'DM Mono', monospace;
+        }
+        .stok-kart-ozet-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 8px;
+        }
+        .stok-kart-ozet-kart {
+            padding: 10px 11px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface2);
+            min-width: 0;
+        }
+        .stok-kart-ozet-kart__etiket {
+            font-size: 8px;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-family: 'DM Mono', monospace;
+        }
+        .stok-kart-ozet-kart__deger {
+            margin-top: 5px;
+            font-size: 21px;
+            line-height: 1;
+            color: var(--text);
+            font-family: 'Instrument Serif', serif;
+        }
+        .stok-kart-ozet-kart__deger--iplik { color: var(--accent2); }
+        .stok-kart-ozet-kart__deger--kumas { color: var(--emerald-c); }
+        .stok-kart-ozet-kart__deger--mamul { color: var(--amber-c); }
+        .stok-kart-grup-bolum {
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            border-left-width: 3px;
+            border-left-style: solid;
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
+        }
+        .stok-kart-grup-bolum__head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .stok-kart-grup-bolum__title {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-family: 'DM Mono', monospace;
+        }
+        .stok-kart-grup-bolum__actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
         .kumas-kart-liste-wrap {
             overflow-x: auto;
             border: 1px solid var(--border);
@@ -274,6 +358,318 @@
         }
         .kumas-kart-liste-grid__cell--aksiyon {
             text-align: right;
+        }
+        .mamul-stok-liste-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            margin-bottom: 8px;
+        }
+        .mamul-kart-arama-toolbar {
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+        }
+        .mamul-kart-arama-toolbar__head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .mamul-kart-arama-toolbar__title {
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--amber-c);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: 'DM Mono', monospace;
+        }
+        .mamul-kart-arama-toolbar__sayac {
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--text3);
+            font-family: 'DM Mono', monospace;
+        }
+        .mamul-kart-arama-toolbar__ana {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .mamul-kart-arama-toolbar__chips {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .mamul-kart-arama-toolbar__detay {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--border);
+        }
+        .mamul-kart-arama-toolbar__foot {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .liste-duzenle-btn {
+            font-size: 9px;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+            padding: 4px 7px;
+            border-radius: 6px;
+            border: 1px solid rgba(109, 113, 255, 0.35);
+            background: rgba(109, 113, 255, 0.1);
+            color: var(--accent2);
+            cursor: pointer;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+        .liste-duzenle-btn:hover {
+            background: rgba(109, 113, 255, 0.18);
+            border-color: rgba(109, 113, 255, 0.55);
+        }
+        .mamul-stok-liste-grid__cell--aksiyon {
+            display: inline-flex;
+            gap: 4px;
+            justify-content: flex-end;
+            align-items: center;
+        }
+        .mamul-stok-liste-grid {
+            display: grid;
+            grid-template-columns: 28px 110px 72px minmax(110px, 1fr) minmax(110px, 1fr) minmax(150px, 1.35fr) 96px 74px 92px 110px 88px;
+            gap: 8px 10px;
+            align-items: center;
+            padding: 9px 12px;
+            min-width: 1120px;
+        }
+        .mamul-stok-liste-grid--head {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+            font-size: 8px;
+            font-weight: 700;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'DM Mono', monospace;
+        }
+        .mamul-stok-liste-grid--row {
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .mamul-stok-liste-grid--row:last-child { border-bottom: none; }
+        .mamul-stok-liste-grid--row:hover { background: var(--surface2); }
+        .mamul-stok-liste-grid__cell {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text2);
+            font-family: 'DM Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .mamul-stok-liste-grid__cell--kod {
+            font-weight: 700;
+            color: var(--amber-c);
+        }
+        .mamul-stok-liste-grid__cell--ad {
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .mamul-stok-liste-grid__cell--stok {
+            text-align: right;
+        }
+        .mamul-stok-grid__expand {
+            width: 22px;
+            height: 22px;
+            border: none;
+            border-radius: 6px;
+            background: var(--surface2);
+            color: var(--text2);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mamul-stok-grid__expand:disabled {
+            opacity: .35;
+            cursor: default;
+        }
+        .mamul-stok-alt-panel {
+            margin: 0 0 8px 0;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            background: rgba(109,113,255,0.03);
+            overflow: hidden;
+        }
+        .mamul-stok-liste-grid--alt {
+            background: transparent;
+        }
+        .mamul-dokuma-detay {
+            padding: 12px 14px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .mamul-dokuma-detay__baslik {
+            font-size: 8px;
+            font-weight: 800;
+            color: var(--amber-c);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 10px;
+        }
+        .mamul-dokuma-detay__grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px 12px;
+        }
+        .mamul-dokuma-detay__item {
+            min-width: 0;
+        }
+        .mamul-dokuma-detay__label {
+            font-size: 7px;
+            font-weight: 700;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 3px;
+        }
+        .mamul-dokuma-detay__value {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 14px;
+        }
+        .mamul-dokuma-detay__value--bos {
+            color: var(--text3);
+            font-weight: 500;
+        }
+        .mamul-varyant-wrap {
+            padding: 10px 14px 12px;
+        }
+        .mamul-varyant-baslik {
+            font-size: 8px;
+            font-weight: 800;
+            color: var(--cyan-c);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-family: 'DM Mono', monospace;
+            margin-bottom: 8px;
+        }
+        .mamul-varyant-grid {
+            display: grid;
+            grid-template-columns: 110px minmax(120px, 1fr) 110px 56px;
+            gap: 8px 10px;
+            align-items: center;
+            padding: 6px 0;
+        }
+        .mamul-varyant-grid--head {
+            font-size: 7px;
+            font-weight: 700;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'DM Mono', monospace;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 6px;
+            margin-bottom: 2px;
+        }
+        .mamul-varyant-grid--row {
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .mamul-varyant-grid--row:hover {
+            background: rgba(109,113,255,0.06);
+        }
+        .mamul-varyant-grid--row:last-child {
+            border-bottom: none;
+        }
+        .mamul-atki-excel-wrap {
+            padding: 10px 14px 12px;
+            overflow-x: auto;
+        }
+        .mamul-atki-excel-tablo {
+            width: 100%;
+            min-width: 520px;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+        .mamul-atki-excel-tablo th,
+        .mamul-atki-excel-tablo td {
+            padding: 5px 7px;
+            border: 1px solid var(--border);
+            text-align: left;
+            vertical-align: middle;
+        }
+        .mamul-atki-excel-tablo thead th {
+            background: var(--surface2);
+            font-size: 7px;
+            font-weight: 700;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: 'DM Mono', monospace;
+        }
+        .mamul-atki-excel-tablo tbody td:first-child {
+            font-weight: 700;
+            color: var(--text3);
+            font-family: 'DM Mono', monospace;
+            font-size: 8px;
+            background: var(--surface2);
+            white-space: nowrap;
+        }
+        .mamul-atki-excel-tablo__varyant-baslik {
+            color: var(--cyan-c);
+            font-size: 8px;
+            font-weight: 800;
+        }
+        .mamul-atki-excel-tablo__sku {
+            display: block;
+            color: var(--amber-c);
+            font-weight: 700;
+            font-size: 9px;
+            margin-top: 2px;
+        }
+        .mamul-atki-excel-tablo__bos {
+            color: var(--text3);
+        }
+        .mamul-atki-excel-tablo__stok {
+            text-align: right;
+            font-weight: 600;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+        }
+        .mamul-atki-excel-tablo__click {
+            cursor: pointer;
+        }
+        .mamul-atki-excel-tablo__click:hover {
+            background: rgba(109,113,255,0.06);
         }
         .iplik-stok-wrap {
             overflow-x: auto;
@@ -1652,6 +2048,30 @@
         .stok-suggest { position: absolute; background: var(--surface2); width: 100%; z-index: 60; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); max-height: 200px; overflow-y: auto; display: none; border: 1px solid var(--border2); margin-top: 5px; }
         .suggest-item { padding: 9px 14px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 400; color: var(--text); }
         .suggest-item:hover { background: var(--surface3); color: var(--accent2); }
+        #siparis-mamul-sec-modal { display: none; position: fixed; inset: 0; z-index: 1100; align-items: center; justify-content: center; background: rgba(6, 8, 14, 0.52); backdrop-filter: blur(8px); padding: 12px; box-sizing: border-box; }
+        #siparis-mamul-sec-modal > .siparis-mamul-sec-box { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; width: min(720px, 96vw); max-height: min(85vh, 640px); display: flex; flex-direction: column; box-shadow: 0 20px 56px rgba(0,0,0,0.35); overflow: hidden; }
+        .siparis-mamul-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+        .siparis-mamul-sec-head h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); font-family: 'DM Sans', sans-serif; }
+        .siparis-mamul-sec-ara-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .siparis-mamul-sec-list { flex: 1; overflow-y: auto; padding: 8px; min-height: 120px; }
+        .siparis-mamul-sec-row { display: grid; grid-template-columns: 22px 88px 1fr 1fr 72px 72px; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; transition: background 0.12s, border-color 0.12s; font-size: 11px; }
+        .siparis-mamul-sec-row:hover { background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.25); }
+        .siparis-mamul-sec-row.is-parent { background: rgba(255,255,255,0.02); }
+        .siparis-mamul-sec-row.is-parent.has-variants:hover { border-color: rgba(34,211,238,0.3); background: rgba(34,211,238,0.06); }
+        .siparis-mamul-sec-row.is-variant { grid-template-columns: 22px 88px 1fr 1fr 72px 72px; padding-left: 18px; background: rgba(34,211,238,0.04); border-color: rgba(34,211,238,0.12); margin-top: 2px; }
+        .siparis-mamul-sec-row.is-variant:hover { background: rgba(34,211,238,0.1); border-color: rgba(34,211,238,0.28); }
+        .siparis-mamul-sec-row .chev { font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; text-align: center; min-width: 18px; padding: 4px 0; border-radius: 4px; }
+        .siparis-mamul-sec-row.has-variants .chev { cursor: pointer; color: var(--cyan-c); }
+        .siparis-mamul-sec-row.has-variants .chev:hover { background: rgba(34,211,238,0.15); }
+        .siparis-mamul-sec-row .kod { font-family: 'DM Mono', monospace; font-weight: 700; color: var(--amber-c); font-size: 10px; }
+        .siparis-mamul-sec-row .ad { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .siparis-mamul-sec-row .meta { font-size: 9px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .siparis-mamul-sec-row .varyant-pill { font-size: 8px; color: var(--cyan-c); font-family: 'DM Mono', monospace; margin-left: 4px; font-weight: 700; }
+        .siparis-mamul-sec-foot { padding: 8px 16px; border-top: 1px solid var(--border); font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; }
+        .sk-kod-picker-wrap { display: flex; gap: 3px; align-items: stretch; }
+        .sk-kod-picker-wrap input { flex: 1; min-width: 0; cursor: pointer; }
+        .sk-kod-picker-btn { flex-shrink: 0; width: 28px; border: 1px solid rgba(251,191,36,0.35); border-radius: 8px; background: rgba(251,191,36,0.1); color: var(--amber-c); cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .sk-kod-picker-btn:hover { background: rgba(251,191,36,0.2); }
         .image-preview-wrapper { width: 100%; height: 200px; border-radius: 1.2rem; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f1f5f9; cursor: pointer; position: relative; }
         .image-preview-wrapper img { width: 100%; height: 100%; object-fit: cover; }
         #search::-webkit-search-cancel-button { -webkit-appearance: none; height: 16px; width: 16px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'); cursor: pointer; }
@@ -3181,6 +3601,45 @@
             #main-list { padding-bottom: 96px !important; }
         }
 
+        /* Sipariş girişi — mobil */
+        @media (max-width: 1024px) {
+            body[data-erp-mode="SIPARIS_GIRIS"] #inputs-grid {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 14px !important;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] #inputs-grid > div:last-child {
+                position: static !important;
+                top: auto !important;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] .siparis-kalem-grid {
+                grid-template-columns: 1fr 1fr !important;
+                gap: 10px !important;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] .siparis-kalem-grid > div:nth-child(4),
+            body[data-erp-mode="SIPARIS_GIRIS"] .siparis-kalem-grid > div:nth-child(8) {
+                grid-column: 1 / -1;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] #main-action-btn {
+                min-height: 52px;
+                font-size: 13px !important;
+                font-weight: 700 !important;
+                margin-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] .siparis-step-kaydet {
+                width: 100%;
+                min-height: 54px;
+                font-size: 14px !important;
+                font-weight: 800 !important;
+                border-radius: 12px !important;
+                letter-spacing: 0.04em;
+            }
+            body[data-erp-mode="SIPARIS_GIRIS"] .wizard-nav-btn {
+                min-height: 44px;
+                padding: 10px 16px !important;
+            }
+        }
+
         /* Mobil alt sekme çubuğu */
         .erp-mobile-tabbar {
             display: none;
@@ -3521,8 +3980,12 @@ try {
       <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">↳ Depo Hareketleri</div>
     </div>
 
-    <div onclick="setAppMode('KART_LISTE'); closeAllSubs();" class="nav-pro" id="nav-KART_LISTE">
+    <div onclick="toggleChicSub('kart')" class="nav-pro" id="nav-kart-toggle">
       <span class="nav-pro-icon">🗂️</span> Stok Kartları
+      <span class="nav-pro-chevron" id="chev-kart">▼</span>
+    </div>
+    <div id="sub-kart" class="nav-pro-sub-area">
+      <div onclick="acKayitliStokKartlari()" class="nav-pro-sub" id="nav-KART_LISTE">↳ Kayıtlı Stok Kartları</div>
     </div>
 
     <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
@@ -3721,7 +4184,7 @@ try {
             </div>
             <div class="modal-head-actions">
                 <button type="button" id="modal-print-btn" onclick="exportToPDF()" class="modal-head-btn modal-head-btn--print" title="PDF olarak indir">🖨 PDF</button>
-                <button type="button" id="modal-excel-btn" onclick="exportAktifSiparisFormuExcel()" class="modal-head-btn modal-head-btn--print" title="SİPARİŞ FORMU Excel indir" style="display:none">⤓ Excel</button>
+                <button type="button" id="modal-excel-btn" onclick="exportAktifModalExcel()" class="modal-head-btn modal-head-btn--print" title="Excel indir" style="display:none">⤓ Excel</button>
                 <button type="button" id="modal-edit-btn" onclick="editRecord()" class="modal-head-btn modal-head-btn--edit" title="Bu kaydı düzenle">Düzenle</button>
                 <button type="button" id="modal-delete-btn" onclick="deleteRecord()" class="modal-head-btn modal-head-btn--delete" title="Kaydı veritabanından kalıcı sil">Kaydı sil</button>
                 <button type="button" onclick="hideDetailModal()" class="modal-head-btn modal-head-btn--close" title="Pencereyi kapat (geri dön)">Kapat</button>
@@ -3736,6 +4199,21 @@ try {
             <span id="log-user">— Kayıt sahibi</span>
             <span id="log-time">— Tarih</span>
         </div>
+    </div>
+</div>
+
+<div id="siparis-mamul-sec-modal" onclick="siparisMamulSeciciKapat(event)">
+    <div class="siparis-mamul-sec-box" onclick="event.stopPropagation()">
+        <div class="siparis-mamul-sec-head">
+            <h3>🧥 Mamül Stok Kodu Seç</h3>
+            <button type="button" onclick="siparisMamulSeciciKapat()" class="modal-head-btn modal-head-btn--close" title="Kapat">✕</button>
+        </div>
+        <div class="siparis-mamul-sec-ara-wrap">
+            <input id="siparis-mamul-sec-ara" class="pro-input" placeholder="Kod, ürün adı, firma, renk, ebat…" autocomplete="off"
+                oninput="siparisMamulSeciciAra(this.value)" style="font-size:12px;padding:10px 12px">
+        </div>
+        <div id="siparis-mamul-sec-list" class="siparis-mamul-sec-list"></div>
+        <div id="siparis-mamul-sec-foot" class="siparis-mamul-sec-foot">—</div>
     </div>
 </div>
 
@@ -5707,7 +6185,10 @@ let depoKomutaHedef = null;
 /** Sihirbaz: TIP = giriş/çıkış seç; GRUP = iplik/kumaş/mamül seç */
 let depoKomutaAsama = 'TIP';
 let mamulStokHizliFiltre = 'HEPSI';
-let mamulKartAramaFiltre = { q: '', firma: '', urun: '', kod: '' };
+let mamulKartAramaFiltre = { q: '', firma: '', urun: '', kod: '', desen: '', kumas: '', renk: '', tezgah: '', takip: '', numune: '' };
+let mamulKartListeHizliFiltre = 'HEPSI';
+let mamulKartAramaDetayAcik = false;
+let mamulKartAramaDebounceTimer = null;
 let depoDefterStokAra = '';
 let depoHizliHareketStokKodu = null;
 let depoHizliHareketLotIdx = null;
@@ -6639,7 +7120,7 @@ function renderDepoHareketDefteri() {
         </div>
         <div>
           <label class="pro-label" style="margin-bottom:4px">Stok kodu</label>
-          <input type="text" id="depo-defter-f-stok" class="pro-input" style="min-width:140px;padding:8px 10px;font-size:11px;font-family:'DM Mono',monospace" value="${pdfEsc(depoDefterStokAra)}" placeholder="MA-0001" oninput="depoDefterStokAraUygula(this.value)">
+          <input type="text" id="depo-defter-f-stok" class="pro-input" style="min-width:140px;padding:8px 10px;font-size:11px;font-family:'DM Mono',monospace" value="${pdfEsc(depoDefterStokAra)}" placeholder="26001" oninput="depoDefterStokAraUygula(this.value)">
         </div>
         <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:var(--surface2)" onclick="depoHareketDefterFiltreleriSifirla()">Filtreleri sıfırla</button>
         <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:rgba(59,130,246,0.12);color:#3b82f6;border-color:rgba(59,130,246,0.35)" onclick="exportDepoHareketExcel()">⤓ Excel İndir</button>
@@ -6967,7 +7448,7 @@ function depoMiktarBirimDegisti() {
     else if (g === 'MAMUL_DEPO') updateMamulPreview();
 }
 let siparisKalemCount = 0;
-let archiveTab = 'KUMAS';
+let archiveTab = 'TUMU';
 let kumasKartGirisTipi = 'HAM';
 let kumasKartListeFiltre = 'HAM';
 const UI_STATE_LS_KEY = 'erp_ui_state_v1';
@@ -6998,6 +7479,8 @@ function saveUiState(partial = {}) {
             dtDosyaAktif,
             kapamaSiparisId,
             planlamaAltMode,
+            mamulKartAramaFiltre,
+            mamulKartListeHizliFiltre,
             ...prev,
             ...partial
         };
@@ -8824,6 +9307,7 @@ function iplikStokListeChromeUygula() {
 
 // --- OTOMATİK KOD ÜRETİCİ (KUMAŞ / GENEL) ---
 async function getNextStockCode(prefix = 'SM') {
+    if (prefix === 'MA') return getNextMamulAnaKod();
     const data = dataCache.kumas_kutuphanesi
         .filter(item => item.desen_kodu && item.desen_kodu.startsWith(prefix + '-'))
         .sort((a, b) => b.desen_kodu.localeCompare(a.desen_kodu));
@@ -8836,6 +9320,83 @@ async function getNextStockCode(prefix = 'SM') {
         }
     }
     return `${prefix}-0001`;
+}
+
+/** Mamül stok kodu: YY### (1–999) veya YY#### (1000+); varyant: -n. Eski MA-0001 formatı da desteklenir. */
+function getMamulYilSuffix() {
+    return String(new Date().getFullYear()).slice(-2);
+}
+
+function mamulYeniFormatSeqParse(kod) {
+    const s = String(kod || '').trim().toUpperCase();
+    const yy = getMamulYilSuffix();
+    if (!s.startsWith(yy) || /^MA-/i.test(s)) return 0;
+    const ana = s.split('-')[0];
+    if (/^\d{5}$/.test(ana) || /^\d{6}$/.test(ana)) {
+        const seq = parseInt(ana.slice(2), 10);
+        return Number.isFinite(seq) && seq > 0 ? seq : 0;
+    }
+    return 0;
+}
+
+function mamulYeniFormatAnaKodFormatla(seq) {
+    const yy = getMamulYilSuffix();
+    const n = parseInt(seq, 10) || 0;
+    if (n <= 0) return `${yy}001`;
+    if (n <= 999) return `${yy}${String(n).padStart(3, '0')}`;
+    return `${yy}${String(n).padStart(4, '0')}`;
+}
+
+function mamulStokKoduFormatMi(kod) {
+    const s = String(kod || '').trim().toUpperCase();
+    if (!s) return false;
+    if (/^MA-\d+/i.test(s) || /^MM-\d+/i.test(s)) return true;
+    if (/^\d{5}(-\d+)?$/.test(s)) return true;
+    if (/^\d{6}(-\d+)?$/.test(s)) return true;
+    return false;
+}
+
+function mamulAnaKodGecerliMi(ana) {
+    const s = String(ana || '').trim().toUpperCase();
+    if (/^MA-\d+$/i.test(s)) return true;
+    if (/^\d{5}$/.test(s)) {
+        const seq = parseInt(s.slice(2), 10);
+        return seq >= 1 && seq <= 999;
+    }
+    if (/^\d{6}$/.test(s)) {
+        const seq = parseInt(s.slice(2), 10);
+        return seq >= 1;
+    }
+    return false;
+}
+
+function getNextMamulAnaKod() {
+    const yy = getMamulYilSuffix();
+    let maxSeq = 0;
+    (dataCache.kumas_kutuphanesi || []).forEach(item => {
+        const kod = String(item.desen_kodu || '').trim().toUpperCase();
+        if (!kod.startsWith(yy)) return;
+        const seq = mamulYeniFormatSeqParse(kod);
+        if (seq > 0) maxSeq = Math.max(maxSeq, seq);
+    });
+    return mamulYeniFormatAnaKodFormatla(maxSeq + 1);
+}
+
+function mamulAnaKodBul(kod) {
+    const s = String(kod || '').trim().toUpperCase();
+    let m = s.match(/^(\d{5,6})-\d+$/);
+    if (m) return m[1];
+    if (/^\d{5,6}$/.test(s)) return s;
+    m = s.match(/^(MA-\d+)(?:-\d+)?$/i);
+    return m ? m[1].toUpperCase() : s;
+}
+
+function mamulVaryantNoBul(kod) {
+    const s = String(kod || '').trim().toUpperCase();
+    let m = s.match(/^\d{5,6}-(\d+)$/);
+    if (m) return parseInt(m[1], 10) || 0;
+    m = s.match(/^MA-\d+-(\d+)$/i);
+    return m ? (parseInt(m[1], 10) || 0) : 0;
 }
 
 function numuneNormalizeId(v) {
@@ -9435,18 +9996,145 @@ function numuneToMamulStokKartiPayload(kaynak, mamulKodu, numuneKodu, kimlikKodu
 }
 function mamulKartAramaBlob(k) {
     if (!k) return '';
+    const meta = mamulEkAlanMetaDecode(k.notlar || '');
     const parcalar = [
         k.desen_kodu, k.stok_kodu, k.urun_adi, k.desen_adi, k.firma, k.kumas_cinsi, k.renk,
         k.tarak_no, k.tarak_eni, k.atki_sikligi, k.cozgu_no, k.cozgu_cinsi,
         k.ham_en, k.ham_boy, k.ham_gsm, k.mamul_en, k.mamul_boy, k.mamul_gsm, k.mamul_gramaj,
         k.urun_kat, k.fiber, k.ham_kumas_kodu,
+        meta.takip_no, meta.tezgah_no, meta.tezgah_desen_no, meta.istenen_mamul_ebat, meta.olculen_ham_ebat, meta.olculen_mamul_ebat,
+        mamulAnaKodBul(k.desen_kodu),
         numuneNotTagOku(k.notlar, 'NUMUNE_KAYNAK'),
         numuneNotTagOku(k.notlar, 'URUN_KIMLIK'),
         numuneNotTagOku(k.notlar, 'MAMUL_STOK'),
+        numuneNotTagOku(k.notlar, 'TEZGAH_NO'),
         numuneTeknikOzetSatir(k),
         k.notlar
     ];
     return parcalar.map(x => String(x || '').toLowerCase()).join(' ');
+}
+function mamulKartAramaAktifMi() {
+    const f = mamulKartAramaFiltre || {};
+    return !!(f.q || f.firma || f.urun || f.kod || f.desen || f.kumas || f.renk || f.tezgah || f.takip || f.numune);
+}
+function mamulKartAramaDetayToggle() {
+    mamulKartAramaDetayAcik = !mamulKartAramaDetayAcik;
+    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') loadData();
+}
+function mamulKartListeHizliFiltreSet(f) {
+    mamulKartListeHizliFiltre = f || 'HEPSI';
+    saveUiState({ mamulKartListeHizliFiltre });
+    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') loadData();
+}
+function mamulKartListeGruplariFiltrele(gruplar) {
+    const f = mamulKartListeHizliFiltre || 'HEPSI';
+    if (f === 'HEPSI') return gruplar;
+    return (Array.isArray(gruplar) ? gruplar : []).filter(grup => {
+        const kodlar = [grup.anaKod, ...(grup.children || []).map(c => c.record?.desen_kodu)].filter(Boolean);
+        const stokTxt = mamulStokBakiyeToplamText(kodlar);
+        const stoklu = stokTxt !== '0';
+        if (f === 'STOKLU') return stoklu;
+        if (f === 'SIFIR') return !stoklu;
+        if (f === 'VARYANTLI') return (grup.children || []).length > 0;
+        return true;
+    });
+}
+function mamulKartListeToolbarHtml(grupSayisi) {
+    const f = mamulKartAramaFiltre || {};
+    const detayAcik = mamulKartAramaDetayAcik || mamulKartAramaAktifMi();
+    const hf = mamulKartListeHizliFiltre || 'HEPSI';
+    const chip = (id, lbl) => `<button type="button" onclick="mamulKartListeHizliFiltreSet('${id}')" class="pill ${hf === id ? 'pill-amber' : 'pill-gray'}" style="cursor:pointer;border:none;font-size:9px;padding:4px 10px">${lbl}</button>`;
+    const inp = (id, alan, ph, mono) => `<input id="${id}" value="${pdfEsc(f[alan] || '')}" placeholder="${ph}" class="pro-input" style="padding:6px 8px;font-size:10px${mono ? ';font-family:\'DM Mono\',monospace' : ''}" oninput="mamulKartAramaFiltreAlanGuncelle('${alan}',this.value)">`;
+    return `<div class="mamul-kart-arama-toolbar panel-box" style="padding:0;border:none;background:transparent">
+        <div class="mamul-kart-arama-toolbar">
+            <div class="mamul-kart-arama-toolbar__head">
+                <div class="mamul-kart-arama-toolbar__title">Mamül stok kartları — arama</div>
+                <div class="mamul-kart-arama-toolbar__sayac">${grupSayisi} ana kart${mamulKartAramaAktifMi() ? ' · filtre aktif' : ''}</div>
+            </div>
+            <div class="mamul-kart-arama-toolbar__ana">
+                ${inp('mka-q', 'q', 'Kod, müşteri, desen, ölçü, tezgah, atkı…', false)}
+                <button type="button" onclick="mamulKartAramaDetayToggle()" class="pill pill-gray" style="cursor:pointer;border:none;font-size:9px;padding:6px 12px;white-space:nowrap">${detayAcik ? '▾' : '▸'} Detaylı</button>
+            </div>
+            <div class="mamul-kart-arama-toolbar__chips">
+                ${chip('HEPSI', 'Tümü')}
+                ${chip('STOKLU', 'Stoklu')}
+                ${chip('SIFIR', 'Sıfır stok')}
+                ${chip('VARYANTLI', 'Varyantlı')}
+            </div>
+            ${detayAcik ? `<div class="mamul-kart-arama-toolbar__detay">
+                ${inp('mka-kod', 'kod', 'Stok kodu', true)}
+                ${inp('mka-firma', 'firma', 'Müşteri / firma', false)}
+                ${inp('mka-urun', 'urun', 'Ürün adı', false)}
+                ${inp('mka-desen', 'desen', 'Desen adı', false)}
+                ${inp('mka-kumas', 'kumas', 'Kumaş cinsi', false)}
+                ${inp('mka-renk', 'renk', 'Renk', false)}
+                ${inp('mka-tezgah', 'tezgah', 'Tezgah no', true)}
+                ${inp('mka-takip', 'takip', 'Takip no', true)}
+                ${inp('mka-numune', 'numune', 'Numune kodu', true)}
+                <div style="display:flex;justify-content:flex-end;align-items:flex-end">
+                    <button type="button" onclick="mamulKartAramaFiltreSifirla()" class="pill pill-gray" style="cursor:pointer;border:none;font-size:9px;padding:6px 12px">Temizle</button>
+                </div>
+            </div>` : ''}
+            <div class="mamul-kart-arama-toolbar__foot"></div>
+        </div>
+    </div>`;
+}
+function stokKartListeAksiyonHtml(idx, opts) {
+    const o = opts || {};
+    const editFn = o.anaKod
+        ? `editMamulKartFromListe('${erpAttr(o.anaKod)}')`
+        : `editRecordFromList(${idx})`;
+    return `<span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--aksiyon" onclick="event.stopPropagation()">
+        <button type="button" class="liste-duzenle-btn" onclick="event.stopPropagation();${editFn}" title="Kartı düzenle">✏️</button>
+        <button type="button" class="liste-gecmis-btn" onclick="event.stopPropagation();showDetailOpenGecmis(${idx})" title="Kayıt geçmişi">Geçmiş</button>
+    </span>`;
+}
+function mamulKartAnaKayitBul(anaKod) {
+    const ana = String(anaKod || '').trim().toUpperCase();
+    if (!ana) return null;
+    const lib = dataCache.kumas_kutuphanesi || [];
+    return lib.find(k => String(k.desen_kodu || '').trim().toUpperCase() === ana) || null;
+}
+function stokKartDuzenleAc(record) {
+    if (!record) return;
+    editingId = record.id;
+    originalRecordSnapshot = { ...record };
+    const kartGrup = kumasKutuphanesiKartiMamulMu(record) ? 'MAMUL'
+        : (stokKartGrupEslesir(record, 'IPLIK') ? 'IPLIK' : 'KUMAS');
+    const editMode = kartGrup === 'IPLIK' ? 'IPLIK_KART_GIRIS' : kartGrup === 'MAMUL' ? 'MAMUL_KART_GIRIS' : 'KUMAS_KART_GIRIS';
+    if (editMode === 'KUMAS_KART_GIRIS') kumasKartGirisTipi = kumasKartTipiOku(record);
+    setAppMode(editMode, true);
+    closeModal({ target: { id: 'detail-modal' } });
+    const fc = document.getElementById('form-container');
+    const cb = document.getElementById('cancel-edit-btn');
+    if (fc) fc.style.display = 'block';
+    if (cb) cb.style.display = 'block';
+    const ft = document.getElementById('form-title');
+    if (ft) ft.innerText = 'Kayıt Güncelleme';
+    renderInputs();
+    syncKartGirisBaslik(editMode, record);
+    setTimeout(() => kartGirisFormDoldur(record, editMode), 80);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function editMamulKartFromListe(idxOrKod) {
+    if (typeof idxOrKod === 'number') {
+        const hit = currentData[idxOrKod];
+        if (hit) { editRecordFromList(idxOrKod); return; }
+        erpToast('Kayıt bulunamadı. Listeyi yenileyip tekrar deneyin.', 'warn');
+        return;
+    }
+    const kod = String(idxOrKod || '').trim().toUpperCase();
+    const ana = mamulAnaKodBul(kod) || kod;
+    let record = mamulKartAnaKayitBul(ana);
+    if (!record) {
+        const idx = currentData.findIndex(r => String(r.desen_kodu || '').trim().toUpperCase() === kod);
+        if (idx >= 0) { editRecordFromList(idx); return; }
+        erpToast('Düzenlenecek mamül kartı bulunamadı: ' + ana, 'warn');
+        return;
+    }
+    const idx = currentData.findIndex(r => String(r.id) === String(record.id));
+    if (idx >= 0) editRecordFromList(idx);
+    else stokKartDuzenleAc(record);
 }
 function mamulKartDetayliEslestir(kayit, filtre) {
     const f = filtre || mamulKartAramaFiltre;
@@ -9458,6 +10146,11 @@ function mamulKartDetayliEslestir(kayit, filtre) {
     }
     if (f.firma && !blob.includes(String(f.firma).trim().toLowerCase())) return false;
     if (f.urun && !blob.includes(String(f.urun).trim().toLowerCase())) return false;
+    if (f.desen && !blob.includes(String(f.desen).trim().toLowerCase())) return false;
+    if (f.kumas && !blob.includes(String(f.kumas).trim().toLowerCase())) return false;
+    if (f.renk && !blob.includes(String(f.renk).trim().toLowerCase())) return false;
+    if (f.tezgah && !blob.includes(String(f.tezgah).trim().toLowerCase())) return false;
+    if (f.takip && !blob.includes(String(f.takip).trim().toLowerCase())) return false;
     if (f.kod) {
         const kod = String(kayit.desen_kodu || kayit.stok_kodu || '').toUpperCase();
         if (!kod.includes(String(f.kod).trim().toUpperCase())) return false;
@@ -9479,7 +10172,7 @@ function mamulKaynakKartlariTopla() {
         } else if (urunKimligiNumunedenMi(k)) {
             kaynaklar.push({ tip: 'KIMLIK', kayit: k, kod, etiket: 'Ürün kimliği (SM)', alt: numuneTeknikOzetSatir(k) });
         } else if (kumasKutuphanesiKartiMamulMu(k)) {
-            kaynaklar.push({ tip: 'MAMUL', kayit: k, kod, etiket: 'Mamül stok kartı (MA)', alt: numuneTeknikOzetSatir(k) });
+            kaynaklar.push({ tip: 'MAMUL', kayit: k, kod, etiket: 'Mamül stok kartı', alt: numuneTeknikOzetSatir(k) });
         }
     });
     return kaynaklar.sort((a, b) => String(b.kayit?.created_at || '').localeCompare(String(a.kayit?.created_at || '')));
@@ -9492,13 +10185,25 @@ function mamulKaynakAraListele(q, limit = 14) {
 }
 function mamulKartAramaFiltreAlanGuncelle(alan, deger) {
     mamulKartAramaFiltre[alan] = deger || '';
-    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') loadData();
+    saveUiState({ mamulKartAramaFiltre });
+    const el = document.activeElement;
+    window._mamulKartFiltreFocus = {
+        id: el?.id || '',
+        pos: (el && typeof el.selectionStart === 'number') ? el.selectionStart : null
+    };
+    clearTimeout(mamulKartAramaDebounceTimer);
+    mamulKartAramaDebounceTimer = setTimeout(() => {
+        if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') loadData();
+    }, 280);
 }
 function mamulKartAramaFiltreSifirla() {
-    mamulKartAramaFiltre = { q: '', firma: '', urun: '', kod: '' };
+    mamulKartAramaFiltre = { q: '', firma: '', urun: '', kod: '', desen: '', kumas: '', renk: '', tezgah: '', takip: '', numune: '' };
+    mamulKartListeHizliFiltre = 'HEPSI';
+    mamulKartAramaDetayAcik = false;
+    saveUiState({ mamulKartAramaFiltre, mamulKartListeHizliFiltre });
     const search = document.getElementById('search');
     if (search) search.value = '';
-    ['mka-q', 'mka-firma', 'mka-urun', 'mka-kod'].forEach(id => {
+    ['mka-q', 'mka-firma', 'mka-urun', 'mka-kod', 'mka-desen', 'mka-kumas', 'mka-renk', 'mka-tezgah', 'mka-takip', 'mka-numune'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -29207,12 +29912,18 @@ window.onload = async () => {
     const hadCache = erpDataCacheRestore();
     if (hadCache) updateSummary();
     if (ui && typeof ui === 'object') {
-        if (['IPLIK','MAMUL','KUMAS','HAM_KUMAS','MAMUL_KUMAS'].includes(ui.archiveTab)) {
+        if (['TUMU', 'IPLIK', 'MAMUL', 'KUMAS', 'HAM_KUMAS', 'MAMUL_KUMAS'].includes(ui.archiveTab)) {
             if (ui.archiveTab === 'MAMUL_KUMAS') { archiveTab = 'KUMAS'; kumasKartListeFiltre = 'MAMUL'; }
             else if (ui.archiveTab === 'HAM_KUMAS') { archiveTab = 'KUMAS'; kumasKartListeFiltre = 'HAM'; }
             else archiveTab = ui.archiveTab;
         }
         if (ui.kumasKartListeFiltre) kumasKartListeFiltre = kumasKartTipiNorm(ui.kumasKartListeFiltre);
+        if (ui.mamulKartAramaFiltre && typeof ui.mamulKartAramaFiltre === 'object') {
+            mamulKartAramaFiltre = { ...mamulKartAramaFiltre, ...ui.mamulKartAramaFiltre };
+        }
+        if (['HEPSI', 'STOKLU', 'SIFIR', 'VARYANTLI'].includes(ui.mamulKartListeHizliFiltre)) {
+            mamulKartListeHizliFiltre = ui.mamulKartListeHizliFiltre;
+        }
         if (['IPLIK','KUMAS','KART','SIPARIS_LISTE'].includes(ui.raporSubMode)) raporSubMode = ui.raporSubMode;
         if (Array.isArray(ui.raporIzlemeIds) && ui.raporIzlemeIds.length) {
             raporIzlemeIds = ui.raporIzlemeIds.map(String).filter(Boolean);
@@ -30969,7 +31680,7 @@ function renderInputs() {
                 <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:visible">
                     <div style="position:relative">
                         <label class="pro-label" style="color:${accentColor}">STOK KODU veya ÜRÜN ADI ile Ara</label>
-                        <input id="mamul-search" class="pro-input" placeholder="MA-0001 veya ürün adı yazın..."
+                        <input id="mamul-search" class="pro-input" placeholder="26001 veya ürün adı yazın..."
                             oninput="mamulSearch(this.value)"
                             style="font-family:'DM Mono',monospace;border-color:rgba(${accentRgb},0.35)">
                         <div id="mamul-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;margin-top:4px"></div>
@@ -31549,7 +32260,7 @@ function renderInputs() {
                 </div>
                 <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
                     <div>
-                        <label class="pro-label" style="color:var(--amber-c)">STOK KODU (MA-)</label>
+                        <label class="pro-label" style="color:var(--amber-c)">STOK KODU (YY###)</label>
                         <input id="val-kodu" class="pro-input" readonly
                             style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--amber-c);border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.05)">
                     </div>
@@ -31725,7 +32436,7 @@ function renderInputs() {
             <div class="panel-box" style="padding:14px;border-left:4px solid var(--amber-c)">
                 <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:6px">KART TİPİ</div>
                 <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--amber-c)">🧥 Mamül Stok Kartı</div>
-                <div style="font-size:9px;color:var(--text3);margin-top:4px;font-family:'DM Mono',monospace">MA-XXXX serisi · kumas_kutuphanesi</div>
+                <div style="font-size:9px;color:var(--text3);margin-top:4px;font-family:'DM Mono',monospace">YY### serisi (999'a kadar) · kumas_kutuphanesi</div>
             </div>
 
             <!-- Kar marjı hesap -->
@@ -31879,11 +32590,14 @@ function renderInputs() {
                 <div style="margin-top:12px;padding:12px 14px;background:rgba(109,113,255,0.06);border:1px solid rgba(109,113,255,0.15);border-radius:10px;font-size:10px;color:var(--accent2);font-weight:500">
                     ℹ️ Kayıt sisteme işlendikten sonra sipariş listesine düşer. Bilgileri kontrol edin.
                 </div>
-                <div style="display:flex;justify-content:space-between;margin-top:16px;flex-wrap:wrap;gap:8px">
-                    <button onclick="_wizardGo('siparis',3,2)" class="wizard-nav-btn btn-back">← Geri</button>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button type="button" onclick="exportAktifSiparisFormuExcel()" class="btn-pro btn-ghost-pro" style="padding:9px 16px;font-size:11px;border-color:rgba(139,92,246,0.45);color:#a78bfa">⤓ Excel İndir</button>
-                        <button type="button" onclick="exportToPDF()" class="btn-pro btn-ghost-pro" style="padding:9px 16px;font-size:11px">🖨 Form PDF</button>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+                    <button type="button" onclick="handleSave()" class="btn-pro btn-primary-pro siparis-step-kaydet" style="width:100%;min-height:52px;font-size:14px;font-weight:800;background:var(--accent);border:none;border-radius:10px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Siparişi Kaydet</button>
+                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                        <button type="button" onclick="_wizardGo('siparis',3,2)" class="wizard-nav-btn btn-back">← Geri</button>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            <button type="button" onclick="exportAktifSiparisFormuExcel()" class="btn-pro btn-ghost-pro" style="padding:9px 16px;font-size:11px;border-color:rgba(139,92,246,0.45);color:#a78bfa">⤓ Excel İndir</button>
+                            <button type="button" onclick="exportToPDF()" class="btn-pro btn-ghost-pro" style="padding:9px 16px;font-size:11px">🖨 Form PDF</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -32182,10 +32896,14 @@ function loadData() {
         if (filterPanel) filterPanel.classList.remove('hidden');
         if (!document.getElementById('archive-tabs')) {
             filterPanel.innerHTML = `
-                <div id="archive-tabs" style="display:flex;gap:6px;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;margin-bottom:10px">
-                    <button onclick="switchArchiveTab('IPLIK')" id="tab-btn-IPLIK" class="archive-tab-btn" style="flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧶 İplik Stok Kartları</button>
-                    <button onclick="switchArchiveTab('KUMAS')" id="tab-btn-KUMAS" class="archive-tab-btn" style="flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🏁 Kumaş Stok Kartları</button>
-                    <button onclick="switchArchiveTab('MAMUL')" id="tab-btn-MAMUL" class="archive-tab-btn" style="flex:1;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧥 Mamül Stok Kartları</button>
+                <div id="archive-tabs" style="display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;margin-bottom:10px">
+                    <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;padding:0 4px">Kayıtlı stok kartları — gruba göre</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                    <button onclick="switchArchiveTab('TUMU')" id="tab-btn-TUMU" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">📋 Tüm Gruplar</button>
+                    <button onclick="switchArchiveTab('IPLIK')" id="tab-btn-IPLIK" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧶 İplik</button>
+                    <button onclick="switchArchiveTab('KUMAS')" id="tab-btn-KUMAS" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🏁 Kumaş</button>
+                    <button onclick="switchArchiveTab('MAMUL')" id="tab-btn-MAMUL" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧥 Mamül</button>
+                    </div>
                 </div>`;
         }
         syncArchiveTabStili();
@@ -32482,8 +33200,9 @@ function loadData() {
                 const kodPrefix = sKodu.split('-')[0];
                 areaMatch = (kodPrefix === 'SM' || kodPrefix === 'NU') && i.ana_grup !== 'MAMUL' && !urunKimligiNumunedenMi(i) && kumasKartTipiOku(i) === kumasKartListeFiltre;
             } else if (archiveTab === 'MAMUL') {
-                const kodPrefix = sKodu.split('-')[0];
-                areaMatch = kodPrefix === 'MA' || i.ana_grup === 'MAMUL';
+                areaMatch = kumasKutuphanesiKartiMamulMu(i);
+            } else if (archiveTab === 'TUMU') {
+                areaMatch = false;
             }
         } else {
             areaMatch = true;
@@ -32623,31 +33342,8 @@ function loadData() {
         </div>
         ${numuneListeTabloBaslikHtml()}` : '';
 
-    const mamulListeBaslik = (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') ? `
-        <div class="panel-box" style="padding:12px 14px;margin-bottom:10px;border:1px solid var(--border)">
-            <div style="font-size:9px;font-weight:700;color:var(--amber-c);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-bottom:8px">Mamül stok kartları</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
-                <input id="mka-q" value="${pdfEsc(mamulKartAramaFiltre.q || '')}" placeholder="Genel arama (kod, ürün, ölçü…)" class="pro-input" style="padding:6px 8px;font-size:10px;grid-column:1/-1"
-                    oninput="mamulKartAramaFiltreAlanGuncelle('q',this.value)">
-                <input id="mka-kod" value="${pdfEsc(mamulKartAramaFiltre.kod || '')}" placeholder="MA kodu" class="pro-input" style="padding:6px 8px;font-size:10px;font-family:'DM Mono',monospace"
-                    oninput="mamulKartAramaFiltreAlanGuncelle('kod',this.value)">
-                <input id="mka-urun" value="${pdfEsc(mamulKartAramaFiltre.urun || '')}" placeholder="Ürün adı" class="pro-input" style="padding:6px 8px;font-size:10px"
-                    oninput="mamulKartAramaFiltreAlanGuncelle('urun',this.value)">
-                <input id="mka-firma" value="${pdfEsc(mamulKartAramaFiltre.firma || '')}" placeholder="Firma" class="pro-input" style="padding:6px 8px;font-size:10px"
-                    oninput="mamulKartAramaFiltreAlanGuncelle('firma',this.value)">
-            </div>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-                <button type="button" onclick="mamulKartAramaFiltreSifirla()" class="pill pill-gray" style="cursor:pointer;border:none;font-size:9px;padding:4px 10px">Temizle</button>
-            </div>
-        </div>` : '';
-    const ykb = yeniKartGirisBaslikMetin();
-    const stokKartAksiyonBaslik = (appMode === 'KART_LISTE') ? `
-        <div class="panel-box" style="padding:10px 12px;margin-bottom:10px;border:1px dashed var(--border)">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-                <div style="font-size:10px;color:var(--text2);font-weight:700">Yeni ${ykb.etiket} ekleme</div>
-                <button type="button" onclick="yeniKartGiris()" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px">${ykb.buton}</button>
-            </div>
-        </div>` : '';
+    const mamulListeBaslik = '';
+    const stokKartAksiyonBaslik = (appMode === 'KART_LISTE') ? stokKartListeOzetHtml() : '';
     const iplikKartListeBaslik = (appMode === 'KART_LISTE' && archiveTab === 'IPLIK') ? `
         <div class="panel-box" style="padding:10px 12px;margin-bottom:10px;border:1px solid var(--border)">
             <div style="font-size:9px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-bottom:8px">İplik stok kartları</div>
@@ -32702,7 +33398,37 @@ function loadData() {
             </div>
         </div>` : '';
 
-    let listeHtml = siparisListeBaslik + stokKartAksiyonBaslik + iplikKartListeBaslik + kumasListeBaslik + mamulListeBaslik + numuneListeBaslik + currentData.map((i, idx) => {
+    let stokKartGrupluHtml = '';
+    let mamulListeGrupluHtml = '';
+    if (appMode === 'KART_LISTE' && archiveTab === 'TUMU') {
+        const sLower = (document.getElementById('search')?.value || '').toLowerCase().trim();
+        const iplikRows = iplikKartlariListe().filter(i => stokKartAramaEslesir(i, sLower));
+        const lib = dataCache.kumas_kutuphanesi || [];
+        const kumasRows = lib.filter(i => stokKartGrupEslesir(i, 'KUMAS') && stokKartAramaEslesir(i, sLower))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const mamulRows = lib.filter(i => {
+            if (!stokKartGrupEslesir(i, 'MAMUL') || !stokKartAramaEslesir(i, sLower)) return false;
+            const birlesik = { ...mamulKartAramaFiltre, q: [sLower, mamulKartAramaFiltre.q].filter(Boolean).join(' ').trim() };
+            return mamulKartDetayliEslestir(i, birlesik);
+        }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        stokKartGrupluHtml = stokKartGrupluListeHtml(iplikRows, kumasRows, mamulRows);
+        currentData = window._stokKartTumuCurrentData || [];
+    }
+
+    let mamulListeToolbarHtml = '';
+    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') {
+        const mamulGruplar = mamulKartListeGruplariFiltrele(mamulKartListeGruplariOlustur(currentData));
+        mamulListeToolbarHtml = mamulKartListeToolbarHtml(mamulGruplar.length) + mamulStokListeTabloBaslikHtml();
+        mamulListeGrupluHtml = mamulGruplar.map(mamulStokListeGrupSatirHtml).join('');
+    }
+
+    let listeHtml = siparisListeBaslik + stokKartAksiyonBaslik + iplikKartListeBaslik + kumasListeBaslik + mamulListeBaslik + mamulListeToolbarHtml + numuneListeBaslik;
+    if (appMode === 'KART_LISTE' && archiveTab === 'TUMU') {
+        listeHtml += stokKartGrupluHtml;
+    } else if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') {
+        listeHtml += mamulListeGrupluHtml;
+    } else {
+    listeHtml += currentData.map((i, idx) => {
         if (table === 'siparisler') {
             const kritik = siparisTerminEnKritikDurum(i);
             const gecikti = kritik === 'gecikti';
@@ -32763,9 +33489,12 @@ function loadData() {
         if (appMode === 'KART_LISTE' && archiveTab === 'IPLIK') {
             return iplikKartListeSatirHtml(i, idx);
         }
+        if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') {
+            return mamulStokListeSatirHtml(i, idx);
+        }
         const _isIP  = i.desen_kodu?.startsWith('IP-') || !!i.iplik_no;
         const _isSM  = i.desen_kodu?.startsWith('SM');
-        const _isMA  = i.desen_kodu?.startsWith('MA') || i.desen_kodu?.startsWith('MM') || i.ana_grup === 'MAMUL';
+        const _isMA  = i.ana_grup === 'MAMUL' || mamulStokKoduFormatMi(i.desen_kodu);
         const _mamulKart = appMode === 'KART_LISTE' && archiveTab === 'MAMUL';
         const _mamulKod = String(i.desen_kodu || i.stok_kodu || '').trim();
         const _mamulBak = _mamulKart && _mamulKod ? depoMamulBakiyeHesapla(_mamulKod) : null;
@@ -32798,7 +33527,7 @@ function loadData() {
                 <div style="min-width:0">
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                         <span class="pill ${_pillCls}">${i.desen_kodu||i.stok_kodu||'KODSUZ'}</span>
-                        <span style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.urun_adi||i.iplik_no||i.desen_adi||'ADSİZ'}</span>
+                        <span style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(stokKartListeAdMetni(i))}</span>
                         ${_mamulKart ? `<span class="pill ${_mamulBak && _mamulBak.kg > 0 ? 'pill-green' : (_mamulBak && _mamulBak.kg <= 0 ? 'pill-red' : 'pill-gray')}" style="font-size:8px">Depo: ${_mamulBakTxt}</span>` : ''}
                         ${_mamulKart && _mamulNu ? `<span class="pill pill-cyan" style="font-size:8px">NU: ${pdfEsc(_mamulNu)}</span>` : ''}
                         ${_mamulKart && _mamulSm ? `<span class="pill pill-green" style="font-size:8px">SM: ${pdfEsc(_mamulSm)}</span>` : ''}
@@ -32823,10 +33552,23 @@ function loadData() {
             </div>` : `<button type="button" class="liste-gecmis-btn" onclick="event.stopPropagation(); showDetailOpenGecmis(${idx})" title="Kayıt geçmişi">Geçmiş</button>`}
         </div>`;
     }).join('');
+    }
     if (appMode === 'KART_LISTE' && archiveTab === 'KUMAS') listeHtml += '</div>';
     if (appMode === 'KART_LISTE' && archiveTab === 'IPLIK') listeHtml += '</div>';
+    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') listeHtml += mamulStokListeTabloKapatHtml();
     if (appMode === 'NUMUNE_URETIM') listeHtml += '</div>';
     list.innerHTML = listeHtml;
+    if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL' && window._mamulKartFiltreFocus?.id) {
+        const el = document.getElementById(window._mamulKartFiltreFocus.id);
+        if (el) {
+            el.focus();
+            const p = window._mamulKartFiltreFocus.pos;
+            if (typeof p === 'number') {
+                const safe = Math.max(0, Math.min(p, String(el.value || '').length));
+                el.setSelectionRange(safe, safe);
+            }
+        }
+    }
     if (window._siparisKolonFocus?.key && table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
         const map = {
             sno: 'slf-sno',
@@ -33009,6 +33751,25 @@ window.iplikCikisSecim = function(secim) {
 // WIZARD FONKSİYONLARI — İplik / Kumaş / Mamül
 // ============================================================
 function _wizardGo(prefix, fromStep, toStep) {
+    if (prefix === 'siparis' && toStep > fromStep) {
+        if (fromStep === 1) {
+            const firma = (document.getElementById('val-firma')?.value || '').trim();
+            const starihEl = document.getElementById('val-starih');
+            let starih = String(starihEl?.value || '').trim();
+            if (!starih && starihEl) {
+                starih = new Date().toISOString().split('T')[0];
+                starihEl.value = starih;
+            }
+            if (!firma) { erpToast('Müşteri adı zorunludur.', 'error'); return; }
+            if (!starih) { erpToast('Sipariş tarihi zorunludur.', 'error'); return; }
+            syncSiparisNoInput();
+        }
+        if (fromStep === 2) {
+            const kalemler = collectSiparisKalemlerFromForm().filter(k =>
+                (String(k.ad || k.kod || '').trim() !== '') && (parseFloat(k.miktar || 0) > 0));
+            if (!kalemler.length) { erpToast('En az 1 geçerli ürün kalemi girin (ürün adı/kodu + miktar).', 'error'); return; }
+        }
+    }
     const total = 3;
     document.getElementById(prefix + '-step-' + fromStep)?.classList.remove('active');
     document.getElementById(prefix + '-step-' + toStep)?.classList.add('active');
@@ -33022,7 +33783,22 @@ function _wizardGo(prefix, fromStep, toStep) {
         else if (s === toStep) { dot.className = 'step-dot active'; }
         else { dot.className = 'step-dot pending'; if (line) line.className = 'step-line'; }
     }
-    if (toStep === 3) _buildConfirmSummary(prefix);
+    if (toStep === 3) {
+        _buildConfirmSummary(prefix);
+        if (prefix === 'siparis') {
+            setTimeout(() => {
+                try {
+                    document.querySelector('.siparis-step-kaydet')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch (e) {}
+            }, 120);
+        }
+    }
+}
+function siparisWizardAktifAdim() {
+    for (let s = 1; s <= 3; s++) {
+        if (document.getElementById('siparis-step-' + s)?.classList.contains('active')) return s;
+    }
+    return 1;
 }
 function iplikWizardNext(s) { _wizardGo('iplik', s, s + 1); }
 function iplikWizardBack(s) { _wizardGo('iplik', s, s - 1); }
@@ -33286,6 +34062,7 @@ function siparisKalemleriKayittanOku(kayit) {
             kod: o.kod || nested.kod || '',
             grup: o.grup || '',
             ad: o.ad || o.urun_adi || o.urunAdi || o.name || nested.ad || nested.urun_adi || '',
+            desen: o.desen || o.desen_adi || nested.desen || nested.desen_adi || '',
             renk: o.renk || o.renk_adi || nested.renk || '',
             rkod: o.rkod || '',
             rkod1: o.rkod1 || '',
@@ -33370,6 +34147,7 @@ function collectSiparisKalemlerFromForm() {
         out.push({
             kod: kodEl?.value || '',
             grup: document.getElementById(`sk-grup-${j}`)?.value || '',
+            desen: document.getElementById(`sk-desen-${j}`)?.value || '',
             ad: adEl?.value || '',
             ebat: document.getElementById(`sk-ebat-${j}`)?.value || '',
             renk: document.getElementById(`sk-renk-${j}`)?.value || '',
@@ -34139,7 +34917,7 @@ function siparisListeSirala(data) {
 }
 
 window.syncArchiveTabStili = function() {
-    const tabColors = { IPLIK: 'var(--accent2)', KUMAS: 'var(--emerald-c)', MAMUL: 'var(--amber-c)' };
+    const tabColors = { TUMU: 'var(--accent)', IPLIK: 'var(--accent2)', KUMAS: 'var(--emerald-c)', MAMUL: 'var(--amber-c)' };
     document.querySelectorAll('.archive-tab-btn').forEach(btn => {
         btn.style.background = 'transparent';
         btn.style.color = 'var(--text3)';
@@ -34153,9 +34931,207 @@ window.syncArchiveTabStili = function() {
     }
 };
 
+function acKayitliStokKartlari() {
+    closeAllSubs();
+    const sub = document.getElementById('sub-kart');
+    if (sub) sub.classList.add('open');
+    const chev = document.getElementById('chev-kart');
+    if (chev) chev.style.transform = 'rotate(180deg)';
+    if (!['TUMU', 'IPLIK', 'KUMAS', 'MAMUL'].includes(archiveTab)) archiveTab = 'TUMU';
+    saveUiState({ archiveTab });
+    if (appMode !== 'KART_LISTE') setAppMode('KART_LISTE');
+    else {
+        syncArchiveTabStili();
+        if (typeof loadData === 'function') loadData();
+    }
+}
+
+function stokKartListeAdMetni(i, fallback) {
+    const desen = String(i?.desen_adi || '').trim();
+    const urun = String(i?.urun_adi || '').trim();
+    if (desen && urun) {
+        if (desen.toLocaleLowerCase('tr-TR') === urun.toLocaleLowerCase('tr-TR')) return desen;
+        return desen + ' · ' + urun;
+    }
+    return desen || urun || String(i?.iplik_no || '').trim() || (fallback ?? 'ADSİZ');
+}
+
+function stokKartGrupBul(i) {
+    if (stokKartGrupEslesir(i, 'IPLIK')) return 'IPLIK';
+    if (stokKartGrupEslesir(i, 'MAMUL')) return 'MAMUL';
+    return 'KUMAS';
+}
+
+function stokKartAramaEslesir(i, s) {
+    if (!s) return true;
+    const blob = [
+        i.desen_kodu, i.stok_kodu, stokKartListeAdMetni(i), i.kumas_cinsi,
+        i.iplik_no, i.marka, i.firma, i.renk, i.cins, i.lot_no
+    ].join(' ').toLowerCase();
+    return blob.includes(s);
+}
+
+function stokKartGrupEslesir(i, grup) {
+    const sKodu = String(i.stok_kodu || i.desen_kodu || '').trim().toUpperCase();
+    if (grup === 'IPLIK') {
+        const ipKodu = String(i.stok_kodu || '').trim().toUpperCase();
+        return ipKodu.startsWith('IP-') || !!i.iplik_no;
+    }
+    if (grup === 'KUMAS') {
+        const kodPrefix = sKodu.split('-')[0];
+        return (kodPrefix === 'SM' || kodPrefix === 'NU')
+            && i.ana_grup !== 'MAMUL'
+            && !urunKimligiNumunedenMi(i)
+            && kumasKartTipiOku(i) === kumasKartListeFiltre;
+    }
+    if (grup === 'MAMUL') return kumasKutuphanesiKartiMamulMu(i);
+    return false;
+}
+
+function stokKartListeSatirHtml(i, idx, grupHint, tableHint) {
+    const grup = grupHint || archiveTab;
+    if (grup === 'MAMUL') return mamulStokListeSatirHtml(i, idx);
+    const tbl = tableHint || (grup === 'IPLIK' ? 'iplik_stok' : 'kumas_kutuphanesi');
+    if (grup === 'KUMAS' && String(i.desen_kodu || '').toUpperCase().startsWith('SM')) {
+        return kumasKartListeSatirHtml(i, idx);
+    }
+    if (grup === 'IPLIK') return iplikKartListeSatirHtml(i, idx);
+    const _isIP = i.desen_kodu?.startsWith('IP-') || !!i.iplik_no;
+    const _isSM = i.desen_kodu?.startsWith('SM');
+    const _isMA = i.ana_grup === 'MAMUL' || mamulStokKoduFormatMi(i.desen_kodu);
+    const _mamulKart = grup === 'MAMUL';
+    const _mamulKod = String(i.desen_kodu || i.stok_kodu || '').trim();
+    const _mamulBak = _mamulKart && _mamulKod ? depoMamulBakiyeHesapla(_mamulKod) : null;
+    const _icon = _isIP ? '🧶' : _isSM ? '🏁' : _isMA ? '🧥' : '📦';
+    const _bClr = _isIP ? '#818cf8' : _isSM ? '#34d399' : _isMA ? '#fb923c' : '#94a3b8';
+    const _pillCls = _isIP ? 'pill-blue' : _isSM ? 'pill-green' : _isMA ? 'pill-amber' : 'pill-gray';
+    const _mamulBakTxt = _mamulBak ? ([
+        Math.abs(_mamulBak.kg) > 1e-6 ? _mamulBak.kg.toFixed(1) + ' kg' : null,
+        Math.abs(_mamulBak.mt) > 1e-6 ? _mamulBak.mt.toFixed(1) + ' mt' : null,
+        _mamulBak.adet ? _mamulBak.adet + ' ad' : null,
+    ].filter(Boolean).join(' · ') || '0') : '0';
+    const _mamulBakClr = _mamulBak && _mamulBak.kg > 0 ? 'var(--emerald-c)' : (_mamulBak && _mamulBak.kg < 0 ? 'var(--rose-c)' : 'var(--text3)');
+    const _kg = i.miktar_kg !== undefined ? Math.abs(i.miktar_kg || 0) : null;
+    const _neg = (i.miktar_kg || 0) < 0;
+    const _isArsiv = tbl === 'kumas_kutuphanesi';
+    return `<div class="record-item record-item--liste-gecmis" style="border-left-color:${_bClr}">
+        <div class="record-item-gecmis-hit" onclick="showDetail(${idx})">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div style="width:36px;height:36px;border-radius:9px;overflow:hidden;border:1px solid var(--border);flex-shrink:0;background:var(--surface2)">
+                ${i.fotograf ? `<img src="${i.fotograf}" style="width:100%;height:100%;object-fit:cover">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:16px">${_icon}</div>`}
+            </div>
+            <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span class="pill ${_pillCls}">${i.desen_kodu || i.stok_kodu || 'KODSUZ'}</span>
+                    ${_mamulKart && mamulVaryantNoBul(_mamulKod) ? `<span class="pill pill-cyan" style="font-size:8px">↗ ${pdfEsc(mamulAnaKodBul(_mamulKod))}</span>` : ''}
+                    ${_mamulKart && i.renk ? `<span class="pill pill-gray" style="font-size:8px">${pdfEsc(i.renk)}</span>` : ''}
+                    <span style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(stokKartListeAdMetni(i))}</span>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.firma || i.marka || '—'} · ${i.kumas_cinsi || i.cins || '—'}</div>
+            </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:12px">
+            ${_mamulKart && _mamulBak
+                ? `<div style="font-family:'Instrument Serif',serif;font-size:18px;color:${_mamulBakClr};line-height:1">${_mamulBakTxt}</div><div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">depo bakiye</div>`
+                : _isArsiv
+                ? `<span class="pill pill-gray">ARŞİV</span>`
+                : `<div style="font-family:'Instrument Serif',serif;font-size:20px;color:${_neg ? 'var(--rose-c)' : 'var(--text)'};line-height:1">${_kg !== null ? _kg.toLocaleString() : '—'}</div><div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">kg</div>`}
+        </div>
+        </div>
+        <button type="button" class="liste-gecmis-btn" onclick="event.stopPropagation(); showDetailOpenGecmis(${idx})" title="Kayıt geçmişi">Geçmiş</button>
+    </div>`;
+}
+
+function stokKartListeOzetHtml() {
+    if (appMode !== 'KART_LISTE') return '';
+    const lib = dataCache.kumas_kutuphanesi || [];
+    const iplik = iplikKartlariListe().length;
+    const kumas = lib.filter(i => stokKartGrupEslesir(i, 'KUMAS')).length;
+    const mamul = mamulKartListeGruplariOlustur(lib.filter(i => stokKartGrupEslesir(i, 'MAMUL'))).length;
+    const toplam = iplik + kumas + mamul;
+    const aktif = archiveTab === 'TUMU'
+        ? 'Tüm stok kartları'
+        : archiveTab === 'IPLIK'
+        ? 'İplik stok kartları'
+        : archiveTab === 'KUMAS'
+        ? 'Kumaş stok kartları'
+        : 'Mamül stok kartları';
+    return `<div class="stok-kart-toolbar">
+        <div class="stok-kart-toolbar__head">
+            <div>
+                <div class="stok-kart-toolbar__title">Kayıtlı stok kartları</div>
+                <div class="stok-kart-toolbar__sub">${aktif} · üst aramadan listeyi daraltabilirsiniz</div>
+            </div>
+            <button type="button" onclick="yeniKartGiris()" class="btn-pro btn-primary-pro" style="padding:7px 14px;font-size:10px">${yeniKartGirisBaslikMetin().buton}</button>
+        </div>
+        <div class="stok-kart-ozet-grid">
+            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__etiket">Toplam kart</div>
+                <div class="stok-kart-ozet-kart__deger">${toplam}</div>
+            </div>
+            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__etiket">İplik</div>
+                <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--iplik">${iplik}</div>
+            </div>
+            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__etiket">Kumaş</div>
+                <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--kumas">${kumas}</div>
+            </div>
+            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__etiket">Mamül ana kart</div>
+                <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--mamul">${mamul}</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function stokKartGrupluListeHtml(iplikRows, kumasRows, mamulRows) {
+    const bolumler = [
+        { id: 'IPLIK', baslik: '🧶 İplik Stok Kartları', renk: 'var(--accent2)', satirlar: iplikRows },
+        { id: 'KUMAS', baslik: '🏁 Kumaş Stok Kartları', renk: 'var(--emerald-c)', satirlar: kumasRows },
+        { id: 'MAMUL', baslik: '🧥 Mamül Stok Kartları', renk: 'var(--amber-c)', satirlar: mamulRows },
+    ];
+    let html = '';
+    let globalIdx = 0;
+    const merged = [];
+    bolumler.forEach(b => {
+        html += `<div class="stok-kart-grup-bolum panel-box" style="border-left-color:${b.renk}">
+            <div class="stok-kart-grup-bolum__head">
+                <div class="stok-kart-grup-bolum__title" style="color:${b.renk}">${b.baslik}</div>
+                <div class="stok-kart-grup-bolum__actions">
+                    <span class="pill pill-gray" style="font-size:9px">${b.satirlar.length} kart</span>
+                    <button type="button" onclick="switchArchiveTab('${b.id}')" class="pill pill-gray" style="cursor:pointer;border:none;font-size:9px">Yalnız bu grup →</button>
+                </div>
+            </div>`;
+        if (!b.satirlar.length) {
+            html += `<div style="font-size:10px;color:var(--text3);padding:6px 4px">Bu grupta kayıtlı kart yok.</div>`;
+        } else if (b.id === 'MAMUL') {
+            html += mamulStokListeTabloBaslikHtml();
+            mamulKartListeGruplariOlustur(b.satirlar).forEach(grup => {
+                merged.push(grup.parent.record);
+                grup.children.forEach(ch => merged.push(ch.record));
+                html += mamulStokListeGrupSatirHtml(grup);
+                globalIdx += 1 + grup.children.length;
+            });
+            html += mamulStokListeTabloKapatHtml();
+        } else {
+            html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+            b.satirlar.forEach(i => {
+                merged.push(i);
+                html += stokKartListeSatirHtml(i, globalIdx, b.id);
+                globalIdx += 1;
+            });
+            html += `</div>`;
+        }
+        html += `</div>`;
+    });
+    window._stokKartTumuCurrentData = merged;
+    return html;
+}
+
 window.switchArchiveTab = function(tab) {
     const hedef = String(tab || '').toUpperCase();
-    if (!['IPLIK', 'KUMAS', 'MAMUL'].includes(hedef)) return;
+    if (!['TUMU', 'IPLIK', 'KUMAS', 'MAMUL'].includes(hedef)) return;
     archiveTab = hedef;
     saveUiState({ archiveTab });
     if (appMode !== 'KART_LISTE') {
@@ -34459,7 +35435,7 @@ async function handleSave() {
             if (!starihVal) { erpToast('Sipariş tarihi zorunludur.', 'error'); return; }
             if (kalemlerValid.length === 0) {
                 erpToast('En az 1 geçerli ürün kalemi girin (2. adım: Ürün Kalemleri). Fotoğraf zorunlu değildir.', 'error');
-                _wizardGo('siparis', 1, 2);
+                _wizardGo('siparis', siparisWizardAktifAdim(), 2);
                 return;
             }
         } else if (kumasFormGrubuMu(depoHareketFormGrubu())) {
@@ -35864,7 +36840,10 @@ function showDetail(idx) {
     if (me) me.style.display = '';
     if (md) md.style.display = '';
     if (mp) mp.style.display = '';
-    if (mex) mex.style.display = isSiparisListeDetay ? '' : 'none';
+    if (mex) {
+        mex.style.display = isSiparisListeDetay ? '' : 'none';
+        mex.title = 'SİPARİŞ FORMU Excel indir';
+    }
 
     if (isSiparisListeDetay) {
         body.className = 'modal-body-scroll modal-body--siparis';
@@ -35907,7 +36886,7 @@ function showDetail(idx) {
         </div>`;
     }
 
-    if (appMode === 'KART_LISTE' && archiveTab === 'IPLIK' && i.stok_kodu) {
+    if (appMode === 'KART_LISTE' && (archiveTab === 'IPLIK' || (archiveTab === 'TUMU' && stokKartGrupBul(i) === 'IPLIK')) && i.stok_kodu) {
         const kartLots = iplikKartLotlariBul(i.stok_kodu);
         if (kartLots.length) {
             html += `<div style="grid-column:1/-1;margin-bottom:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2)">
@@ -35952,19 +36931,20 @@ function showDetail(idx) {
         const skEsc = erpAttr(i.stok_kodu || i.desen_kodu || '');
         const kod = String(i.stok_kodu || i.desen_kodu || '').trim();
         const btnSt = 'padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:11px;font-weight:700';
-        if (archiveTab === 'IPLIK' && kod) {
+        const kartGrup = archiveTab === 'TUMU' ? stokKartGrupBul(i) : archiveTab;
+        if (kartGrup === 'IPLIK' && kod) {
             html += `<div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
                 <button type="button" onclick="hideDetailModal();iplikStogaGitLotSec('${skEsc}')" style="${btnSt};background:rgba(52,211,153,0.15);color:var(--emerald-c)">📥 İplik depo girişi</button>
                 <button type="button" onclick="hideDetailModal();iplikStogaGitLotSec('${skEsc}')" style="${btnSt};background:rgba(251,113,133,0.12);color:var(--rose-c)">📤 İplik sevkiyat</button>
             </div>`;
-        } else if (archiveTab === 'KUMAS' && i.desen_kodu) {
+        } else if (kartGrup === 'KUMAS' && i.desen_kodu) {
             const kg = kumasKartTipiOku(i) === 'MAMUL' ? 'MAMUL_KUMAS' : 'HAM_KUMAS';
             const lbl = kg === 'MAMUL_KUMAS' ? 'Mamül kumaş' : 'Ham kumaş';
             html += `<div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
                 <button type="button" onclick="hideDetailModal();depoHizliHareketBaslat('${kg}','GİRİŞ','${skEsc}')" style="${btnSt};background:rgba(52,211,153,0.15);color:var(--emerald-c)">📥 ${lbl} giriş</button>
                 <button type="button" onclick="hideDetailModal();depoHizliHareketBaslat('${kg}','ÇIKIŞ','${skEsc}')" style="${btnSt};background:rgba(251,113,133,0.12);color:var(--rose-c)">📤 ${lbl} sevkiyat</button>
             </div>`;
-        } else if (archiveTab === 'MAMUL' && i.desen_kodu) {
+        } else if (kartGrup === 'MAMUL' && i.desen_kodu) {
             html += `<div style="grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
                 <button type="button" onclick="hideDetailModal();depoHizliHareketBaslat('MAMUL_DEPO','GİRİŞ','${skEsc}')" style="${btnSt};background:rgba(52,211,153,0.15);color:var(--emerald-c)">📥 Mamül depo girişi</button>
                 <button type="button" onclick="hideDetailModal();depoHizliHareketBaslat('MAMUL_DEPO','ÇIKIŞ','${skEsc}')" style="${btnSt};background:rgba(251,113,133,0.12);color:var(--rose-c)">📤 Mamül sevkiyat</button>
@@ -37844,6 +38824,440 @@ function kumasUrunGrubuNorm(v) {
     if (['MÜSLİN', 'PIKE', 'ÇENDERE', 'GIDA', 'DİĞER'].includes(String(v || '').trim().toUpperCase())) return String(v || '').trim().toUpperCase();
     return 'DİĞER';
 }
+const MAMUL_DOKUMA_TALIMAT_ALANLARI = [
+    ['musteri', 'MÜŞTERİ'],
+    ['tezgah_no', 'TEZGAH NO'],
+    ['kumas_cinsi', 'KUMAŞ CİNSİ'],
+    ['istenen_mamul_ebat', 'İSTENEN MAMÜL EBAT'],
+    ['tezgah_desen_no', 'TEZGAH DESEN NO'],
+    ['cozgu_iplik_no', 'ÇÖZGÜ İPLİK NO'],
+    ['atki_iplik_no', 'ATKI İPLİK NO'],
+    ['cozgu_iplik_markasi', 'ÇÖZGÜ İPLİK MARKASI'],
+    ['atki_iplik_markasi', 'ATKI İPLİK MARKASI'],
+    ['tarak_no', 'TARAK NO'],
+    ['tarak_eni', 'TARAK ENİ'],
+    ['cozgu_tel_sayisi', 'ÇÖZGÜ TEL SAYISI'],
+    ['cozgu_sikligi', 'ÇÖZGÜ SIKLIĞI'],
+    ['atki_sikligi', 'ATKI SIKLIĞI'],
+    ['toplam_atki_sayisi', 'TOPLAM ATKI SAYISI'],
+    ['sacak_atki_sayisi', 'SAÇAK ATKI SAYISI'],
+    ['desen_adi', 'DESEN ADI'],
+    ['olculen_ham_ebat', 'ÖLÇÜLEN HAM EBAT'],
+    ['olculen_mamul_ebat', 'ÖLÇÜLEN MAMÜL EBAT'],
+    ['ham_gram_mtul', 'HAM GRAM/MTÜL'],
+    ['ham_gram_m2', 'HAM GRAM/M2'],
+    ['mamul_gram_mtul', 'MAMÜL GRAM/MTÜL'],
+    ['mamul_gram_m2', 'MAMÜL GRAM/M2'],
+    ['tahar_raporu', 'TAHAR RAPORU'],
+];
+
+function stokKartDokumaAlanlariOku(i) {
+    const meta = mamulEkAlanMetaDecode(i?.notlar || '');
+    const varyantlar = Array.isArray(meta.varyantlar) ? meta.varyantlar : [];
+    const renk = String(i?.renk || '').trim() || mamulVaryantRenkEtiket({ renk_etiket: i?.renk, atki: [] });
+    const kod = String(i?.desen_kodu || i?.stok_kodu || '').trim();
+    const bak = kod ? depoMamulBakiyeHesapla(kod) : null;
+    const bakTxt = bak ? ([
+        Math.abs(bak.kg) > 1e-6 ? bak.kg.toFixed(1) + ' kg' : null,
+        Math.abs(bak.mt) > 1e-6 ? bak.mt.toFixed(1) + ' mt' : null,
+        bak.adet ? bak.adet + ' ad' : null,
+    ].filter(Boolean).join(' · ') || '0') : '—';
+    return {
+        stok_kodu: kod,
+        tarih: i?.created_at ? new Date(i.created_at).toLocaleDateString('tr-TR') : '',
+        musteri: String(i?.firma || '').trim(),
+        tezgah_no: String(meta.tezgah_no || numuneNotTagOku(i?.notlar, 'TEZGAH_NO') || '').trim(),
+        kumas_cinsi: String(i?.kumas_cinsi || '').trim(),
+        istenen_mamul_ebat: String(meta.istenen_mamul_ebat || '').trim(),
+        tezgah_desen_no: String(meta.tezgah_desen_no || '').trim(),
+        cozgu_iplik_no: String(meta.cozgu_iplik_no || i?.cozgu_no || '').trim(),
+        atki_iplik_no: String(meta.atki_iplik_no || '').trim(),
+        cozgu_iplik_markasi: String(meta.cozgu_iplik_markasi || i?.cozgu_cinsi || '').trim(),
+        atki_iplik_markasi: String(meta.atki_iplik_markasi || '').trim(),
+        tarak_no: String(i?.tarak_no || '').trim(),
+        tarak_eni: String(i?.tarak_eni || '').trim(),
+        cozgu_tel_sayisi: String(meta.cozgu_tel_sayisi || '').trim(),
+        cozgu_sikligi: String(meta.cozgu_sikligi || '').trim(),
+        atki_sikligi: String(i?.atki_sikligi || '').trim(),
+        toplam_atki_sayisi: String(meta.toplam_atki_sayisi || '').trim(),
+        sacak_atki_sayisi: String(meta.sacak_atki_sayisi || '').trim(),
+        desen_adi: String(i?.desen_adi || '').trim(),
+        desen_urun: stokKartListeAdMetni(i, '—'),
+        olculen_ham_ebat: String(meta.olculen_ham_ebat || '').trim(),
+        olculen_mamul_ebat: String(meta.olculen_mamul_ebat || '').trim(),
+        ham_gram_mtul: String(meta.ham_gram_mtul ?? i?.ham_gramaj ?? '').trim(),
+        ham_gram_m2: String(meta.ham_gram_m2 ?? i?.ham_gsm ?? '').trim(),
+        mamul_gram_mtul: String(meta.mamul_gram_mtul ?? i?.mamul_gramaj ?? '').trim(),
+        mamul_gram_m2: String(meta.mamul_gram_m2 ?? i?.mamul_gsm ?? '').trim(),
+        tahar_raporu: String(meta.tahar_raporu || '').trim(),
+        renk_varyant: renk || (varyantlar.length ? `${varyantlar.length} varyant` : ''),
+        varyant_ozet: varyantlar.map((v, vi) => mamulVaryantRenkEtiket(v) || `V${vi + 1}`).filter(Boolean).join(' · '),
+        depo_bakiye: bakTxt
+    };
+}
+
+function mamulDokumaTalimatDetayPanelHtml(record) {
+    const d = stokKartDokumaAlanlariOku(record);
+    const hucreler = MAMUL_DOKUMA_TALIMAT_ALANLARI.map(([key, label]) => {
+        const v = String(d[key] ?? '').trim();
+        const bosCls = v ? '' : ' mamul-dokuma-detay__value--bos';
+        return `<div class="mamul-dokuma-detay__item">
+            <div class="mamul-dokuma-detay__label">${label}</div>
+            <div class="mamul-dokuma-detay__value${bosCls}" title="${pdfEsc(v || '—')}">${pdfEsc(v || '—')}</div>
+        </div>`;
+    }).join('');
+    return `<div class="mamul-dokuma-detay">
+        <div class="mamul-dokuma-detay__baslik">Dokuma Talimat Kartı</div>
+        <div class="mamul-dokuma-detay__grid">${hucreler}</div>
+    </div>`;
+}
+
+function mamulStokVaryantBaslikHtml() {
+    return `<div class="mamul-varyant-baslik">Renk Varyantları</div>
+        <div class="mamul-varyant-grid mamul-varyant-grid--head">
+            <span>Stok kodu</span><span>Renk</span><span style="text-align:right">Stok</span><span></span>
+        </div>`;
+}
+
+function mamulVaryantDoluMu(v) {
+    if (!v) return false;
+    if (String(v.renk_etiket || '').trim()) return true;
+    return (Array.isArray(v.atki) ? v.atki : []).some(a =>
+        String(a?.iplik_no || '').trim() || String(a?.renk || '').trim() || String(a?.atki_sayisi || '').trim()
+    );
+}
+
+function mamulVaryantRenkEtiket(v) {
+    if (!v) return '';
+    if (String(v.renk_etiket || '').trim()) return String(v.renk_etiket).trim().toUpperCase();
+    const renkler = (Array.isArray(v.atki) ? v.atki : [])
+        .map(a => String(a?.renk || '').trim())
+        .filter(Boolean);
+    return renkler.length ? renkler[renkler.length - 1].toUpperCase() : '';
+}
+
+function mamulAtkiRenkleriParse(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return [];
+    return s.split(' | ').map(part => {
+        const p = String(part || '').trim();
+        const m = p.match(/^A(\d+)\s*:\s*(.+?)\s*\/\s*(.+?)\s*\/\s*(.+)$/i);
+        if (m) {
+            const iplik = m[2].trim();
+            const renk = m[3].trim();
+            const sayi = m[4].trim();
+            if (iplik === '-' && renk === '-' && sayi === '-') return null;
+            return {
+                iplik_no: iplik === '-' ? '' : iplik,
+                renk: renk === '-' ? '' : renk,
+                atki_sayisi: sayi === '-' ? '' : sayi
+            };
+        }
+        const pr = parseAtkiRenkSatiri(p.replace(/^A\d+\s*:\s*/i, ''));
+        if (!pr.no && !pr.cins && !pr.renk && !pr.sayi) return null;
+        return {
+            iplik_no: pr.no || pr.cins || '',
+            renk: pr.renk || '',
+            atki_sayisi: pr.sayi || ''
+        };
+    }).filter(Boolean);
+}
+
+function mamulAtkiSatirlariPad(atki) {
+    const arr = (Array.isArray(atki) ? atki : []).slice(0, 3).map(a => ({
+        iplik_no: String(a?.iplik_no || '').trim(),
+        renk: String(a?.renk || '').trim(),
+        atki_sayisi: String(a?.atki_sayisi || '').trim()
+    }));
+    while (arr.length < 3) arr.push({ iplik_no: '', renk: '', atki_sayisi: '' });
+    return arr;
+}
+
+function mamulListeVaryantVerisiOlustur(grup) {
+    const parent = grup?.parent?.record;
+    const meta = typeof mamulEkAlanMetaDecode === 'function' ? mamulEkAlanMetaDecode(parent?.notlar || '') : {};
+    const metaVaryantlar = (Array.isArray(meta.varyantlar) ? meta.varyantlar : []).filter(mamulVaryantDoluMu);
+    const children = Array.isArray(grup?.children) ? grup.children : [];
+
+    if (children.length) {
+        return children.map((ch, i) => {
+            const metaV = metaVaryantlar[ch.varyantNo - 1] || metaVaryantlar[i] || {};
+            const childRec = ch.record || {};
+            let atki = Array.isArray(metaV.atki) ? metaV.atki : [];
+            if (!atki.some(a => a?.iplik_no || a?.renk || a?.atki_sayisi) && childRec.atki_renkleri) {
+                atki = mamulAtkiRenkleriParse(childRec.atki_renkleri);
+            }
+            const renkEtiket = mamulVaryantRenkEtiket({ ...metaV, atki })
+                || String(childRec.renk || '').trim().toUpperCase();
+            const sku = String(childRec.desen_kodu || `${grup.anaKod}-${ch.varyantNo || i + 1}`).trim();
+            return {
+                no: ch.varyantNo || (i + 1),
+                sku,
+                renk_etiket: renkEtiket,
+                atki: mamulAtkiSatirlariPad(atki),
+                stok: stokKartDokumaAlanlariOku(childRec).depo_bakiye,
+                idx: ch.idx
+            };
+        });
+    }
+
+    if (metaVaryantlar.length) {
+        return metaVaryantlar.map((v, i) => ({
+            no: i + 1,
+            sku: `${grup.anaKod}-${i + 1}`,
+            renk_etiket: mamulVaryantRenkEtiket(v),
+            atki: mamulAtkiSatirlariPad(v.atki),
+            stok: '—',
+            idx: grup.parent?.idx ?? 0
+        }));
+    }
+
+    const d = stokKartDokumaAlanlariOku(parent);
+    if (d.renk_varyant) {
+        return [{
+            no: 1,
+            sku: grup.anaKod,
+            renk_etiket: d.renk_varyant,
+            atki: mamulAtkiSatirlariPad([]),
+            stok: d.depo_bakiye,
+            idx: grup.parent?.idx ?? 0
+        }];
+    }
+    return [];
+}
+
+function mamulAtkiExcelHucre(deger) {
+    const s = String(deger ?? '').trim();
+    return s ? pdfEsc(s) : '<span class="mamul-atki-excel-tablo__bos">—</span>';
+}
+
+function mamulAtkiVaryantExcelListeHtml(grup) {
+    const varyantlar = mamulListeVaryantVerisiOlustur(grup);
+    if (!varyantlar.length) return '';
+
+    const varyantBaslik = varyantlar.map(v => {
+        const renk = v.renk_etiket ? ` — ${pdfEsc(v.renk_etiket)}` : '';
+        return `<th colspan="3" class="mamul-atki-excel-tablo__varyant-baslik">
+            ${v.no}. VARYANT${renk}
+            <span class="mamul-atki-excel-tablo__sku">${pdfEsc(v.sku)}</span>
+        </th>`;
+    }).join('');
+
+    const altBaslik = varyantlar.map(() =>
+        `<th>İPLİK NO</th><th>RENK NO — RENK</th><th>ATKI SAYISI</th>`
+    ).join('');
+
+    const atkiSatirlari = [1, 2, 3].map(ai => {
+        const hucreler = varyantlar.map(v => {
+            const a = v.atki[ai - 1] || {};
+            return `<td>${mamulAtkiExcelHucre(a.iplik_no)}</td>
+                <td>${mamulAtkiExcelHucre(a.renk)}</td>
+                <td>${mamulAtkiExcelHucre(a.atki_sayisi)}</td>`;
+        }).join('');
+        return `<tr><td>ATKI ${ai}</td>${hucreler}</tr>`;
+    }).join('');
+
+    const stokSatir = varyantlar.map(v =>
+        `<td colspan="3" class="mamul-atki-excel-tablo__stok mamul-atki-excel-tablo__click" onclick="showDetail(${v.idx})" title="Detay">${pdfEsc(v.stok)}</td>`
+    ).join('');
+
+    return `<div class="mamul-atki-excel-wrap">
+        <div class="mamul-varyant-baslik">Atkı Varyantları</div>
+        <table class="mamul-atki-excel-tablo">
+            <thead>
+                <tr><th>Atkı</th>${varyantBaslik}</tr>
+                <tr><th></th>${altBaslik}</tr>
+            </thead>
+            <tbody>
+                ${atkiSatirlari}
+                <tr><td>STOK</td>${stokSatir}</tr>
+            </tbody>
+        </table>
+    </div>`;
+}
+
+function mamulUretimKartiGrupBul(kayit) {
+    const kod = String(kayit?.desen_kodu || kayit?.stok_kodu || '').trim().toUpperCase();
+    const anaKod = mamulAnaKodBul(kod) || kod;
+    if (!anaKod) return null;
+    const lib = dataCache.kumas_kutuphanesi || [];
+    const records = lib.filter(k => {
+        const k2 = String(k.desen_kodu || k.stok_kodu || '').trim().toUpperCase();
+        return k2 === anaKod || mamulAnaKodBul(k2) === anaKod;
+    });
+    if (!records.length && kayit) records.push(kayit);
+    return mamulKartListeGruplariOlustur(records).find(g => g.anaKod === anaKod) || null;
+}
+
+function mamulUretimKartiVeriOlustur(kayit) {
+    const grup = mamulUretimKartiGrupBul(kayit);
+    const parent = grup?.parent?.record || kayit || {};
+    const anaKod = grup?.anaKod || mamulAnaKodBul(parent?.desen_kodu) || String(parent?.desen_kodu || '').trim();
+    const d = stokKartDokumaAlanlariOku(parent);
+    const meta = typeof mamulEkAlanMetaDecode === 'function' ? mamulEkAlanMetaDecode(parent?.notlar || '') : {};
+    const varyantlar = grup ? mamulListeVaryantVerisiOlustur(grup) : [];
+    return {
+        stok_kodu: anaKod,
+        tarih: d.tarih || (parent?.created_at ? new Date(parent.created_at).toLocaleDateString('tr-TR') : ''),
+        urun_adi: String(parent?.urun_adi || '').trim(),
+        musteri: d.musteri || '',
+        kumas_cinsi: d.kumas_cinsi || '',
+        desen_adi: d.desen_adi || '',
+        istenen_mamul_ebat: d.istenen_mamul_ebat || '',
+        tezgah_no: d.tezgah_no || '',
+        takip_no: String(meta.takip_no || '').trim(),
+        renk_ozet: varyantlar.length ? `${varyantlar.length} renk varyantı` : (d.renk_varyant || ''),
+        aciklama: String(parent?.notlar || '').trim(),
+        alanlar: MAMUL_DOKUMA_TALIMAT_ALANLARI.map(([key, label]) => [label, String(d[key] ?? '').trim()]),
+        varyantlar
+    };
+}
+
+function exportAktifModalExcel() {
+    exportAktifSiparisFormuExcel();
+}
+
+function mamulUretimKartiAksiyonBarHtml(anaKod) {
+    const kod = erpAttr(anaKod);
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:rgba(251,191,36,0.04)">
+        <button type="button" onclick="event.stopPropagation();editMamulKartFromListe('${kod}')" class="pill pill-blue" style="cursor:pointer;border:none;font-size:9px;padding:5px 12px">✏️ Kartı Düzenle</button>
+    </div>`;
+}
+
+function mamulStokListeHucre(deger, cls) {
+    const v = String(deger ?? '').trim() || '—';
+    return `<span class="mamul-stok-liste-grid__cell ${cls || ''}" title="${pdfEsc(v)}">${pdfEsc(v)}</span>`;
+}
+
+function mamulStokBakiyeToplamText(kodlar) {
+    const toplam = { kg: 0, mt: 0, adet: 0 };
+    (Array.isArray(kodlar) ? kodlar : []).forEach(kod => {
+        const bak = depoMamulBakiyeHesapla(kod);
+        if (!bak) return;
+        toplam.kg += Number(bak.kg || 0);
+        toplam.mt += Number(bak.mt || 0);
+        toplam.adet += Number(bak.adet || 0);
+    });
+    return [
+        Math.abs(toplam.kg) > 1e-6 ? toplam.kg.toFixed(1) + ' kg' : null,
+        Math.abs(toplam.mt) > 1e-6 ? toplam.mt.toFixed(1) + ' mt' : null,
+        toplam.adet ? toplam.adet + ' ad' : null,
+    ].filter(Boolean).join(' · ') || '0';
+}
+
+function mamulKartListeGruplariOlustur(records) {
+    const map = new Map();
+    (Array.isArray(records) ? records : []).forEach((record, idx) => {
+        const kod = String(record?.desen_kodu || record?.stok_kodu || '').trim().toUpperCase();
+        if (!kod) return;
+        const anaKod = mamulAnaKodBul(kod);
+        if (!anaKod) return;
+        if (!map.has(anaKod)) map.set(anaKod, { anaKod, parent: null, children: [] });
+        const grup = map.get(anaKod);
+        const varyantNo = mamulVaryantNoBul(kod);
+        if (varyantNo > 0) grup.children.push({ record, idx, varyantNo });
+        else grup.parent = { record, idx };
+    });
+    const gruplar = Array.from(map.values()).map(grup => {
+        grup.children.sort((a, b) => a.varyantNo - b.varyantNo);
+        if (!grup.parent && grup.children.length) {
+            const baz = grup.children[0];
+            grup.parent = {
+                record: { ...baz.record, desen_kodu: grup.anaKod, renk: '', atki_renkleri: '' },
+                idx: baz.idx,
+                synthetic: true
+            };
+        }
+        return grup;
+    }).filter(g => g.parent);
+    gruplar.sort((a, b) => {
+        const ta = new Date(a.parent.record?.created_at || 0).getTime();
+        const tb = new Date(b.parent.record?.created_at || 0).getTime();
+        return tb - ta;
+    });
+    return gruplar;
+}
+
+function mamulStokListeTabloBaslikHtml() {
+    return `<div class="mamul-stok-liste-wrap">
+        <div class="mamul-stok-liste-grid mamul-stok-liste-grid--head">
+            <span></span><span>Stok kodu</span><span>Tarih</span><span>Müşteri</span><span>Kumaş cinsi</span>
+            <span>Desen adı</span><span>İstenen ebat</span><span>Mamül G/M²</span><span>Renk</span>
+            <span style="text-align:right">Stok</span><span></span>
+        </div>`;
+}
+
+function mamulStokListeTabloKapatHtml() {
+    return `</div>`;
+}
+
+window._mamulKartExpanded = window._mamulKartExpanded || new Set();
+
+function mamulKartListeToggle(anaKod, ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    const ana = String(anaKod || '').trim().toUpperCase();
+    if (!ana) return;
+    if (window._mamulKartExpanded.has(ana)) window._mamulKartExpanded.delete(ana);
+    else window._mamulKartExpanded.add(ana);
+    if (typeof loadData === 'function') loadData();
+}
+
+function mamulStokVaryantSatirHtml(item) {
+    const d = stokKartDokumaAlanlariOku(item.record);
+    const stokKod = String(item.record?.desen_kodu || d.stok_kodu || '').trim();
+    return `<div class="mamul-varyant-grid mamul-varyant-grid--row" onclick="showDetail(${item.idx})">
+        <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--kod">${pdfEsc(stokKod)}</span>
+        <span class="mamul-stok-liste-grid__cell">${pdfEsc(d.renk_varyant || ('Varyant ' + item.varyantNo))}</span>
+        <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--stok">${pdfEsc(d.depo_bakiye)}</span>
+        ${stokKartListeAksiyonHtml(item.idx)}
+    </div>`;
+}
+
+function mamulStokListeGrupSatirHtml(grup) {
+    const parent = grup.parent?.record;
+    const idx = grup.parent?.idx ?? 0;
+    const d = stokKartDokumaAlanlariOku(parent);
+    const expanded = window._mamulKartExpanded.has(grup.anaKod);
+    const hasChildren = grup.children.length > 0;
+    const toplamStok = mamulStokBakiyeToplamText((hasChildren ? grup.children.map(x => x.record?.desen_kodu) : [grup.anaKod]).filter(Boolean));
+    const renkOzet = hasChildren ? `${grup.children.length} renk varyantı` : (d.renk_varyant || '—');
+    const row = `<div class="mamul-stok-liste-grid mamul-stok-liste-grid--row">
+        <button type="button" class="mamul-stok-grid__expand" onclick="mamulKartListeToggle('${erpAttr(grup.anaKod)}', event)" title="Detay ve renk varyantlarını aç/kapat">${expanded ? '▼' : '▶'}</button>
+        <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--kod" onclick="mamulKartListeToggle('${erpAttr(grup.anaKod)}')" style="cursor:pointer">${pdfEsc(grup.anaKod)}</span>
+        ${mamulStokListeHucre(d.tarih)}
+        ${mamulStokListeHucre(d.musteri)}
+        ${mamulStokListeHucre(d.kumas_cinsi)}
+        ${mamulStokListeHucre(d.desen_adi, 'mamul-stok-liste-grid__cell--ad')}
+        ${mamulStokListeHucre(d.istenen_mamul_ebat)}
+        ${mamulStokListeHucre(d.mamul_gram_m2)}
+        ${mamulStokListeHucre(renkOzet)}
+        ${mamulStokListeHucre(toplamStok, 'mamul-stok-liste-grid__cell--stok')}
+        ${stokKartListeAksiyonHtml(idx, { anaKod: grup.anaKod })}
+    </div>`;
+    if (!expanded) return row;
+    const detay = mamulDokumaTalimatDetayPanelHtml(parent);
+    const aksiyon = mamulUretimKartiAksiyonBarHtml(grup.anaKod);
+    const varyantlar = mamulAtkiVaryantExcelListeHtml(grup);
+    return row + `<div class="mamul-stok-alt-panel">${aksiyon}${detay}${varyantlar}</div>`;
+}
+
+function mamulStokListeSatirHtml(i, idx) {
+    const d = stokKartDokumaAlanlariOku(i);
+    return `<div class="mamul-stok-liste-grid mamul-stok-liste-grid--row" onclick="showDetail(${idx})">
+        <span></span>
+        ${mamulStokListeHucre(d.stok_kodu, 'mamul-stok-liste-grid__cell--kod')}
+        ${mamulStokListeHucre(d.tarih)}
+        ${mamulStokListeHucre(d.musteri)}
+        ${mamulStokListeHucre(d.kumas_cinsi)}
+        ${mamulStokListeHucre(d.desen_adi, 'mamul-stok-liste-grid__cell--ad')}
+        ${mamulStokListeHucre(d.istenen_mamul_ebat)}
+        ${mamulStokListeHucre(d.mamul_gram_m2)}
+        ${mamulStokListeHucre(d.renk_varyant || d.varyant_ozet)}
+        ${mamulStokListeHucre(d.depo_bakiye, 'mamul-stok-liste-grid__cell--stok')}
+        ${stokKartListeAksiyonHtml(idx)}
+    </div>`;
+}
+
 function kumasKartListeHucre(deger, cls) {
     const v = String(deger ?? '').trim() || '—';
     return `<span class="kumas-kart-liste-grid__cell ${cls || ''}" title="${pdfEsc(v)}">${pdfEsc(v)}</span>`;
@@ -37851,7 +39265,7 @@ function kumasKartListeHucre(deger, cls) {
 function kumasKartListeTabloBaslikHtml() {
     return `<div class="kumas-kart-liste-wrap">
         <div class="kumas-kart-liste-grid kumas-kart-liste-grid--head">
-            <span>Stok kodu</span><span>Desen</span><span>Müşteri</span><span>Cinsi</span>
+            <span>Stok kodu</span><span>Desen / Ürün</span><span>Müşteri</span><span>Cinsi</span>
             <span>T.eni</span><span>Tarak</span><span>Atkı sık.</span><span>Çözgü</span><span>Atkı</span>
             <span>Ölçü</span><span>Durum</span><span>Tarih</span><span></span>
         </div>`;
@@ -37873,7 +39287,7 @@ function kumasKartListeAtkiIplikOzet(kayit) {
     }).filter(Boolean).join(' · ');
 }
 function kumasKartListeSatirHtml(i, idx) {
-    const ad = i.desen_adi || i.urun_adi || '—';
+    const ad = stokKartListeAdMetni(i, '—');
     const cozgu = kumasKartListeCozguOzet(i) || '—';
     const atki = kumasKartListeAtkiIplikOzet(i) || '—';
     const cins = kumasKartKumasCinsiOku(i) || i.kumas_cinsi || '—';
@@ -37923,10 +39337,7 @@ function kumasKartTipiFormGuncelle() {
 function kumasKutuphanesiKartiMamulMu(k) {
     if (!k) return false;
     if (String(k.ana_grup || '').toUpperCase() === 'MAMUL') return true;
-    const dc = String(k.desen_kodu || '').trim().toUpperCase();
-    if (!dc) return false;
-    const pref = dc.split(/[-\s]/)[0];
-    return pref === 'MA' || pref === 'MM';
+    return mamulStokKoduFormatMi(k.desen_kodu);
 }
 
 /** kumas_kutuphanesi kartı kumaş depo aramasında listelensin mi (mamül / numune hariç) */
@@ -38363,9 +39774,14 @@ function siparisFormuKalemGecerli(k) {
 /** Şablonda B=sıra no (1..30), C:F birleşik ürün alanı; Genel Durum / No.N → C,G,H,I */
 function siparisFormuKalemUrunMetni(k) {
     const kod = String(k.kod || '').trim();
+    const desen = String(k.desen || '').trim();
     const ad = String(k.ad || '').trim();
-    if (kod && ad && kod !== ad) return `${kod} — ${ad}`;
-    return kod || ad || '';
+    const parcalar = [];
+    if (kod) parcalar.push(kod);
+    if (desen && desen !== kod && desen !== ad) parcalar.push(desen);
+    if (ad && ad !== kod) parcalar.push(ad);
+    if (parcalar.length >= 2) return parcalar.join(' — ');
+    return parcalar[0] || kod || ad || desen || '';
 }
 
 function siparisFormuKalemSatirOku(ws, row) {
@@ -38581,6 +39997,7 @@ function siparisFormuVeriFromKayit(i) {
     kalemler = (kalemler || []).map(k => ({
         kod: k.kod || '',
         grup: k.grup || '',
+        desen: k.desen || k.desen_adi || '',
         ad: k.ad || '',
         renk: k.renk || '',
         ebat: k.ebat || '',
@@ -40407,7 +41824,7 @@ function erpSkipExcelNormalizeInput(el) {
     if (id.includes('-marka') || id.includes('-adi') || id.includes('-cinsi') || id.includes('-firma')) return true;
     if (id.endsWith('-not') || id.includes('-not-')) return true;
     if (id === 'val-lot' || id === 'val-marka' || id === 'val-renk' || id === 'val-cins' || id === 'val-task' || id === 'val-desc') return true;
-    if (id.startsWith('sk-kod-') || id.startsWith('sk-ad-') || id.startsWith('sk-renk-') || id.startsWith('sk-rkod')) return true;
+    if (id.startsWith('sk-kod-') || id.startsWith('sk-ad-') || id.startsWith('sk-desen-') || id.startsWith('sk-renk-') || id.startsWith('sk-rkod')) return true;
     if (id === 'val-iplik-no' || id === 'val-tarak-no' || id === 'val-cozgu-no') return true;
     if (id === 'ih-nm-numara' || id === 'ih-tarak-no' || id === 'ih-cozgu-numara') return true;
     if (id.startsWith('val-atki-no-')) return true;
@@ -40496,6 +41913,282 @@ function addAtkiRenk(no = '', cins = '', renk = '', sayi = '') {
     container.appendChild(div);
 }
 
+let siparisMamulSeciciKalemNo = 0;
+let siparisMamulSeciciListe = [];
+let siparisMamulSeciciGruplar = [];
+window._siparisMamulSeciciExpanded = window._siparisMamulSeciciExpanded || new Set();
+
+function siparisMamulKartlariTopla() {
+    return (dataCache.kumas_kutuphanesi || [])
+        .filter(k => {
+            const kod = String(k.desen_kodu || '').trim();
+            if (!kod || kod.startsWith('NU')) return false;
+            if (!kumasKutuphanesiKartiMamulMu(k)) return false;
+            const kalite = String(k.kalite || 'AKTİF').toUpperCase();
+            return kalite !== 'ARŞİV' && kalite !== 'PASİF';
+        })
+        .sort((a, b) => String(a.desen_kodu || '').localeCompare(String(b.desen_kodu || ''), undefined, { numeric: true }));
+}
+
+function siparisMamulGruplariTopla() {
+    return mamulKartListeGruplariOlustur(siparisMamulKartlariTopla());
+}
+
+function siparisMamulGrupEslestir(grup, q) {
+    const s = String(q || '').trim();
+    if (!s) return true;
+    const parent = grup?.parent?.record;
+    if (parent && mamulKartDetayliEslestir(parent, { q: s })) return true;
+    return (grup.children || []).some(ch => mamulKartDetayliEslestir(ch.record, { q: s }));
+}
+
+function siparisMamulEbatOku(k) {
+    if (!k) return '';
+    try {
+        if (typeof mamulEkAlanMetaDecode === 'function') {
+            const meta = mamulEkAlanMetaDecode(k.notlar || '');
+            if (meta.istenen_mamul_ebat) return meta.istenen_mamul_ebat;
+            if (meta.olculen_mamul_ebat) return meta.olculen_mamul_ebat;
+        }
+    } catch (e) {}
+    if (k.mamul_en && k.mamul_boy) return `${k.mamul_en}*${k.mamul_boy}`;
+    if (k.ham_en && k.ham_boy) return `${k.ham_en}*${k.ham_boy}`;
+    return '';
+}
+
+function siparisMamulKaynakOku(k) {
+    if (!k) return { self: null, parent: null, vNo: 0 };
+    const vNo = mamulVaryantNoBul(k.desen_kodu);
+    const anaKod = mamulAnaKodBul(k.desen_kodu);
+    const parent = (vNo > 0 && anaKod) ? mamulAnaKayitBul(anaKod) : null;
+    return { self: k, parent, vNo, anaKod };
+}
+
+function siparisMamulDesenOku(k) {
+    const { self, parent } = siparisMamulKaynakOku(k);
+    return String(self?.desen_adi || parent?.desen_adi || '').trim().toUpperCase();
+}
+
+function siparisMamulUrunAdiOku(k) {
+    const { self, parent } = siparisMamulKaynakOku(k);
+    const urun = String(self?.urun_adi || parent?.urun_adi || '').trim();
+    if (urun) return urun.toUpperCase();
+    return String(self?.kumas_cinsi || parent?.kumas_cinsi || '').trim().toUpperCase();
+}
+
+function siparisMamulRenkOku(k) {
+    if (!k) return '';
+    let renk = String(k.renk || '').trim();
+    if (renk) return renk.toUpperCase();
+    const { self, parent, vNo } = siparisMamulKaynakOku(k);
+    const hedef = self || k;
+    const metaKaynak = parent || hedef;
+    const meta = mamulEkAlanMetaDecode(metaKaynak?.notlar || '');
+    const varyantlar = (Array.isArray(meta.varyantlar) ? meta.varyantlar : []).filter(mamulVaryantDoluMu);
+    if (vNo > 0 && varyantlar[vNo - 1]) {
+        renk = mamulVaryantRenkEtiket(varyantlar[vNo - 1]);
+        if (renk) return renk.toUpperCase();
+    }
+    if (hedef.atki_renkleri) {
+        const atki = mamulAtkiRenkleriParse(hedef.atki_renkleri);
+        renk = atki.map(a => a.renk).filter(Boolean).slice(-1)[0] || '';
+        if (renk) return renk.toUpperCase();
+    }
+    if (!vNo && varyantlar.length === 1) {
+        renk = mamulVaryantRenkEtiket(varyantlar[0]);
+        if (renk) return renk.toUpperCase();
+    }
+    const rv = String(stokKartDokumaAlanlariOku(hedef).renk_varyant || '').trim();
+    if (rv && !/^\d+\s*varyant/i.test(rv)) return rv.toUpperCase();
+    return '';
+}
+
+function siparisMamulAnaVaryantliMi(k) {
+    const ana = String(mamulAnaKodBul(k?.desen_kodu) || '').toUpperCase();
+    if (!ana) return false;
+    return (siparisMamulKartlariTopla() || []).some(x => {
+        const kod = String(x.desen_kodu || '').trim().toUpperCase();
+        return mamulVaryantNoBul(kod) > 0 && mamulAnaKodBul(kod) === ana;
+    });
+}
+
+function siparisKalemMamulDoldur(kalemNo, k, opts = {}) {
+    if (!k || !kalemNo) return;
+    const mv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+    const anaSecim = opts.anaSecim != null ? !!opts.anaSecim : (mamulVaryantNoBul(k.desen_kodu) <= 0);
+    mv(`sk-kod-${kalemNo}`, k.desen_kodu || '');
+    mv(`sk-desen-${kalemNo}`, siparisMamulDesenOku(k));
+    mv(`sk-ad-${kalemNo}`, siparisMamulUrunAdiOku(k));
+    mv(`sk-grup-${kalemNo}`, (k.kumas_cinsi || k.firma || '').toUpperCase());
+    mv(`sk-ebat-${kalemNo}`, String(siparisMamulEbatOku(k) || '').trim().replace(/\s+/g, ''));
+    if (anaSecim && siparisMamulAnaVaryantliMi(k)) mv(`sk-renk-${kalemNo}`, '');
+    else mv(`sk-renk-${kalemNo}`, siparisMamulRenkOku(k));
+    updateSiparisPreview();
+}
+
+function siparisMamulSeciciSatirHtml(k, opts = {}) {
+    const desen = siparisMamulDesenOku(k) || '—';
+    const urun = siparisMamulUrunAdiOku(k) || '—';
+    const ebat = siparisMamulEbatOku(k) || '—';
+    const renk = siparisMamulRenkOku(k) || '—';
+    const isVariant = !!opts.isVariant;
+    const hasVariants = !!opts.hasVariants;
+    const expanded = !!opts.expanded;
+    const anaKod = String(opts.anaKod || mamulAnaKodBul(k.desen_kodu) || '').trim();
+    const vCount = opts.vCount || 0;
+    const chev = hasVariants ? (expanded ? '▾' : '▸') : (isVariant ? '·' : '');
+    const cls = [
+        'siparis-mamul-sec-row',
+        isVariant ? 'is-variant' : 'is-parent',
+        hasVariants ? 'has-variants' : ''
+    ].filter(Boolean).join(' ');
+    const onclick = `siparisMamulSeciciSecKayit('${erpAttr(k.desen_kodu)}')`;
+    const chevOnclick = hasVariants
+        ? `event.stopPropagation();siparisMamulSeciciToggle('${erpAttr(anaKod)}')`
+        : '';
+    const renkGoster = isVariant ? renk : (hasVariants ? `${vCount} renk · özel yazılabilir` : (renk || '—'));
+    return `<div class="${cls}" onclick="${onclick}" title="${isVariant ? 'Varyantı seç' : (hasVariants ? 'Ana ürünü seç (renk elle yazılabilir) — ok ile varyantları aç' : 'Ürünü seç')}">
+        <span class="chev"${chevOnclick ? ` onclick="${chevOnclick}"` : ''}>${chev}</span>
+        <span class="kod">${pdfEsc(k.desen_kodu)}${isVariant ? '<span class="varyant-pill">V</span>' : ''}${hasVariants && !expanded ? '<span class="varyant-pill">+' + vCount + '</span>' : ''}</span>
+        <span class="ad" title="${pdfEsc(desen)}">${pdfEsc(desen)}</span>
+        <span class="meta" title="${pdfEsc(urun)}">${pdfEsc(urun)}</span>
+        <span class="meta" title="${pdfEsc(ebat)}">${pdfEsc(ebat)}</span>
+        <span class="meta" title="${pdfEsc(renkGoster)}">${pdfEsc(renkGoster)}</span>
+    </div>`;
+}
+
+function siparisMamulSeciciRender(gruplar) {
+    const host = document.getElementById('siparis-mamul-sec-list');
+    const foot = document.getElementById('siparis-mamul-sec-foot');
+    if (!host) return;
+    siparisMamulSeciciGruplar = Array.isArray(gruplar) ? gruplar : [];
+    siparisMamulSeciciListe = [];
+    if (!siparisMamulSeciciGruplar.length) {
+        host.innerHTML = `<div style="padding:24px 16px;text-align:center;color:var(--text3);font-size:11px;line-height:1.5">
+            <div style="font-size:22px;margin-bottom:8px">🔍</div>
+            Mamül stok kartı bulunamadı.<br>Arama terimini değiştirin veya yeni mamül kartı oluşturun.
+        </div>`;
+        if (foot) foot.textContent = '0 ana ürün';
+        return;
+    }
+    const exp = window._siparisMamulSeciciExpanded;
+    let html = `<div style="display:grid;grid-template-columns:22px 88px 1fr 1fr 72px 72px;gap:8px;padding:4px 12px 8px;font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;letter-spacing:0.06em;position:sticky;top:0;background:var(--surface);z-index:1">
+        <span></span><span>Kod</span><span>Desen</span><span>Ürün</span><span>Ebat</span><span>Renk</span>
+    </div>`;
+    let varyantSayisi = 0;
+    siparisMamulSeciciGruplar.forEach(grup => {
+        const parent = grup.parent?.record;
+        if (!parent) return;
+        const children = Array.isArray(grup.children) ? grup.children : [];
+        const hasVariants = children.length > 0;
+        const expanded = hasVariants && exp.has(String(grup.anaKod || '').toUpperCase());
+        siparisMamulSeciciListe.push(parent);
+        html += siparisMamulSeciciSatirHtml(parent, {
+            anaKod: grup.anaKod,
+            hasVariants,
+            expanded,
+            vCount: children.length
+        });
+        if (expanded) {
+            children.forEach(ch => {
+                varyantSayisi++;
+                siparisMamulSeciciListe.push(ch.record);
+                html += siparisMamulSeciciSatirHtml(ch.record, { isVariant: true, anaKod: grup.anaKod });
+            });
+        } else {
+            varyantSayisi += children.length;
+        }
+    });
+    host.innerHTML = html;
+    if (foot) {
+        const ana = siparisMamulSeciciGruplar.length;
+        const totalAna = siparisMamulGruplariTopla().length;
+        foot.textContent = ana === totalAna
+            ? `${ana} ana ürün · ${varyantSayisi} varyant gizli/açık`
+            : `${ana} / ${totalAna} ana ürün`;
+    }
+}
+
+function siparisMamulSeciciAra(q) {
+    const tum = siparisMamulGruplariTopla();
+    const s = String(q || '').trim();
+    if (!s) {
+        siparisMamulSeciciRender(tum.slice(0, 200));
+        return;
+    }
+    const filtreli = tum.filter(g => siparisMamulGrupEslestir(g, s)).slice(0, 200);
+    filtreli.forEach(g => {
+        const parentHit = g.parent?.record && mamulKartDetayliEslestir(g.parent.record, { q: s });
+        const childHit = (g.children || []).some(ch => mamulKartDetayliEslestir(ch.record, { q: s }));
+        if (childHit && !parentHit && g.children?.length) {
+            window._siparisMamulSeciciExpanded.add(String(g.anaKod || '').toUpperCase());
+        }
+    });
+    siparisMamulSeciciRender(filtreli);
+}
+
+function siparisMamulSeciciToggle(anaKod) {
+    const ana = String(anaKod || '').trim().toUpperCase();
+    if (!ana) return;
+    if (window._siparisMamulSeciciExpanded.has(ana)) window._siparisMamulSeciciExpanded.delete(ana);
+    else window._siparisMamulSeciciExpanded.add(ana);
+    siparisMamulSeciciRender(siparisMamulSeciciGruplar);
+}
+
+function siparisMamulSeciciAc(kalemNo) {
+    siparisMamulSeciciKalemNo = parseInt(kalemNo, 10) || 0;
+    const modal = document.getElementById('siparis-mamul-sec-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    const ara = document.getElementById('siparis-mamul-sec-ara');
+    const mevcutKod = String(document.getElementById(`sk-kod-${siparisMamulSeciciKalemNo}`)?.value || '').trim();
+    if (ara) {
+        ara.value = mevcutKod;
+        setTimeout(() => { ara.focus(); ara.select(); }, 80);
+    }
+    if (mevcutKod) {
+        const ana = String(mamulAnaKodBul(mevcutKod) || '').toUpperCase();
+        if (ana && mamulVaryantNoBul(mevcutKod) > 0) window._siparisMamulSeciciExpanded.add(ana);
+    }
+    siparisMamulSeciciAra(mevcutKod);
+}
+
+function siparisMamulSeciciKapat(ev) {
+    if (ev && ev.target && ev.currentTarget !== ev.target && ev.type === 'click') return;
+    const modal = document.getElementById('siparis-mamul-sec-modal');
+    if (modal) modal.style.display = 'none';
+    siparisMamulSeciciKalemNo = 0;
+}
+
+function siparisMamulSeciciSecKayit(kod) {
+    const hedef = String(kod || '').trim().toUpperCase();
+    if (!hedef || !siparisMamulSeciciKalemNo) return;
+    const k = (siparisMamulKartlariTopla() || []).find(x =>
+        String(x.desen_kodu || '').trim().toUpperCase() === hedef
+    ) || (siparisMamulSeciciListe || []).find(x =>
+        String(x.desen_kodu || '').trim().toUpperCase() === hedef
+    );
+    if (!k) return;
+    siparisKalemMamulDoldur(siparisMamulSeciciKalemNo, k, {
+        anaSecim: mamulVaryantNoBul(k.desen_kodu) <= 0
+    });
+    siparisMamulSeciciKapat();
+}
+
+function siparisMamulSeciciSec(idx) {
+    const k = (siparisMamulSeciciListe || [])[idx];
+    if (!k || !siparisMamulSeciciKalemNo) return;
+    siparisKalemMamulDoldur(siparisMamulSeciciKalemNo, k);
+    siparisMamulSeciciKapat();
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('siparis-mamul-sec-modal');
+        if (modal && modal.style.display === 'flex') siparisMamulSeciciKapat();
+    }
+});
+
 function addSiparisKalem(data = {}) {
     syncSiparisKalemCountFromDom();
     siparisKalemCount++;
@@ -40519,26 +42212,35 @@ function addSiparisKalem(data = {}) {
                 style="width:22px;height:22px;border-radius:6px;background:rgba(251,113,133,0.1);border:none;color:var(--rose-c);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background 0.12s"
                 onmouseover="this.style.background='rgba(251,113,133,0.22)'" onmouseout="this.style.background='rgba(251,113,133,0.1)'">✕</button>
         </div>
-        <div style="display:grid;grid-template-columns:80px 110px 1fr 70px 100px 70px 90px;gap:8px;align-items:end">
+        <div class="siparis-kalem-grid" style="display:grid;grid-template-columns:72px 90px 1fr 1fr 88px 88px 62px 82px;gap:8px;align-items:end">
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--accent2);font-family:'DM Mono',monospace;margin-bottom:3px">STOK KODU</div>
-                <input id="sk-kod-${n}" value="${data.kod || ''}" class="pro-input" style="font-family:'DM Mono',monospace;font-size:10px;padding:5px 8px;color:var(--accent2)">
+                <div class="sk-kod-picker-wrap">
+                    <input id="sk-kod-${n}" value="${pdfEsc(data.kod || '')}" class="pro-input" readonly
+                        onclick="siparisMamulSeciciAc(${n})" placeholder="Seç…" title="Mamül listesinden seç"
+                        style="font-family:'DM Mono',monospace;font-size:10px;padding:5px 8px;color:var(--accent2)">
+                    <button type="button" class="sk-kod-picker-btn" onclick="siparisMamulSeciciAc(${n})" title="Mamül listesi">🔍</button>
+                </div>
             </div>
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">GRUP</div>
-                <input id="sk-grup-${n}" value="${data.grup || ''}" class="pro-input" style="font-size:10px;padding:5px 8px">
+                <input id="sk-grup-${n}" value="${pdfEsc(data.grup || '')}" class="pro-input" style="font-size:10px;padding:5px 8px">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--violet-c);font-family:'DM Mono',monospace;margin-bottom:3px">DESEN ADI</div>
+                <input id="sk-desen-${n}" value="${pdfEsc(data.desen || '')}" class="pro-input" style="font-size:10px;padding:5px 8px;text-transform:uppercase;border-color:rgba(139,92,246,0.25);color:var(--violet-c)">
             </div>
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">ÜRÜN ADI</div>
-                <input id="sk-ad-${n}" value="${data.ad || ''}" class="pro-input" style="font-size:11px;font-weight:500;padding:5px 8px;text-transform:uppercase">
+                <input id="sk-ad-${n}" value="${pdfEsc(data.ad || '')}" class="pro-input" style="font-size:11px;font-weight:500;padding:5px 8px;text-transform:uppercase">
             </div>
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">EBAT</div>
-                <input id="sk-ebat-${n}" value="${data.ebat || ''}" class="pro-input" style="font-size:10px;padding:5px 8px">
+                <input id="sk-ebat-${n}" value="${pdfEsc(data.ebat || '')}" class="pro-input" style="font-size:10px;padding:5px 8px">
             </div>
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--cyan-c);font-family:'DM Mono',monospace;margin-bottom:3px">RENK</div>
-                <input id="sk-renk-${n}" value="${data.renk || ''}" class="pro-input" style="font-size:10px;padding:5px 8px;border-color:rgba(34,211,238,0.25);color:var(--cyan-c)">
+                <input id="sk-renk-${n}" value="${pdfEsc(data.renk || '')}" class="pro-input" style="font-size:10px;padding:5px 8px;border-color:rgba(34,211,238,0.25);color:var(--cyan-c)">
             </div>
             <div>
                 <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">BİRİM</div>
@@ -42078,20 +43780,7 @@ function setSegment(val) {
 window.startEditingFromArchive = function(idx) {
     const record = currentData[idx];
     if (!record) return;
-
-    editingId = record.id;
-    originalRecordSnapshot = { ...record };
-
-    const editMode = archiveTab === 'IPLIK' ? 'IPLIK_KART_GIRIS' : archiveTab === 'MAMUL' ? 'MAMUL_KART_GIRIS' : 'KUMAS_KART_GIRIS';
-    if (editMode === 'KUMAS_KART_GIRIS') kumasKartGirisTipi = kumasKartTipiOku(record);
-    setAppMode(editMode, true);
-    closeModal({ target: { id: 'detail-modal' } });
-    document.getElementById('form-container').style.display = 'block';
-    document.getElementById('cancel-edit-btn').style.display = 'block';
-    renderInputs();
-    syncKartGirisBaslik(editMode, record);
-    setTimeout(() => kartGirisFormDoldur(record, editMode), 80);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    stokKartDuzenleAc(record);
 };
 
 async function updateTodoStatus(id, newStatus) {
@@ -42505,6 +44194,9 @@ window.mamulStokKartiAc = mamulStokKartiAc;
 window.mamulKaynakSec = mamulKaynakSec;
 window.mamulKaynakAraGoster = mamulKaynakAraGoster;
 window.mamulKartAramaFiltreSifirla = mamulKartAramaFiltreSifirla;
+window.mamulKartListeHizliFiltreSet = mamulKartListeHizliFiltreSet;
+window.mamulKartAramaDetayToggle = mamulKartAramaDetayToggle;
+window.editMamulKartFromListe = editMamulKartFromListe;
 </script>
 </body>
 </html>
