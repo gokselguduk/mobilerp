@@ -255,6 +255,37 @@
             border-radius: 12px;
             background: var(--surface2);
             min-width: 0;
+            cursor: pointer;
+            transition: border-color 0.12s, background 0.12s, box-shadow 0.12s, transform 0.12s;
+            text-align: left;
+            width: 100%;
+            font: inherit;
+            color: inherit;
+        }
+        .stok-kart-ozet-kart:hover {
+            border-color: var(--border2);
+            background: var(--surface3);
+            transform: translateY(-1px);
+        }
+        .stok-kart-ozet-kart.is-active {
+            border-color: rgba(109,113,255,0.55);
+            box-shadow: inset 0 0 0 1px rgba(109,113,255,0.25);
+            background: rgba(109,113,255,0.08);
+        }
+        .stok-kart-ozet-kart.is-active--iplik {
+            border-color: rgba(167,139,250,0.55);
+            box-shadow: inset 0 0 0 1px rgba(167,139,250,0.25);
+            background: rgba(167,139,250,0.1);
+        }
+        .stok-kart-ozet-kart.is-active--kumas {
+            border-color: rgba(52,211,153,0.55);
+            box-shadow: inset 0 0 0 1px rgba(52,211,153,0.25);
+            background: rgba(52,211,153,0.1);
+        }
+        .stok-kart-ozet-kart.is-active--mamul {
+            border-color: rgba(251,191,36,0.55);
+            box-shadow: inset 0 0 0 1px rgba(251,191,36,0.25);
+            background: rgba(251,191,36,0.1);
         }
         .stok-kart-ozet-kart__etiket {
             font-size: 8px;
@@ -273,6 +304,12 @@
         .stok-kart-ozet-kart__deger--iplik { color: var(--accent2); }
         .stok-kart-ozet-kart__deger--kumas { color: var(--emerald-c); }
         .stok-kart-ozet-kart__deger--mamul { color: var(--amber-c); }
+        .stok-kart-ozet-kart__ipucu {
+            margin-top: 4px;
+            font-size: 8px;
+            color: var(--text3);
+            font-family: 'DM Mono', monospace;
+        }
         .stok-kart-grup-bolum {
             padding: 12px 14px;
             margin-bottom: 12px;
@@ -3551,6 +3588,19 @@
 
         /* Sipariş listesi — durum / filtre (dar ekran) */
         @media (max-width: 640px) {
+            body[data-erp-mode="SIPARIS_LISTE"] #filter-panel .input-box,
+            body[data-erp-mode="SIPARIS_KAPANAN"] #filter-panel .input-box,
+            body[data-erp-mode="SIPARIS_LISTE"] #main-list .siparis-liste-baslik .pro-input,
+            body[data-erp-mode="SIPARIS_KAPANAN"] #main-list .siparis-liste-baslik .pro-input {
+                min-height: 44px;
+                font-size: 16px !important; /* iOS zoom engeli */
+                padding: 10px 12px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] #search,
+            body[data-erp-mode="SIPARIS_KAPANAN"] #search {
+                font-size: 16px !important;
+                min-height: 40px;
+            }
             body[data-erp-mode="SIPARIS_LISTE"] #main-list > .siparis-liste-baslik,
             body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > .siparis-liste-baslik {
                 overflow-x: auto;
@@ -8150,7 +8200,7 @@ function erpInputFocusGeriYukle(saved) {
     if (!saved?.id) return;
     const el = document.getElementById(saved.id);
     if (!el) return;
-    el.focus();
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
     try {
         if (saved.start != null && saved.end != null) el.setSelectionRange(saved.start, saved.end);
     } catch (e) { /* */ }
@@ -11716,7 +11766,7 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return;
         }
         if (erpModeLoadDataGuvenliMi(mode) && typeof loadData === 'function') {
-            if (!force && erpIsUserEditingUi() && !['SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET_LISTE'].includes(mode)) {
+            if (!force && erpIsUserEditingUi()) {
                 return;
             }
             loadData();
@@ -30286,6 +30336,9 @@ async function setAppMode(mode, keepEditingId = false) {
     }
 
     renderInputs();
+    if (mode === 'SIPARIS_LISTE' || mode === 'SIPARIS_KAPANAN') {
+        siparisListeFilterPanelKur({ skipLoad: true });
+    }
     loadData();
     if (depoHizliHareketBekleyen) setTimeout(() => depoHizliHareketBekleyenUygula(), 50);
     if (erpListePollModMu()) erpStartListeDataPoll();
@@ -32891,22 +32944,13 @@ function loadData() {
 
     let baseData = dataCache[table] || [];
 
-    // --- ARŞİV SEKMELERİ (Stok Kartları ana sayfası) ---
+    // --- ARŞİV SEKMELERİ (Stok Kartları) — grup seçimi özet kartlarından yapılır ---
     if (appMode === 'KART_LISTE') {
-        if (filterPanel) filterPanel.classList.remove('hidden');
-        if (!document.getElementById('archive-tabs')) {
-            filterPanel.innerHTML = `
-                <div id="archive-tabs" style="display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;margin-bottom:10px">
-                    <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;padding:0 4px">Kayıtlı stok kartları — gruba göre</div>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <button onclick="switchArchiveTab('TUMU')" id="tab-btn-TUMU" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">📋 Tüm Gruplar</button>
-                    <button onclick="switchArchiveTab('IPLIK')" id="tab-btn-IPLIK" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧶 İplik</button>
-                    <button onclick="switchArchiveTab('KUMAS')" id="tab-btn-KUMAS" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🏁 Kumaş</button>
-                    <button onclick="switchArchiveTab('MAMUL')" id="tab-btn-MAMUL" class="archive-tab-btn" style="flex:1;min-width:88px;padding:8px;border-radius:8px;border:none;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'DM Mono',monospace;transition:all 0.15s">🧥 Mamül</button>
-                    </div>
-                </div>`;
+        if (filterPanel) {
+            filterPanel.classList.add('hidden');
+            const eskiTabs = document.getElementById('archive-tabs');
+            if (eskiTabs) eskiTabs.remove();
         }
-        syncArchiveTabStili();
     }
 
     // --- KUMAŞ DEPO GRUPLAMA (stok kodu bazında net bakiye) — mamül (MA-/MM-/MAMUL_DEPO) hariç ---
@@ -33430,31 +33474,7 @@ function loadData() {
     } else {
     listeHtml += currentData.map((i, idx) => {
         if (table === 'siparisler') {
-            const kritik = siparisTerminEnKritikDurum(i);
-            const gecikti = kritik === 'gecikti';
-            const yakin = kritik === 'yakin' || kritik === 'bugun';
-            const durPill = i.durum==='TAMAMLANDI' ? 'pill-green' : gecikti ? 'pill-red' : yakin ? 'pill-amber' : 'pill-blue';
-            const borderClr = i.durum==='TAMAMLANDI' ? 'var(--emerald-c)' : gecikti ? 'var(--rose-c)' : yakin ? 'var(--amber-c)' : 'var(--accent)';
-            const terminGun = siparisTerminListeHtml(i);
-            const ozetRaw = siparisListeOzetMetni(i, 96);
-            const adetVal = siparisListeAdetGoster(i);
-            return `<div class="record-item siparis-liste-row" style="border-left-color:${borderClr}" title="${pdfEsc((i.sno||'') + ' · ' + (i.firma||''))}">
-                <div onclick="showDetail(${idx})" class="siparis-liste-row-hit">
-                <div class="siparis-lc-no">
-                    <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);line-height:1.2">${pdfEsc(i.sno || '—')}</span>
-                    <span class="pill ${durPill}" style="font-size:7px;padding:1px 5px;align-self:flex-start">${pdfEsc(i.durum || 'BEKLEMEDE')}</span>
-                </div>
-                <div class="siparis-lc-firma" title="${pdfEsc(i.firma || '')}">${pdfEsc(i.firma || '—')}</div>
-                <div class="siparis-lc-ozet" title="${pdfEsc(ozetRaw)}">${pdfEsc(ozetRaw)}</div>
-                <div class="siparis-lc-adet">${pdfEsc(adetVal)}<span>kalem toplamı</span></div>
-                <div class="siparis-lc-termin">
-                    <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:3px">${terminGun}</div>
-                </div>
-                </div>
-                <div class="siparis-lc-gecmis">
-                    <span class="pill pill-gray" style="font-size:8px;padding:3px 7px">${pdfEsc((i.siparis_grubu || 'EV_TEKSTILI').replaceAll('_',' '))}</span>
-                </div>
-            </div>`;
+            return siparisListeSatirHtml(i, idx);
         }
         if (table === 'todo_list') {
             const todoBorder = i.priority==='KRİTİK' ? 'var(--rose-c)' : i.priority==='ACİL' ? 'var(--amber-c)' : 'var(--emerald-c)';
@@ -34790,6 +34810,43 @@ function iplikGrafikDetay(indices) {
 // ============================================================
 // switchRaporTab — appMode düzeltildi
 // ============================================================
+function siparisListeFilterPanelKur(opts = {}) {
+    const filterPanel = document.getElementById('filter-panel');
+    const container = document.getElementById('filter-inputs');
+    if (!filterPanel || !container) return;
+    if (!window.siparisListePanelFiltre) {
+        window.siparisListePanelFiltre = { sno: '', firma: '', durum: '', ay: '' };
+    }
+    const pf = window.siparisListePanelFiltre;
+    const grupVal = String(siparisListeKolonFiltre?.grup || '');
+    filterPanel.classList.remove('hidden');
+    // Rapor analiz sekmelerini sipariş listesinde gizle
+    const tabRow = filterPanel.querySelector(':scope > div:first-child');
+    if (tabRow && tabRow.querySelector('.tab-btn')) tabRow.style.display = 'none';
+    container.innerHTML = `
+        <div><span class="label-text">Sipariş No</span><input id="f-sno" type="text" value="${pdfEsc(pf.sno || '')}" oninput="siparisListePanelFiltreAlan('sno', this.value)" class="input-box" placeholder="SIP-001..." autocomplete="off"></div>
+        <div><span class="label-text">Müşteri / Firma</span><input id="f-firma" type="text" value="${pdfEsc(pf.firma || '')}" oninput="siparisListePanelFiltreAlan('firma', this.value)" class="input-box" placeholder="Firma ara..." autocomplete="off"></div>
+        <div><span class="label-text">Sipariş Grubu</span>
+            <select id="f-siparis-grubu" onchange="siparisListePanelGrupDegisti(this.value)" class="input-box font-bold">
+                <option value="" ${!grupVal ? 'selected' : ''}>HEPSİ</option>
+                <option value="GIDA" ${grupVal === 'GIDA' ? 'selected' : ''}>🍽️ GIDACI</option>
+                <option value="HALI" ${grupVal === 'HALI' ? 'selected' : ''}>🧶 HALICI</option>
+                <option value="EV_TEKSTILI" ${grupVal === 'EV_TEKSTILI' ? 'selected' : ''}>🏠 EV TEKSTİLİ</option>
+                <option value="KOLTUK_ORTUSU" ${grupVal === 'KOLTUK_ORTUSU' ? 'selected' : ''}>🛋️ KOLTUK ÖRTÜSÜ</option>
+            </select>
+        </div>
+        <div><span class="label-text">Durum</span>
+            <select id="f-durum" onchange="siparisListePanelFiltreAlan('durum', this.value)" class="input-box font-bold">
+                <option value="" ${!pf.durum ? 'selected' : ''}>HEPSİ</option>
+                <option value="BEKLEMEDE" ${pf.durum === 'BEKLEMEDE' ? 'selected' : ''}>⏳ BEKLEMEDE</option>
+                <option value="ÜRETİMDE" ${pf.durum === 'ÜRETİMDE' ? 'selected' : ''}>⚙️ ÜRETİMDE</option>
+                <option value="TAMAMLANDI" ${pf.durum === 'TAMAMLANDI' ? 'selected' : ''}>✅ TAMAMLANDI</option>
+            </select>
+        </div>
+        <div><span class="label-text">Termin Ayı</span><input id="f-ay" type="month" value="${pdfEsc(pf.ay || '')}" onchange="siparisListePanelFiltreAlan('ay', this.value)" class="input-box"></div>`;
+    if (!opts.skipLoad) loadData();
+}
+
 function switchRaporTab(tab) {
     raporSubMode = tab;
     saveUiState({ raporSubMode });
@@ -34800,8 +34857,13 @@ function switchRaporTab(tab) {
     const activeTabBtn = document.getElementById('tab-' + tab);
     if (activeTabBtn) activeTabBtn.classList.replace('tab-passive', 'tab-active');
 
+    const filterPanel = document.getElementById('filter-panel');
     const container = document.getElementById('filter-inputs');
     if (!container) return;
+    // Rapor sekmelerini geri göster (sipariş paneli gizlemiş olabilir)
+    const tabRow = filterPanel?.querySelector(':scope > div:first-child');
+    if (tabRow && tabRow.querySelector('.tab-btn')) tabRow.style.display = '';
+
     container.innerHTML = '';
 
     if (tab === 'IPLIK') {
@@ -34813,28 +34875,7 @@ function switchRaporTab(tab) {
     } else if (tab === 'KART') {
         container.innerHTML = `<div><span class="label-text">Desen Kodu</span><input id="f-kodu" type="text" oninput="debounce('filterInput', loadData, 300)" class="input-box"></div>`;
     } else if (tab === 'SIPARIS_LISTE') {
-        if (appMode === 'SIPARIS_LISTE') { document.getElementById('filter-panel').classList.remove('hidden'); }
-        container.innerHTML = `
-            <div><span class="label-text">Sipariş No</span><input id="f-sno" type="text" oninput="debounce('siparisFilterInput', loadData, 180)" class="input-box" placeholder="SIP-001..."></div>
-            <div><span class="label-text">Müşteri / Firma</span><input id="f-firma" type="text" oninput="debounce('siparisFilterInput', loadData, 180)" class="input-box" placeholder="Firma ara..."></div>
-            <div><span class="label-text">Sipariş Grubu</span>
-                <select id="f-siparis-grubu" onchange="siparisListePanelGrupDegisti(this.value)" class="input-box font-bold">
-                    <option value="">HEPSİ</option>
-                    <option value="GIDA">🍽️ GIDACI</option>
-                    <option value="HALI">🧶 HALICI</option>
-                    <option value="EV_TEKSTILI">🏠 EV TEKSTİLİ</option>
-                    <option value="KOLTUK_ORTUSU">🛋️ KOLTUK ÖRTÜSÜ</option>
-                </select>
-            </div>
-            <div><span class="label-text">Durum</span>
-                <select id="f-durum" onchange="loadData()" class="input-box font-bold">
-                    <option value="">HEPSİ</option>
-                    <option value="BEKLEMEDE">⏳ BEKLEMEDE</option>
-                    <option value="ÜRETİMDE">⚙️ ÜRETİMDE</option>
-                    <option value="TAMAMLANDI">✅ TAMAMLANDI</option>
-                </select>
-            </div>
-            <div><span class="label-text">Termin Ayı</span><input id="f-ay" type="month" onchange="loadData()" class="input-box"></div>`;
+        siparisListeFilterPanelKur({ skipLoad: true });
     }
     loadData();
 }
@@ -34844,9 +34885,141 @@ function siparisListeSetHizliFiltre(f) {
     loadData();
 }
 
+function siparisListePanelFiltreAlan(key, value) {
+    if (!window.siparisListePanelFiltre) {
+        window.siparisListePanelFiltre = { sno: '', firma: '', durum: '', ay: '' };
+    }
+    if (!(key in window.siparisListePanelFiltre)) return;
+    window.siparisListePanelFiltre[key] = String(value ?? '');
+    const el = document.activeElement;
+    window._siparisPanelFocus = {
+        id: el?.id || ('f-' + key),
+        pos: (el && typeof el.selectionStart === 'number') ? el.selectionStart : null
+    };
+    // select/month için hemen, metin için debounce — klavye kesilmesin
+    if (key === 'durum' || key === 'ay') siparisListeAramaYenile();
+    else debounce('siparisFilterInput', () => siparisListeAramaYenile(), 160);
+}
+
 function siparisListePanelGrupDegisti(v) {
     siparisListeKolonFiltre.grup = String(v || '');
-    loadData();
+    siparisListeAramaYenile();
+}
+
+function siparisListeSatirHtml(i, idx) {
+    const kritik = siparisTerminEnKritikDurum(i);
+    const gecikti = kritik === 'gecikti';
+    const yakin = kritik === 'yakin' || kritik === 'bugun';
+    const durPill = i.durum === 'TAMAMLANDI' ? 'pill-green' : gecikti ? 'pill-red' : yakin ? 'pill-amber' : 'pill-blue';
+    const borderClr = i.durum === 'TAMAMLANDI' ? 'var(--emerald-c)' : gecikti ? 'var(--rose-c)' : yakin ? 'var(--amber-c)' : 'var(--accent)';
+    const terminGun = siparisTerminListeHtml(i);
+    const ozetRaw = siparisListeOzetMetni(i, 96);
+    const adetVal = siparisListeAdetGoster(i);
+    return `<div class="record-item siparis-liste-row" style="border-left-color:${borderClr}" title="${pdfEsc((i.sno || '') + ' · ' + (i.firma || ''))}">
+        <div onclick="showDetail(${idx})" class="siparis-liste-row-hit">
+        <div class="siparis-lc-no">
+            <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);line-height:1.2">${pdfEsc(i.sno || '—')}</span>
+            <span class="pill ${durPill}" style="font-size:7px;padding:1px 5px;align-self:flex-start">${pdfEsc(i.durum || 'BEKLEMEDE')}</span>
+        </div>
+        <div class="siparis-lc-firma" title="${pdfEsc(i.firma || '')}">${pdfEsc(i.firma || '—')}</div>
+        <div class="siparis-lc-ozet" title="${pdfEsc(ozetRaw)}">${pdfEsc(ozetRaw)}</div>
+        <div class="siparis-lc-adet">${pdfEsc(adetVal)}<span>kalem toplamı</span></div>
+        <div class="siparis-lc-termin">
+            <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:3px">${terminGun}</div>
+        </div>
+        </div>
+        <div class="siparis-lc-gecmis">
+            <span class="pill pill-gray" style="font-size:8px;padding:3px 7px">${pdfEsc((i.siparis_grubu || 'EV_TEKSTILI').replaceAll('_', ' '))}</span>
+        </div>
+    </div>`;
+}
+
+/** Arama/filtre yazarken listeyi tam yeniden çizmez — input odağı ve mobil klavye korunur */
+function siparisListeAramaYenile() {
+    if (appMode !== 'SIPARIS_LISTE' && appMode !== 'SIPARIS_KAPANAN') {
+        loadData();
+        return;
+    }
+    const list = document.getElementById('main-list');
+    if (!list || !list.querySelector('.siparis-liste-baslik')) {
+        loadData();
+        return;
+    }
+
+    const s = String(document.getElementById('search')?.value || '').toLowerCase().trim();
+    const fSno = String(document.getElementById('f-sno')?.value || '').trim().toLowerCase();
+    const fFirma = String(document.getElementById('f-firma')?.value || '').trim().toLowerCase();
+    const fDurum = String(document.getElementById('f-durum')?.value || '').trim().toUpperCase();
+    const fAy = String(document.getElementById('f-ay')?.value || '').trim();
+    const aktifGrupFiltre = siparisListeAktifGrupFiltre();
+
+    let data = (dataCache.siparisler || []).slice();
+    if (appMode === 'SIPARIS_KAPANAN') {
+        data = data.filter(i => String(i.durum || '').toUpperCase() === 'TAMAMLANDI');
+    } else {
+        data = data.filter(i => String(i.durum || '').toUpperCase() !== 'TAMAMLANDI');
+    }
+
+    data = data.filter(i => {
+        if (s) {
+            if (!i._search_siparis_idx) {
+                i._search_siparis_idx = [
+                    i.sno, i.firma, i.durum, i.siparis_grubu, i.ttarih, i.starih
+                ].join(' ').toLowerCase();
+            }
+            if (!i._search_siparis_idx.includes(s)) return false;
+        }
+        const sno = String(i.sno || '').toLowerCase();
+        const firma = String(i.firma || '').toLowerCase();
+        const durum = String(i.durum || '').toUpperCase();
+        const grup = siparisGrubuBul(i);
+        const tt = String(i.ttarih || '').slice(0, 7);
+        if (fSno && !sno.includes(fSno)) return false;
+        if (fFirma && !firma.includes(fFirma)) return false;
+        if (fDurum && durum !== fDurum) return false;
+        if (fAy && tt !== fAy) return false;
+        if (aktifGrupFiltre && grup !== aktifGrupFiltre) return false;
+        return true;
+    });
+
+    const fSno2 = String(siparisListeKolonFiltre?.sno || '').trim().toLowerCase();
+    const fFirma2 = String(siparisListeKolonFiltre?.firma || '').trim().toLowerCase();
+    const fOzet2 = String(siparisListeKolonFiltre?.ozet || '').trim().toLowerCase();
+    const fAdet2 = String(siparisListeKolonFiltre?.adet || '').trim();
+    const fTermin2 = String(siparisListeKolonFiltre?.termin || '').trim();
+    data = data.filter(i => {
+        const sno = String(i?.sno || '').toLowerCase();
+        const firma = String(i?.firma || '').toLowerCase();
+        const ozet = String(siparisListeOzetMetni(i, 180) || '').toLowerCase();
+        const adet = siparisListeAdetGoster(i);
+        const plan = siparisTerminPlanParse(i);
+        const terminTarihleri = SIPARIS_TERMIN_TIPLERI.map(t => plan[t.key]).filter(Boolean);
+        if (fSno2 && !sno.includes(fSno2)) return false;
+        if (fFirma2 && !firma.includes(fFirma2)) return false;
+        if (fOzet2 && !ozet.includes(fOzet2)) return false;
+        if (fAdet2 && !String(adet).includes(fAdet2)) return false;
+        if (fTermin2 && !terminTarihleri.includes(fTermin2)) return false;
+        return true;
+    });
+    data = siparisListeSirala(data);
+
+    if (appMode === 'SIPARIS_LISTE') {
+        data = data.filter(i => {
+            const d = String(i.durum || '').toUpperCase();
+            if (siparisListeHizliFiltre === 'BEKLEMEDE') return d === 'BEKLEMEDE';
+            if (siparisListeHizliFiltre === 'URETIMDE') return d === 'ÜRETİMDE' || d === 'DEVAM';
+            if (siparisListeHizliFiltre === 'GECIKEN') return siparisTerminGecikmisMi(i);
+            if (siparisListeHizliFiltre === 'YAKLASAN') return siparisTerminYakinMi(i);
+            return true;
+        });
+    }
+
+    currentData = data;
+    list.querySelectorAll('.record-item.siparis-liste-row, .siparis-liste-bos').forEach(el => el.remove());
+    const rowsHtml = currentData.length
+        ? currentData.map((i, idx) => siparisListeSatirHtml(i, idx)).join('')
+        : `<div class="siparis-liste-bos" style="padding:28px 16px;text-align:center;color:var(--text3);font-size:12px">Eşleşen sipariş yok</div>`;
+    list.insertAdjacentHTML('beforeend', rowsHtml);
 }
 
 function siparisListeSetKolonFiltre(key, value) {
@@ -34864,7 +35037,7 @@ function siparisListeSetKolonFiltre(key, value) {
         key,
         pos: (el && typeof el.selectionStart === 'number') ? el.selectionStart : null
     };
-    debounce('siparis-kolon-filtre', () => loadData(), 180);
+    debounce('siparis-kolon-filtre', () => siparisListeAramaYenile(), 160);
 }
 
 function siparisListeToggleSiralama(key) {
@@ -35056,31 +35229,41 @@ function stokKartListeOzetHtml() {
         : archiveTab === 'KUMAS'
         ? 'Kumaş stok kartları'
         : 'Mamül stok kartları';
+    const aktifCls = (id) => archiveTab === id
+        ? (id === 'IPLIK' ? ' is-active is-active--iplik'
+            : id === 'KUMAS' ? ' is-active is-active--kumas'
+            : id === 'MAMUL' ? ' is-active is-active--mamul'
+            : ' is-active')
+        : '';
     return `<div class="stok-kart-toolbar">
         <div class="stok-kart-toolbar__head">
             <div>
                 <div class="stok-kart-toolbar__title">Kayıtlı stok kartları</div>
-                <div class="stok-kart-toolbar__sub">${aktif} · üst aramadan listeyi daraltabilirsiniz</div>
+                <div class="stok-kart-toolbar__sub">${aktif} · sayıya tıklayarak gruba geçin</div>
             </div>
             <button type="button" onclick="yeniKartGiris()" class="btn-pro btn-primary-pro" style="padding:7px 14px;font-size:10px">${yeniKartGirisBaslikMetin().buton}</button>
         </div>
         <div class="stok-kart-ozet-grid">
-            <div class="stok-kart-ozet-kart">
+            <button type="button" class="stok-kart-ozet-kart${aktifCls('TUMU')}" onclick="switchArchiveTab('TUMU')" title="Tüm grupları göster">
                 <div class="stok-kart-ozet-kart__etiket">Toplam kart</div>
                 <div class="stok-kart-ozet-kart__deger">${toplam}</div>
-            </div>
-            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__ipucu">Tümü</div>
+            </button>
+            <button type="button" class="stok-kart-ozet-kart${aktifCls('IPLIK')}" onclick="switchArchiveTab('IPLIK')" title="İplik kartlarını göster">
                 <div class="stok-kart-ozet-kart__etiket">İplik</div>
                 <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--iplik">${iplik}</div>
-            </div>
-            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__ipucu">Listeyi aç</div>
+            </button>
+            <button type="button" class="stok-kart-ozet-kart${aktifCls('KUMAS')}" onclick="switchArchiveTab('KUMAS')" title="Kumaş kartlarını göster">
                 <div class="stok-kart-ozet-kart__etiket">Kumaş</div>
                 <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--kumas">${kumas}</div>
-            </div>
-            <div class="stok-kart-ozet-kart">
+                <div class="stok-kart-ozet-kart__ipucu">Listeyi aç</div>
+            </button>
+            <button type="button" class="stok-kart-ozet-kart${aktifCls('MAMUL')}" onclick="switchArchiveTab('MAMUL')" title="Mamül kartlarını göster">
                 <div class="stok-kart-ozet-kart__etiket">Mamül ana kart</div>
                 <div class="stok-kart-ozet-kart__deger stok-kart-ozet-kart__deger--mamul">${mamul}</div>
-            </div>
+                <div class="stok-kart-ozet-kart__ipucu">Listeyi aç</div>
+            </button>
         </div>
     </div>`;
 }
@@ -42736,6 +42919,8 @@ function handleGlobalSearch(val) {
         if (appMode === 'TEZGAH_YONETIMI') {
             ganttFilters.search = searchVal;
             renderTezgahYonetimi();
+        } else if (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN') {
+            siparisListeAramaYenile();
         } else {
             loadData();
         }
