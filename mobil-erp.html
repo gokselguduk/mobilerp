@@ -1,0 +1,321 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Simteks ERP">
+    <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
+    <meta name="theme-color" content="#111827">
+    <meta name="color-scheme" content="dark light">
+    <title>Simteks Tekstil ERP — Mobil</title>
+    <script src="erp-config.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <!-- html2pdf yalnızca PDF indirilirken yüklenir -->
+    <script src="assets/erp_auth_tablo_fix.embed.js"></script>
+    <link rel="stylesheet" href="assets/mobil/mobil-erp.css">
+    <link rel="stylesheet" href="skins/workcube.css">
+</head>
+<body>
+
+<aside class="erp-sidebar">
+
+  <!-- Brand -->
+  <div class="sidebar-brand">
+    <img src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks Tekstil Logo" style="display:block;width:100%;height:auto;max-height:56px;object-fit:contain;">
+  </div>
+
+  <!-- User -->
+  <div class="sidebar-user">
+    <div class="sidebar-user-avatar" id="erp-sidebar-avatar">—</div>
+    <div style="min-width:0;flex:1">
+      <div id="erp-sidebar-name" style="font-size:11px;font-weight:500;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+      <div id="erp-sidebar-role" style="font-size:9px;color:var(--accent2);letter-spacing:0.05em">—</div>
+    </div>
+    <div class="sidebar-user-status"></div>
+  </div>
+
+  <div class="sidebar-tools">
+    <div class="sidebar-search-wrap">
+      <span style="color:var(--text3);font-size:11px">⌕</span>
+      <input id="sidebar-nav-search" class="sidebar-search" type="text" placeholder="Menüde ara..." oninput="sidebarFilterNav(this.value)">
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="sidebar-nav" id="main-nav">
+
+    <div onclick="setAppMode('SIPARIS_LISTE'); closeAllSubs();" class="nav-pro" id="nav-DASHBOARD" style="display:none!important" aria-hidden="true">
+      <span class="nav-pro-icon">🏠</span> Anasayfa
+    </div>
+    <div onclick="toggleChicSub('siparis')" class="nav-pro" id="nav-siparis-toggle">
+      <span class="nav-pro-icon">🧾</span> Sipariş
+      <span class="nav-pro-chevron" id="chev-siparis">▼</span>
+    </div>
+    <div id="sub-siparis" class="nav-pro-sub-area">
+      <div onclick="setAppMode('SIPARIS_GIRIS')" class="nav-pro-sub" id="nav-SIPARIS_GIRIS">↳ Yeni Sipariş</div>
+      <div onclick="setAppMode('SIPARIS_LISTE')" class="nav-pro-sub" id="nav-SIPARIS_LISTE">↳ Siparişler Listesi</div>
+      <div onclick="setAppMode('SIPARIS_KAPANAN')" class="nav-pro-sub" id="nav-SIPARIS_KAPANAN">↳ Kapanan Siparişler</div>
+      <div onclick="setAppMode('URUN_AGACI')" class="nav-pro-sub" id="nav-URUN_AGACI">↳ Ürün Ağacı</div>
+    </div>
+
+    <div onclick="toggleChicSub('depo')" class="nav-pro" id="nav-depo-toggle">
+      <span class="nav-pro-icon">📦</span> Depo Stok
+      <span class="nav-pro-chevron" id="chev-depo">▼</span>
+    </div>
+    <div id="sub-depo" class="nav-pro-sub-area">
+      <div onclick="setAppMode('DEPO_HAREKET')" class="nav-pro-sub" id="nav-DEPO_HAREKET">↳ Depo Giriş Çıkış</div>
+      <div onclick="setAppMode('IPLIK')" class="nav-pro-sub" id="nav-IPLIK">↳ İplik Stoğu</div>
+      <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">↳ Kumaş Stoğu</div>
+      <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">↳ Mamül Stoğu</div>
+      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">↳ Depo Hareketleri</div>
+    </div>
+
+    <div onclick="acKayitliStokKartlari()" class="nav-pro" id="nav-kart-toggle">
+      <span class="nav-pro-icon">🗂️</span> Stok Kartları
+      <span class="nav-pro-chevron" id="chev-kart">▼</span>
+    </div>
+    <div id="sub-kart" class="nav-pro-sub-area">
+      <div onclick="acKayitliStokKartlari()" class="nav-pro-sub" id="nav-KART_LISTE">↳ Tüm Kartlar</div>
+      <div onclick="switchArchiveTab('IPLIK')" class="nav-pro-sub" id="nav-IPLIK_KART_GIRIS">↳ İplik Kartları</div>
+      <div onclick="switchArchiveTab('KUMAS')" class="nav-pro-sub" id="nav-KUMAS_KART_GIRIS">↳ Kumaş Kartları</div>
+      <div onclick="switchArchiveTab('MAMUL')" class="nav-pro-sub" id="nav-MAMUL_KART_GIRIS">↳ Mamül Kartları</div>
+    </div>
+
+    <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
+      <span class="nav-pro-icon">🧪</span> Terbiye
+      <span class="nav-pro-chevron" id="chev-terbiye">▼</span>
+    </div>
+    <div id="sub-terbiye" class="nav-pro-sub-area">
+      <div onclick="openYikamaTakip()" class="nav-pro-sub" id="nav-YIKAMA_TAKIP">↳ Yıkama</div>
+    </div>
+
+    <div onclick="toggleChicSub('dokuma')" class="nav-pro" id="nav-dokuma-toggle">
+      <span class="nav-pro-icon">🧵</span> Dokuma
+      <span class="nav-pro-chevron" id="chev-dokuma">▼</span>
+    </div>
+    <div id="sub-dokuma" class="nav-pro-sub-area">
+      <div onclick="openDtDokumaHat()" class="nav-pro-sub" id="nav-DOKUMA_TAKIP">↳ Dokuma Hattı</div>
+      <div onclick="openDtUretimGiris()" class="nav-pro-sub" id="nav-DOKUMA_URETIM_GIRIS">↳ Üretim Girişi</div>
+      <div onclick="setAppMode('TEZGAH_YONETIMI')" class="nav-pro-sub" id="nav-TEZGAH_YONETIMI">↳ Tezgah Planlama</div>
+    </div>
+
+    <div onclick="toggleChicSub('konfeksiyon')" class="nav-pro" id="nav-konfeksiyon-toggle">
+      <span class="nav-pro-icon">👔</span> Konfeksiyon
+      <span class="nav-pro-chevron" id="chev-konfeksiyon">▼</span>
+    </div>
+    <div id="sub-konfeksiyon" class="nav-pro-sub-area">
+      <div onclick="setAppMode('TEKNIK_FOY')" class="nav-pro-sub" id="nav-TEKNIK_FOY">↳ Teknik Föy</div>
+      <div onclick="setAppMode('KONFEKSIYON')" class="nav-pro-sub" id="nav-KONFEKSIYON">↳ Konfeksiyon</div>
+      <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">↳ Fason Takip</div>
+      <div onclick="openKonfeksiyonPlanlama()" class="nav-pro-sub" id="nav-KONFEKSIYON_PLANLAMA">↳ Konfeksiyon Planlama</div>
+    </div>
+
+    <div onclick="toggleChicSub('planlama')" class="nav-pro" id="nav-planlama-toggle">
+      <span class="nav-pro-icon">🗓️</span> Planlama
+      <span class="nav-pro-chevron" id="chev-planlama">▼</span>
+    </div>
+    <div id="sub-planlama" class="nav-pro-sub-area">
+      <div onclick="setPlanlamaAlt('ANA'); closeAllSubs();" class="nav-pro-sub" id="nav-PLANLAMA">↳ Planlama Ana</div>
+    </div>
+
+    <div onclick="toggleChicSub('yonetim')" class="nav-pro" id="nav-yonetim-toggle">
+      <span class="nav-pro-icon">⚙️</span> Yönetim
+      <span class="nav-pro-chevron" id="chev-yonetim">▼</span>
+    </div>
+    <div id="sub-yonetim" class="nav-pro-sub-area">
+      <div onclick="setAppMode('TODO_LISTE')" class="nav-pro-sub" id="nav-TODO_LISTE">↳ Görevler</div>
+      <div onclick="setAppMode('RAPORLAR')" class="nav-pro-sub" id="nav-RAPORLAR">↳ Raporlar</div>
+    </div>
+
+  </nav>
+
+
+
+  <!-- Bottom -->
+  <div class="sidebar-footer">
+    <button onclick="syncAllData(true)" class="sync-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      ↻ Senkronize Et
+    </button>
+    <button type="button" onclick="setAppMode('DIAGNOSTICS')" class="sidebar-ghost-btn" data-erp-mode="DIAGNOSTICS">
+      ⚙ Sistem Testi
+    </button>
+  <button type="button" onclick="erpLogout()" class="sidebar-ghost-btn" style="color:var(--rose-c);border-color:rgba(251,113,133,0.3)">
+      ⏻ Çıkış Yap
+    </button>
+  </div>
+
+</aside>
+<div id="mobile-sidebar-overlay" class="mobile-sidebar-overlay" onclick="erpCloseMobileSidebar()"></div>
+
+<main>
+    <div class="top-header">
+        <div style="display:flex;align-items:center;gap:10px">
+            <button type="button" class="mobile-menu-btn" onclick="erpToggleMobileSidebar()" title="Menü">☰</button>
+            <h2 id="current-title" style="font-family:'Instrument Serif',serif;font-size:20px;color:var(--text);font-weight:400;letter-spacing:0.01em">
+                Anasayfa
+            </h2>
+            <div id="loading-spinner" class="hidden animate-spin rounded-full h-3 w-3" style="border:2px solid var(--accent);border-top-color:transparent;border-radius:50%"></div>
+            <div id="erp-live-indicator" title="Diğer bilgisayarlardan gelen veriler otomatik güncellenir"
+                style="display:none;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:9px;font-family:'DM Mono',monospace;font-weight:700;letter-spacing:.04em;cursor:default">
+                <span id="erp-live-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
+                <span id="erp-live-label">CANLI</span>
+            </div>
+            <button type="button" id="erp-live-pending-btn" onclick="erpLiveApplyPending()" title="Başka bilgisayardan yeni veri var"
+                style="display:none;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.12);color:var(--amber-c);font-size:9px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">
+                ↻ Yeni veri — yenile
+            </button>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+            <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 14px">
+                <span style="color:var(--text3);font-size:13px">⌕</span>
+                <input type="text" id="search" oninput="handleGlobalSearch(this.value)" placeholder="Hızlı ara..."
+                    style="background:none;border:none;outline:none;font-size:11px;color:var(--text);width:180px;font-family:'DM Sans',sans-serif"
+                    placeholder-style="color:var(--text3)">
+            </div>
+            <div onclick="toggleTheme()" id="theme-btn" title="Tema Değiştir"
+                style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:15px;transition:all 0.15s"
+                onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">🌙</div>
+            <div onclick="syncAllData(true)" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
+            <div id="stok-excel-template-btn" onclick="downloadStokExcelTemplate()" style="display:none;height:34px;align-items:center;justify-content:center;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:9px;cursor:pointer;padding:0 10px;font-size:10px;color:#3b82f6;font-weight:700;letter-spacing:.03em" title="Stok Excel Şablonu İndir">⤓ Stok Şablon</div>
+            <div id="stok-excel-import-btn" onclick="openStokExcelImport()" style="display:none;height:34px;align-items:center;justify-content:center;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:9px;cursor:pointer;padding:0 10px;font-size:10px;color:var(--emerald-c);font-weight:700;letter-spacing:.03em" title="Excel'den Stok Girişi Yükle">⬆ Stok Yükle</div>
+        </div>
+    </div>
+    <input id="siparis-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importSiparisExcel(this)">
+    <input id="stok-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importStokExcel(this)">
+    <input id="dt-excel-input" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="dtExcelDosyaOku(this)">
+
+    <div class="content-scroll">
+        <div class="content-container">
+            <div id="rapor-ozet-grid" style="display:none!important"></div>
+
+            <div id="filter-panel" class="hidden filter-card">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+                    <div id="tab-IPLIK" onclick="switchRaporTab('IPLIK')" class="tab-btn tab-active">🧵 İPLİK ANALİZ</div>
+                    <div id="tab-KUMAS" onclick="switchRaporTab('KUMAS')" class="tab-btn tab-passive">🏁 KUMAŞ ANALİZ</div>
+                    <div id="tab-KART" onclick="switchRaporTab('KART')" class="tab-btn tab-passive">🗂️ STOK KARTLARI</div>
+                </div>
+                <div id="filter-inputs" class="grid grid-cols-1 md:grid-cols-4 gap-6"></div>
+                <div id="cikis-rapor-ozet" class="hidden mt-6 pt-6 border-t grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
+            </div>
+
+            <section id="form-container" class="main-card" style="margin-bottom:1.5rem">
+                <div id="depo-list-only-bar" style="display:none;margin-bottom:1rem;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                    <div>
+                        <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace">Stok özeti</div>
+                        <div style="font-size:12px;color:var(--text2);margin-top:4px">Bu ekranda yalnızca bakiye ve liste görünür. <b>Depo girişi</b> ve <b>sevkiyat</b> kayıtlarını <b>Depo stok hareketleri</b> üzerinden girin.</div>
+                    </div>
+                    <button type="button" onclick="setAppMode('DEPO_HAREKET')" style="padding:10px 18px;font-size:11px;font-weight:700;border-radius:10px;cursor:pointer;border:none;background:var(--accent);color:#fff;font-family:'DM Sans',sans-serif">📦 Depo stok hareketleri</button>
+                </div>
+                <div id="depo-form-main-wrap">
+                <div class="depo-form-top">
+                    <div>
+                        <h3 class="depo-form-top__title" id="form-title">İşlem Girişi</h3>
+                        <div class="depo-form-top__sub" id="depo-form-subtitle">Stok hareketi kaydı</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <button type="button" id="depo-form-close-btn" class="depo-form-close-btn" onclick="depoHareketFormunuKapat()" style="display:none">◂ Listeye dön</button>
+                    <div id="toggle-area" class="depo-type-toggle" style="display:none">
+                        <div class="depo-type-toggle__lbl">İşlem tipi</div>
+                        <div class="depo-type-toggle__row">
+                            <button type="button" onclick="changeType('GİRİŞ')" id="btn-in" class="depo-type-btn">
+                                <div class="depo-type-btn__t">📥 Depo girişi</div>
+                                <div class="depo-type-btn__s">Stok artırır</div>
+                            </button>
+                            <button type="button" onclick="changeType('ÇIKIŞ')" id="btn-out" class="depo-type-btn">
+                                <div class="depo-type-btn__t">📤 Sevkiyat</div>
+                                <div class="depo-type-btn__s">Stok düşürür</div>
+                            </button>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                <div id="inputs-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+                <div id="notes-container" class="mt-6"></div>
+                <button id="main-action-btn" onclick="handleSave()" style="width:100%;margin-top:1.25rem;background:var(--accent);color:white;font-weight:500;padding:0.7rem;border-radius:9px;font-size:11px;letter-spacing:0.05em;cursor:pointer;border:none;transition:all 0.12s;font-family:'DM Sans',sans-serif" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">Kaydet</button>
+                <button id="cancel-edit-btn" onclick="setAppMode(appMode)" style="display:none;width:100%;margin-top:6px;background:transparent;color:var(--text3);font-weight:400;padding:0.55rem;border-radius:9px;font-size:10px;cursor:pointer;border:1px solid var(--border);font-family:'DM Sans',sans-serif">İptal / Temizle</button>
+                </div>
+            </section>
+
+            <section>
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem">
+                    <span style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:2px;font-family:'DM Mono',monospace" id="list-title">Hareket Kayıtları</span>
+                    <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+                </div>
+                <div id="main-list" class="pb-24"></div>
+            </section>
+        </div>
+    </div>
+</main>
+
+<nav class="erp-mobile-tabbar" id="erp-mobile-tabbar" aria-label="Mobil menü">
+    <button type="button" data-tab-mode="SIPARIS_LISTE" onclick="erpMobileTabGo('SIPARIS_LISTE')">
+        <span class="ico">🧾</span><span class="lbl">Sipariş</span>
+    </button>
+    <button type="button" data-tab-mode="DEPO_HAREKET" onclick="erpMobileTabGo('DEPO_HAREKET')">
+        <span class="ico">📦</span><span class="lbl">Depo</span>
+    </button>
+    <button type="button" data-tab-mode="KART_LISTE" onclick="erpMobileTabGo('KART_LISTE')">
+        <span class="ico">🗂️</span><span class="lbl">Kartlar</span>
+    </button>
+    <button type="button" data-tab-mode="KONFEKSIYON" onclick="erpMobileTabGo('KONFEKSIYON')">
+        <span class="ico">🧵</span><span class="lbl">Konfeksiyon</span>
+    </button>
+    <button type="button" data-tab-mode="MENU" onclick="erpToggleMobileSidebar(true)">
+        <span class="ico">☰</span><span class="lbl">Menü</span>
+    </button>
+</nav>
+
+<div id="detail-modal" onclick="closeModal(event)" style="display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center">
+    <div class="modal-box" onclick="event.stopPropagation()">
+
+        <!-- MODAL HEADER -->
+        <div class="modal-head-bar">
+            <div style="display:flex;align-items:flex-start;gap:10px;min-width:0;flex:1">
+                <div id="modal-type-badge"></div>
+                <h2 id="modal-title"></h2>
+            </div>
+            <div class="modal-head-actions">
+                <button type="button" id="modal-print-btn" onclick="exportToPDF()" class="modal-head-btn modal-head-btn--print" title="PDF olarak indir">🖨 PDF</button>
+                <button type="button" id="modal-excel-btn" onclick="exportAktifModalExcel()" class="modal-head-btn modal-head-btn--print" title="Excel indir" style="display:none">⤓ Excel</button>
+                <button type="button" id="modal-edit-btn" onclick="editRecord()" class="modal-head-btn modal-head-btn--edit" title="Bu kaydı düzenle">Düzenle</button>
+                <button type="button" id="modal-delete-btn" onclick="deleteRecord()" class="modal-head-btn modal-head-btn--delete" title="Kaydı veritabanından kalıcı sil">Kaydı sil</button>
+                <button type="button" onclick="hideDetailModal()" class="modal-head-btn modal-head-btn--close" title="Pencereyi kapat (geri dön)">Kapat</button>
+            </div>
+        </div>
+
+        <!-- MODAL BODY (tek dikey kaydırma) -->
+        <div id="modal-body" class="modal-body-scroll"></div>
+
+        <!-- MODAL FOOTER -->
+        <div id="log-section" class="modal-foot-bar" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <span id="log-user">— Kayıt sahibi</span>
+            <span id="log-time">— Tarih</span>
+        </div>
+    </div>
+</div>
+
+<div id="siparis-mamul-sec-modal" onclick="siparisMamulSeciciKapat(event)">
+    <div class="siparis-mamul-sec-box" onclick="event.stopPropagation()">
+        <div class="siparis-mamul-sec-head">
+            <h3>🧥 Mamül Stok Kodu Seç</h3>
+            <button type="button" onclick="siparisMamulSeciciKapat()" class="modal-head-btn modal-head-btn--close" title="Kapat">✕</button>
+        </div>
+        <div class="siparis-mamul-sec-ara-wrap">
+            <input id="siparis-mamul-sec-ara" class="pro-input" placeholder="Kod, ürün adı, firma, renk, ebat…" autocomplete="off"
+                oninput="siparisMamulSeciciAra(this.value)" style="font-size:12px;padding:10px 12px">
+        </div>
+        <div id="siparis-mamul-sec-list" class="siparis-mamul-sec-list"></div>
+        <div id="siparis-mamul-sec-foot" class="siparis-mamul-sec-foot">—</div>
+    </div>
+</div>
+
+<script src="assets/mobil/mobil-app.js"></script>
+</body>
+</html>
