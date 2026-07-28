@@ -2026,9 +2026,43 @@ function siparisListeTekAramaEslesir(i, q) {
 }
 
 function siparisListeTekAramaOku() {
-    const panel = String(document.getElementById('f-siparis-q')?.value || window.siparisListePanelFiltre?.q || '').trim();
-    const header = String(document.getElementById('search')?.value || '').trim();
-    return (panel || header).toLowerCase();
+    const q = String(document.getElementById('f-siparis-q')?.value || window.siparisListePanelFiltre?.q || '').trim();
+    return q.toLowerCase();
+}
+
+function siparisListeAramaToolbarHtml(sayac) {
+    if (!window.siparisListePanelFiltre || typeof window.siparisListePanelFiltre !== 'object') {
+        window.siparisListePanelFiltre = { q: '' };
+    }
+    const qVal = String(window.siparisListePanelFiltre.q || '');
+    const sc = sayac || { hepsi: 0, beklemede: 0, uretimde: 0, geciken: 0, yakin: 0 };
+    const hizli = appMode === 'SIPARIS_LISTE' ? `
+        <div class="siparis-hizli-filtre" role="tablist" aria-label="Durum filtresi">
+            <button type="button" onclick="siparisListeSetHizliFiltre('HEPSI')" class="pill ${siparisListeHizliFiltre==='HEPSI'?'pill-blue':'pill-gray'}">Tümü ${sc.hepsi}</button>
+            <button type="button" onclick="siparisListeSetHizliFiltre('BEKLEMEDE')" class="pill ${siparisListeHizliFiltre==='BEKLEMEDE'?'pill-amber':'pill-gray'}">Bekleyen ${sc.beklemede}</button>
+            <button type="button" onclick="siparisListeSetHizliFiltre('URETIMDE')" class="pill ${siparisListeHizliFiltre==='URETIMDE'?'pill-pink':'pill-gray'}">Üretim ${sc.uretimde}</button>
+            <button type="button" onclick="siparisListeSetHizliFiltre('GECIKEN')" class="pill ${siparisListeHizliFiltre==='GECIKEN'?'pill-red':'pill-gray'}">Geciken ${sc.geciken}</button>
+            <button type="button" onclick="siparisListeSetHizliFiltre('YAKLASAN')" class="pill ${siparisListeHizliFiltre==='YAKLASAN'?'pill-amber':'pill-gray'}">Yakın ${sc.yakin}</button>
+        </div>` : '';
+    return `<div class="siparis-liste-toolbar">
+        <div class="siparis-arama-bar">
+            <span class="siparis-arama-bar__icon" aria-hidden="true">⌕</span>
+            <input id="f-siparis-q" type="search" inputmode="search" enterkeyhint="search" autocomplete="off"
+                class="siparis-arama-bar__input"
+                value="${pdfEsc(qVal)}"
+                placeholder="Sipariş, firma, ürün ara…"
+                oninput="siparisListePanelFiltreAlan('q', this.value)">
+            <button type="button" class="siparis-arama-bar__clear" title="Temizle" aria-label="Aramayı temizle"
+                onclick="siparisListeAramaTemizle()" ${qVal ? '' : 'hidden'}>✕</button>
+        </div>
+        ${hizli}
+    </div>`;
+}
+
+function siparisListeAramaTemizle() {
+    siparisListePanelFiltreAlan('q', '');
+    const inp = document.getElementById('f-siparis-q');
+    if (inp) inp.focus();
 }
 
 function siparisListeHizliSayacHesapla(rows) {
@@ -7535,6 +7569,7 @@ function erpDataCacheRestore() {
         dataCache.todo_list = d.todo_list || [];
         dataCache.tezgahlar = (d.tezgahlar || []).map(t => ({ ...t, id: t?.id ?? t?.iden ?? null }));
         stockCards = dataCache.kumas_kutuphanesi;
+        siparisFotoLsCacheBirlestir();
         return true;
     } catch (e) {
         return false;
@@ -7554,6 +7589,10 @@ function erpDataCacheMergeTable(table, incoming, onceki) {
             if ((merged[col] == null || merged[col] === '') && prev[col] != null && prev[col] !== '') {
                 merged[col] = prev[col];
             }
+        }
+        if (table === 'siparisler' && merged.id && !siparisFotograflarFromRaw(siparisKayitFotoAlani(merged)).length) {
+            const ls = siparisFotoLsOku(merged.id);
+            if (ls.length) merged[SIPARIS_FOTO_DB_COL] = ls;
         }
         return merged;
     });
@@ -28889,15 +28928,8 @@ function loadData() {
         ${kumasKartListeTabloBaslikHtml()}` : '';
 
     const siparisListeBaslik = ((appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN') && table === 'siparisler') ? `
-        ${appMode === 'SIPARIS_LISTE' ? `
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <button onclick="siparisListeSetHizliFiltre('HEPSI')" class="pill ${siparisListeHizliFiltre==='HEPSI'?'pill-blue':'pill-gray'}" style="cursor:pointer;border:none">Tümü (${siparisHizliSayac.hepsi})</button>
-            <button onclick="siparisListeSetHizliFiltre('BEKLEMEDE')" class="pill ${siparisListeHizliFiltre==='BEKLEMEDE'?'pill-amber':'pill-gray'}" style="cursor:pointer;border:none">Beklemede (${siparisHizliSayac.beklemede})</button>
-            <button onclick="siparisListeSetHizliFiltre('URETIMDE')" class="pill ${siparisListeHizliFiltre==='URETIMDE'?'pill-pink':'pill-gray'}" style="cursor:pointer;border:none">Üretimde (${siparisHizliSayac.uretimde})</button>
-            <button onclick="siparisListeSetHizliFiltre('GECIKEN')" class="pill ${siparisListeHizliFiltre==='GECIKEN'?'pill-red':'pill-gray'}" style="cursor:pointer;border:none">Geciken (${siparisHizliSayac.geciken})</button>
-            <button onclick="siparisListeSetHizliFiltre('YAKLASAN')" class="pill ${siparisListeHizliFiltre==='YAKLASAN'?'pill-amber':'pill-gray'}" style="cursor:pointer;border:none">Yaklaşan termin (${siparisHizliSayac.yakin})</button>
-        </div>` : ''}
-        <div class="siparis-liste-baslik" style="pointer-events:auto;user-select:auto" role="presentation">
+        ${siparisListeAramaToolbarHtml(siparisHizliSayac)}
+        <div class="siparis-liste-baslik siparis-liste-baslik--kolon" style="pointer-events:auto;user-select:auto" role="presentation">
             <div class="siparis-lc-no"><span onclick="siparisListeToggleSiralama('sno')" style="cursor:pointer">Sipariş no ${siparisListeSortIcon('sno')}</span></div>
             <div class="siparis-lc-firma"><span onclick="siparisListeToggleSiralama('firma')" style="cursor:pointer">Müşteri ${siparisListeSortIcon('firma')}</span></div>
             <div class="siparis-lc-ozet"><span onclick="siparisListeToggleSiralama('ozet')" style="cursor:pointer">Özet sipariş ${siparisListeSortIcon('ozet')}</span></div>
@@ -30279,37 +30311,27 @@ function iplikGrafikDetay(indices) {
 // switchRaporTab — appMode düzeltildi
 // ============================================================
 function siparisListeFilterPanelKur(opts = {}) {
-    const filterPanel = document.getElementById('filter-panel');
-    const container = document.getElementById('filter-inputs');
-    if (!filterPanel || !container) return;
     if (!window.siparisListePanelFiltre || typeof window.siparisListePanelFiltre !== 'object') {
         window.siparisListePanelFiltre = { q: '' };
     } else if (window.siparisListePanelFiltre.q == null) {
-        // Eski çok alanlı filtre → tek alana taşı
         const eski = window.siparisListePanelFiltre;
         window.siparisListePanelFiltre = {
             q: [eski.sno, eski.firma, eski.durum, eski.ay].filter(Boolean).join(' ').trim()
         };
     }
-    const qVal = String(window.siparisListePanelFiltre.q || '');
     siparisListeKolonFiltre = { sno: '', firma: '', ozet: '', adet: '', termin: '', grup: '' };
-    filterPanel.classList.remove('hidden');
-    filterPanel.classList.add('siparis-filtre-card');
-    container.classList.add('siparis-filtre-grid');
-    container.classList.add('siparis-filtre-tek');
-    // Rapor analiz sekmelerini sipariş listesinde gizle
-    const tabRow = filterPanel.querySelector(':scope > div:first-child');
-    if (tabRow && tabRow.querySelector('.tab-btn')) tabRow.style.display = 'none';
-    container.innerHTML = `
-        <div class="siparis-filtre-tek-alan">
-            <span class="label-text">Sipariş ara</span>
-            <input id="f-siparis-q" type="search" inputmode="search" enterkeyhint="search"
-                value="${pdfEsc(qVal)}"
-                oninput="siparisListePanelFiltreAlan('q', this.value)"
-                class="input-box"
-                placeholder="No, firma, ürün, durum, grup, termin…"
-                autocomplete="off">
-        </div>`;
+    const filterPanel = document.getElementById('filter-panel');
+    const container = document.getElementById('filter-inputs');
+    if (filterPanel) {
+        filterPanel.classList.add('hidden');
+        filterPanel.classList.remove('siparis-filtre-card');
+    }
+    if (container) {
+        container.innerHTML = '';
+        container.classList.remove('siparis-filtre-grid', 'siparis-filtre-tek');
+    }
+    const headerSearch = document.getElementById('search');
+    if (headerSearch) headerSearch.value = '';
     if (!opts.skipLoad) loadData();
 }
 
@@ -30412,7 +30434,7 @@ function siparisListeAramaYenile() {
         return;
     }
     const list = document.getElementById('main-list');
-    if (!list || !list.querySelector('.siparis-liste-baslik')) {
+    if (!list || !list.querySelector('.siparis-liste-toolbar')) {
         loadData();
         return;
     }
@@ -31968,7 +31990,9 @@ function buildSiparisDetailModalHtml(i, opts) {
     </div>`;
 
     const fotoList = siparisFotografListesiAl(i);
-    if (fotoList.length) {
+    if (i.id != null) {
+        detayHtml += siparisFotoPanelShellHtml(i, fotoList.length);
+    } else if (fotoList.length) {
         detayHtml += `
         <div class="siparis-kalem-panel">
             <div class="siparis-kalem-head">
@@ -32482,18 +32506,6 @@ function showDetail(idx) {
         flushOpenDetailGecmisIfNeeded();
         siparisDetailModalBaslatDurumTab(i);
         queueMicrotask(() => { if (erpIsAdmin() && i.id != null) siparisNotlarPanelWire(i.id); });
-        const detayIdx = idx;
-        const detayId = i.id;
-        if (detayId != null && !siparisFotograflarFromRaw(siparisKayitFotoAlani(i)).length) {
-            siparisKayitFotolarLazyYukle(detayId).then(fresh => {
-                if (!fresh || selectedIndex !== detayIdx) return;
-                const b = document.getElementById('modal-body');
-                if (!b) return;
-                b.innerHTML = buildSiparisDetailModalHtml(fresh);
-                siparisDetailModalBaslatDurumTab(fresh);
-                if (erpIsAdmin()) siparisNotlarPanelWire(detayId);
-            });
-        }
         return;
     }
 
@@ -37158,6 +37170,51 @@ function siparisFotograflarFromRaw(raw) {
         return siparisFotograflarFromRaw(parsed);
     } catch (e) {}
     return s.startsWith('data:image/') ? [{ src: s, aciklama: '' }] : [];
+}
+
+/** Detay modal — fotoğraflar isteğe bağlı (mobilde kararlı; otomatik açılmaz) */
+function siparisFotoPanelShellHtml(i, cachedCount) {
+    const sid = String(i?.id ?? '');
+    if (!sid) return '';
+    const n = cachedCount || 0;
+    const alt = n > 0 ? ` (${n} önbellekte)` : '';
+    return `
+    <div class="siparis-kalem-panel siparis-foto-panel">
+        <div class="siparis-kalem-head">
+            <span class="siparis-kalem-head-title">Sipariş fotoğrafları</span>
+        </div>
+        <button type="button" id="siparis-foto-btn-${sid}" class="btn-pro btn-ghost-pro siparis-foto-yukle-btn"
+            onclick="siparisFotoPanelYukle('${sid}')">📷 Fotoğrafları göster${alt}</button>
+        <div id="siparis-foto-icerik-${sid}" class="siparis-foto-icerik" hidden></div>
+    </div>`;
+}
+
+async function siparisFotoPanelYukle(siparisId) {
+    const sid = String(siparisId ?? '');
+    const host = document.getElementById('siparis-foto-icerik-' + sid);
+    const btn = document.getElementById('siparis-foto-btn-' + sid);
+    if (!host) return;
+    host.hidden = false;
+    host.innerHTML = '<div class="siparis-foto-durum">Fotoğraflar yükleniyor…</div>';
+    if (btn) { btn.disabled = true; btn.textContent = 'Yükleniyor…'; }
+    try {
+        let kayit = (dataCache.siparisler || []).find(s => String(s.id) === sid);
+        let fotos = kayit ? siparisFotografListesiAl(kayit) : [];
+        if (!fotos.length) {
+            kayit = await siparisKayitFotolarLazyYukle(siparisId);
+            fotos = kayit ? siparisFotografListesiAl(kayit) : [];
+        }
+        if (!fotos.length) {
+            host.innerHTML = '<div class="siparis-foto-durum">Bu siparişte kayıtlı fotoğraf yok.</div>';
+            if (btn) { btn.textContent = '📷 Fotoğraf yok'; btn.disabled = false; }
+            return;
+        }
+        host.innerHTML = siparisFotografHtmlGrid(fotos, { minW: 120, imgH: 130 });
+        if (btn) { btn.textContent = '📷 ' + fotos.length + ' fotoğraf'; btn.disabled = false; }
+    } catch (e) {
+        host.innerHTML = '<div class="siparis-foto-durum siparis-foto-durum--err">Fotoğraflar yüklenemedi.</div>';
+        if (btn) { btn.textContent = '📷 Tekrar dene'; btn.disabled = false; }
+    }
 }
 
 /** Form belleği + kayıt fotograf alanından sipariş foto listesi */

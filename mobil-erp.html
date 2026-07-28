@@ -3591,67 +3591,115 @@
             .yk-stats { grid-template-columns: 1fr; }
         }
 
-        /* Sipariş filtre paneli — tek arama alanı */
-        #filter-panel.siparis-filtre-card {
-            padding: 0.55rem 0.7rem;
-            margin-bottom: 0.55rem;
+        /* Sipariş listesi — tek arama çubuğu + kompakt filtre */
+        body[data-erp-mode="SIPARIS_LISTE"] #filter-panel,
+        body[data-erp-mode="SIPARIS_KAPANAN"] #filter-panel {
+            display: none !important;
+        }
+        body[data-erp-mode="SIPARIS_LISTE"] .top-header #search,
+        body[data-erp-mode="SIPARIS_KAPANAN"] .top-header #search,
+        body[data-erp-mode="SIPARIS_LISTE"] .top-header > div:last-child > div:first-child,
+        body[data-erp-mode="SIPARIS_KAPANAN"] .top-header > div:last-child > div:first-child {
+            display: none !important;
+        }
+        .siparis-liste-toolbar {
+            margin-bottom: 8px;
+        }
+        .siparis-arama-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 12px;
+            min-height: 38px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+        }
+        .siparis-arama-bar__icon {
+            color: var(--text3);
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        .siparis-arama-bar__input {
+            flex: 1;
+            min-width: 0;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'DM Sans', sans-serif;
+            padding: 8px 0;
+        }
+        .siparis-arama-bar__input::placeholder {
+            color: var(--text3);
+        }
+        .siparis-arama-bar__clear {
+            border: none;
+            background: var(--surface3);
+            color: var(--text2);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            font-size: 11px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .siparis-hizli-filtre {
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-top: 8px;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+        }
+        .siparis-hizli-filtre::-webkit-scrollbar { display: none; }
+        .siparis-hizli-filtre .pill {
+            flex-shrink: 0;
+            cursor: pointer;
+            border: none;
+            min-height: 26px;
+            padding: 4px 10px;
+            font-size: 9px;
+        }
+        .siparis-foto-panel .siparis-foto-yukle-btn {
+            width: 100%;
+            justify-content: center;
+            margin-top: 4px;
+            font-size: 11px;
+            padding: 9px 12px;
+        }
+        .siparis-foto-icerik {
+            margin-top: 10px;
+        }
+        .siparis-foto-durum {
+            padding: 12px;
+            text-align: center;
+            color: var(--text3);
+            font-size: 11px;
+            border: 1px dashed var(--border);
             border-radius: 10px;
         }
-        #filter-panel.siparis-filtre-card > div:first-child {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-            border-bottom: none !important;
-        }
-        #filter-inputs.siparis-filtre-grid.siparis-filtre-tek {
-            display: block !important;
-        }
-        #filter-inputs.siparis-filtre-tek .siparis-filtre-tek-alan .label-text {
-            font-size: 8px !important;
-            margin-bottom: 4px !important;
-            letter-spacing: 0.05em;
-        }
-        #filter-inputs.siparis-filtre-tek #f-siparis-q {
-            min-height: 36px;
-            padding: 8px 12px !important;
-            font-size: 13px !important;
-            border-radius: 8px;
-            width: 100%;
+        .siparis-foto-durum--err {
+            color: var(--rose-c);
+            border-color: rgba(251, 113, 133, 0.35);
         }
 
-        /* Sipariş listesi — durum / filtre (dar ekran) */
+        /* Sipariş listesi — mobil */
+        @media (max-width: 768px) {
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-baslik--kolon,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-baslik--kolon {
+                display: none !important;
+            }
+        }
         @media (max-width: 640px) {
-            body[data-erp-mode="SIPARIS_LISTE"] #filter-panel.siparis-filtre-card,
-            body[data-erp-mode="SIPARIS_KAPANAN"] #filter-panel.siparis-filtre-card {
-                padding: 0.5rem 0.55rem;
-                margin-bottom: 0.45rem;
-            }
-            body[data-erp-mode="SIPARIS_LISTE"] #filter-inputs.siparis-filtre-tek #f-siparis-q,
-            body[data-erp-mode="SIPARIS_KAPANAN"] #filter-inputs.siparis-filtre-tek #f-siparis-q {
-                min-height: 38px;
-                font-size: 14px !important;
-            }
-            body[data-erp-mode="SIPARIS_LISTE"] #search,
-            body[data-erp-mode="SIPARIS_KAPANAN"] #search {
-                font-size: 13px !important;
-                min-height: 32px;
-            }
             body[data-erp-mode="SIPARIS_LISTE"] #main-list > .siparis-liste-baslik,
             body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > .siparis-liste-baslik {
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
                 max-width: 100%;
                 padding: 0.25rem 0.4rem;
-            }
-            body[data-erp-mode="SIPARIS_LISTE"] #main-list > div:first-child,
-            body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > div:first-child {
-                gap: 4px !important;
-                margin-bottom: 6px !important;
-            }
-            body[data-erp-mode="SIPARIS_LISTE"] #main-list > div:first-child button.pill,
-            body[data-erp-mode="SIPARIS_KAPANAN"] #main-list > div:first-child button.pill {
-                min-height: 28px;
-                padding: 4px 8px;
-                font-size: 9px;
             }
             body[data-erp-mode="SIPARIS_LISTE"] .record-item.siparis-liste-row .siparis-lc-no .pill,
             body[data-erp-mode="SIPARIS_KAPANAN"] .record-item.siparis-liste-row .siparis-lc-no .pill {

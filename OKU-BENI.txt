@@ -18,4 +18,4 @@ Dosyalar (hepsi gerekli):
 Nasıl oluşturuldu:
   Proje klasöründe SUNUCUYA-AT-MOBIL.bat çift tıklayın.
 
-Boyut: yaklaşık 2434 KB
+Boyut: yaklaşık 2437 KB
