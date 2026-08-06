@@ -1,0 +1,43 @@
+SUNUCUYA YÜKLEME — BU HATA NEDEN OLUR?
+======================================
+
+Hata:
+  assets/mobil/mobil-app.js sunucuda bulunamadı
+
+Sebep:
+  Sadece mobil-erp.html yüklenmiş.
+  assets klasörü (özellikle assets/mobil/) YÜKLENMEMİŞ.
+
+DOĞRU YÜKLEME
+-------------
+  Bu klasördeki (sunucu-paket) İÇİNDEKİ HER ŞEYİ yükleyin:
+
+    mobil-erp.html
+    index.html
+    erp-config.js
+    assets\          ← BU KLASÖR ŞART
+      mobil\
+        mobil-app.js ← asıl uygulama
+        mobil-erp.css
+        icons\
+      ...
+
+  Klasörün kendisini değil, İÇİNDEKİLERİ site köküne koyun.
+  Yapı şöyle olmalı:
+
+    siteniz.com/mobil-erp.html
+    siteniz.com/assets/mobil/mobil-app.js
+
+YANLIŞ
+------
+  Sadece mobil-erp.html sürüklemek
+  assets'i başka alt klasöre koymak
+
+HAZIR PAKET YOLU
+----------------
+  tekstil-erp\mobil\sunucu-paket\
+  veya
+  tekstil-erp\_uretilen\sunucuya-at-mobil\
+
+Yeniden üretmek için:
+  SUNUCUYA-AT-MOBIL.bat

@@ -1,0 +1,23 @@
+SIMTEKS ERP — YALNIZCA MOBİL PAKET
+==================================
+
+Bu klasördeki HER ŞEYİ sunucuya yükleyin. Başka dosya gerekmez.
+
+Açılış adresi:
+  https://siteniz.com/mobil-erp.html
+  veya https://siteniz.com/  (otomatik yönlendirir)
+
+Telefonda uygulama gibi: Chrome → Ana ekrana ekle (PWA).
+Gerçek APK için: MOBIL-UYGULAMA-OKU.txt
+
+Dosyalar (hepsi gerekli):
+  mobil-erp.html, index.html, erp-config.js, erp-build.js
+  manifest.webmanifest, sw.js
+  assets/mobil/*, assets/stok-kart-desktop.js,
+  assets/mamul-depo-toplu.js, assets/erp_auth_tablo_fix.embed.js
+  robots.txt
+
+Nasıl oluşturuldu:
+  Proje klasöründe SUNUCUYA-AT-MOBIL.bat çift tıklayın.
+
+Boyut: yaklaşık 5167 KB

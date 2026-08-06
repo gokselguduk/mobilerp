@@ -1,0 +1,26 @@
+{
+  "name": "Simteks Tekstil ERP",
+  "short_name": "Simteks ERP",
+  "description": "Simteks Tekstil ERP mobil uygulaması",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "assets/mobil/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/mobil/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
