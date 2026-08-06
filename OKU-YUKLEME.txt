@@ -1,0 +1,7 @@
+DÜZ YÜKLEME
+===========
+
+mobil-erp.html ile mobil-app.js AYNI klasörde olmalı.
+
+YANLIŞ: sadece HTML yüklemek
+DOĞRU:  bu klasördeki tüm dosyaları birlikte yüklemek

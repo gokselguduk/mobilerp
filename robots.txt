@@ -1,0 +1,3 @@
+# Kurumsal ERP — arama motorlarında listelenmesini istemiyorsanız:
+User-agent: *
+Disallow: /
