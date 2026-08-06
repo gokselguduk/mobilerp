@@ -3433,6 +3433,45 @@
             z-index: 90;
             backdrop-filter: blur(2px);
         }
+
+        /* Mobil ERP: sidebar her zaman çekmece — içerik alanını daraltmaz */
+        body.erp-mobil-lite .erp-sidebar,
+        body.erp-mobil-lite aside.erp-sidebar {
+            position: fixed !important;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 100;
+            transform: translateX(-102%);
+            transition: transform 0.2s ease;
+            width: min(84vw, 304px) !important;
+            max-width: 304px;
+            flex: 0 0 0 !important;
+            margin: 0 !important;
+        }
+        body.erp-mobil-lite.mobile-sidebar-open .erp-sidebar {
+            transform: translateX(0);
+        }
+        body.erp-mobil-lite .mobile-sidebar-overlay {
+            display: block;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        body.erp-mobil-lite.mobile-sidebar-open .mobile-sidebar-overlay {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        body.erp-mobil-lite main {
+            width: 100% !important;
+            min-width: 0;
+            flex: 1 1 100% !important;
+            height: 100dvh;
+        }
+        body.erp-mobil-lite .mobile-menu-btn {
+            display: inline-flex !important;
+        }
+
         @media (max-width: 1024px) {
             body {
                 height: 100dvh;
@@ -4295,7 +4334,7 @@
         .gorev-atama-adim-s { font-size: 9px; color: var(--text3); margin-top: 3px; }
 </style>
 </head>
-<body>
+<body class="erp-mobil-lite">
 
 <aside class="erp-sidebar">
 
