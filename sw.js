@@ -1,19 +1,18 @@
 /* Simteks ERP Mobil — uygulama kabuğu önbelleği */
-const CACHE = 'simteks-erp-mobil-v2';
+const CACHE = 'simteks-erp-mobil-v3';
 const PRECACHE = [
   './',
   './index.html',
+  './mobil-erp.html',
   './erp-config.js',
   './erp-build.js',
   './manifest.webmanifest',
-  './assets/vendor/supabase.min.js',
-  './assets/vendor/xlsx.full.min.js',
-  './assets/erp_auth_tablo_fix.embed.js',
-  './assets/stok-kart-desktop.js',
-  './assets/mamul-depo-toplu.js',
-  './assets/mobil/mobil-app.js',
-  './assets/mobil/icons/icon-192.png',
-  './assets/mobil/icons/icon-512.png'
+  './erp_auth_tablo_fix.embed.js',
+  './stok-kart-desktop.js',
+  './mamul-depo-toplu.js',
+  './mobil-app.js',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -34,7 +33,6 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Supabase / API — her zaman ağ
   if (url.hostname.includes('supabase.co') || url.pathname.includes('/rest/') || url.pathname.includes('/auth/')) {
     return;
   }

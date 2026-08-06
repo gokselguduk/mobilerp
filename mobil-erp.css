@@ -1,75 +1,19 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="referrer" content="strict-origin-when-cross-origin">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Simteks ERP">
-    <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
-    <meta name="theme-color" content="#111827">
-    <meta name="color-scheme" content="dark light">
-    <link rel="manifest" href="manifest.webmanifest">
-    <link rel="apple-touch-icon" href="icon-192.png" id="erp-apple-touch-icon">
-    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" id="erp-icon-192">
-    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" id="erp-icon-512">
-    <title>Simteks Tekstil ERP — Mobil</title>
-    <script src="erp-config.js"></script>
-    <script src="erp-build.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- html2pdf yalnızca PDF indirilirken yüklenir -->
-    <script>
-    /* İkon: düz kök veya assets/mobil/icons */
-    (function () {
-        function tryIcon(id, paths) {
-            var el = document.getElementById(id);
-            if (!el || !paths.length) return;
-            var img = new Image();
-            var i = 0;
-            img.onerror = function () {
-                i += 1;
-                if (i < paths.length) img.src = paths[i];
-            };
-            img.onload = function () { el.href = paths[i]; };
-            img.src = paths[0];
-        }
-        tryIcon('erp-apple-touch-icon', ['icon-192.png', 'assets/mobil/icons/icon-192.png']);
-        tryIcon('erp-icon-192', ['icon-192.png', 'assets/mobil/icons/icon-192.png']);
-        tryIcon('erp-icon-512', ['icon-512.png', 'assets/mobil/icons/icon-512.png']);
-    })();
-    </script>
-    <style id="mobil-erp-inline-css">
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
-        /* Mobil lite: excel gizli — menü Anasayfa açık (masaüstü ile aynı) */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+        /* Mobil lite: excel gizli — menü Anasayfa açık */
         body.erp-mobil-lite #modal-excel-btn,
         body.erp-mobil-lite #stok-excel-import-btn,
         body.erp-mobil-lite #stok-excel-template-btn {
             display: none !important;
         }
-        /* Canlı senkron — dokunmatik uyumlu */
         #erp-live-indicator,
         #erp-live-pending-btn {
             touch-action: manipulation;
             -webkit-user-select: none;
             user-select: none;
         }
-        #erp-live-pending-btn {
-            min-height: 40px;
-        }
+        #erp-live-pending-btn { min-height: 40px; }
         @media (max-width: 640px) {
-            .top-header {
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-            #erp-live-indicator {
-                font-size: 10px !important;
-                padding: 6px 10px !important;
-            }
+            #erp-live-indicator { font-size: 10px !important; padding: 6px 10px !important; }
         }
         /* Uygulama hissi: pinch / double-tap zoom kapalı, kaydırma sınırlı */
         html {
@@ -2161,6 +2105,9 @@
         #search::-webkit-search-cancel-button { -webkit-appearance: none; height: 16px; width: 16px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'); cursor: pointer; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .gantt-grid-col { border-right: 1px solid rgba(255,255,255,0.03); }
+        .gantt-today-col { background: rgba(99,102,241,0.05); border-x: 1px dashed rgba(99,102,241,0.3); }
+        .gantt-bar-shadow { box-shadow: 0 4px 12px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.1); }
         :root {
             /* ── KOYU MOD (varsayılan) ── */
             --bg:        #12141a;
@@ -2377,34 +2324,9 @@
             box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
         }
         .sidebar-brand {
-            padding: 12px 14px 10px;
+            padding: 16px 14px 13px;
             border-bottom: 1px solid var(--border);
             background: color-mix(in srgb, var(--surface2) 55%, transparent);
-            text-align: center;
-        }
-        .sidebar-brand-logo-wrap {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 2px 6px;
-        }
-        .sidebar-brand-logo {
-            display: block;
-            width: auto;
-            max-width: 112px;
-            max-height: 30px;
-            height: auto;
-            object-fit: contain;
-            opacity: 0.9;
-            filter: brightness(0.95);
-        }
-        .sidebar-brand-version {
-            margin-top: 5px;
-            font-size: 9px;
-            font-family: 'DM Mono', monospace;
-            letter-spacing: 0.06em;
-            color: var(--text3);
-            line-height: 1.2;
         }
         .sidebar-brand-icon {
             width: 34px;
@@ -3949,110 +3871,6 @@
                 position: static !important;
                 top: auto !important;
             }
-            body[data-erp-mode="MAMUL_KART_GIRIS"] #inputs-grid.mamul-layout {
-                display: block !important;
-                width: 100% !important;
-            }
-            .mamul-sheet {
-                border: 1px solid var(--border2);
-                border-radius: 12px;
-                overflow: hidden;
-                background: var(--surface);
-                border-left: 3px solid var(--amber-c);
-            }
-            .mamul-sheet__toolbar {
-                display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
-                padding: 8px 12px; background: rgba(251,191,36,0.06); border-bottom: 1px solid var(--border);
-            }
-            .mamul-sheet__toolbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
-            .mamul-sheet__toolbar-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-            .mamul-sheet__kod {
-                font-family: 'DM Mono', monospace; font-weight: 700; font-size: 14px; color: var(--amber-c);
-                padding: 4px 10px; border-radius: 6px; background: rgba(251,191,36,0.1);
-                border: 1px solid rgba(251,191,36,0.25);
-            }
-            .mamul-sheet__kod input {
-                border: none; background: transparent; font: inherit; color: inherit;
-                width: 88px; padding: 0; outline: none;
-            }
-            .mamul-sheet__section {
-                padding: 6px 10px 4px;
-                font-size: 7px; font-weight: 700; color: var(--text3);
-                text-transform: uppercase; letter-spacing: 0.1em;
-                font-family: 'DM Mono', monospace;
-                border-top: 1px solid var(--border);
-                background: var(--surface2);
-            }
-            .mamul-sheet__grid { display: grid; gap: 5px 7px; padding: 8px 10px; }
-            .mamul-sheet__grid--kimlik { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .mamul-sheet__grid--dokuma { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .mamul-sheet__grid--aciklama { grid-template-columns: 1fr; padding-top: 4px; padding-bottom: 6px; }
-            .mamul-field { min-width: 0; }
-            .mamul-field .pro-label {
-                display: block; font-size: 7px; font-weight: 700; color: var(--text3);
-                text-transform: uppercase; letter-spacing: 0.04em;
-                font-family: 'DM Mono', monospace; margin-bottom: 2px;
-            }
-            .mamul-field .pro-input {
-                width: 100%; box-sizing: border-box;
-                padding: 3px 6px; font-size: 10px; min-height: 24px; height: 24px;
-            }
-            .mamul-field textarea.pro-input {
-                height: auto; min-height: 24px; max-height: 36px; resize: none; line-height: 1.3;
-            }
-            .mamul-sheet__foto-btn {
-                display: inline-flex; align-items: center; gap: 4px;
-                padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 600;
-                border: 1px dashed var(--border2); background: var(--surface); color: var(--text3);
-                cursor: pointer;
-            }
-            .mamul-sheet__foto-btn img { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; }
-            .mamul-varyant-bar {
-                display: flex; align-items: center; justify-content: space-between; gap: 6px;
-                padding: 4px 10px; border-top: 1px solid var(--border);
-            }
-            .mamul-varyant-bar__btns { display: flex; gap: 3px; flex-wrap: wrap; }
-            .mamul-varyant-bar__btns .btn-pro { padding: 2px 6px !important; font-size: 8px !important; min-height: 0; }
-            .mamul-varyant-scroll { overflow: auto; max-height: 168px; border-top: 1px solid var(--border); }
-            .mamul-varyant-table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 9px; }
-            .mamul-varyant-table thead th {
-                padding: 3px 4px; border: 1px solid var(--border);
-                background: var(--surface2); font-size: 7px; font-weight: 700;
-                text-transform: uppercase; font-family: 'DM Mono', monospace;
-                color: var(--text3); white-space: nowrap; position: sticky; top: 0; z-index: 2;
-            }
-            .mamul-varyant-table td { padding: 1px 2px; border: 1px solid var(--border); vertical-align: middle; }
-            .mamul-varyant-table td:first-child,
-            .mamul-varyant-table th:first-child {
-                position: sticky; left: 0; z-index: 1;
-                background: var(--surface2); font-weight: 700; min-width: 72px; font-size: 8px;
-            }
-            .mamul-varyant-table .pro-input {
-                padding: 2px 4px; font-size: 9px; min-height: 20px; height: 20px;
-                min-width: 0; width: 100%; box-sizing: border-box;
-            }
-            /* TEMP: mamul toplu temizleme — sonradan silinecek */
-            .mamul-toplu-wrap {
-                margin: 0 0 12px; padding: 12px 14px; border-radius: 12px;
-                border: 1px solid rgba(251,113,133,0.35); background: rgba(251,113,133,0.06);
-            }
-            .mamul-toplu-wrap--collapsed { margin-bottom: 10px; padding: 0; border: none; background: transparent; }
-            .mamul-toplu-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-            .mamul-toplu-head__title { font-size: 11px; font-weight: 700; color: var(--rose-c); }
-            .mamul-toplu-head__sub { font-size: 9px; color: var(--text3); margin-top: 4px; line-height: 1.4; }
-            .mamul-toplu-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
-            .mamul-toplu-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-            .mamul-toplu-liste { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
-            .mamul-toplu-row {
-                display: grid; grid-template-columns: auto 88px 1fr auto; gap: 6px; align-items: center;
-                padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
-                cursor: pointer; font-size: 10px;
-            }
-            .mamul-toplu-row.is-selected { border-color: rgba(251,113,133,0.45); background: rgba(251,113,133,0.05); }
-            .mamul-toplu-row__kod { font-family: 'DM Mono', monospace; font-weight: 600; color: var(--amber-c); font-size: 9px; }
-            .mamul-toplu-row__ad { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
-            .mamul-toplu-row__pill { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
-            .mamul-toplu-empty { font-size: 10px; color: var(--text3); padding: 12px; text-align: center; }
             body[data-erp-mode="KART_LISTE"] .stok-kart-toolbar__head {
                 flex-direction: column;
                 align-items: stretch;
@@ -4355,422 +4173,29 @@
         .gorev-atama-adim--secili { background: rgba(99, 102, 241, 0.08); box-shadow: inset 3px 0 0 var(--accent2); }
         .gorev-atama-adim-t { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.35; }
         .gorev-atama-adim-s { font-size: 9px; color: var(--text3); margin-top: 3px; }
-</style>
-</head>
-<body class="erp-mobil-lite">
 
-<aside class="erp-sidebar">
-
-  <!-- Brand -->
-  <div class="sidebar-brand">
-    <div class="sidebar-brand-logo-wrap">
-      <img class="sidebar-brand-logo" src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks Tekstil">
-    </div>
-    <div class="sidebar-brand-version" id="erp-sidebar-version">sürüm …</div>
-  </div>
-
-  <!-- User -->
-  <div class="sidebar-user">
-    <div class="sidebar-user-avatar" id="erp-sidebar-avatar">—</div>
-    <div style="min-width:0;flex:1">
-      <div id="erp-sidebar-name" style="font-size:11px;font-weight:500;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
-      <div id="erp-sidebar-role" style="font-size:9px;color:var(--accent2);letter-spacing:0.05em">—</div>
-    </div>
-    <div class="sidebar-user-status"></div>
-  </div>
-
-  <div class="sidebar-tools">
-    <div class="sidebar-search-wrap">
-      <span style="color:var(--text3);font-size:11px">⌕</span>
-      <input id="sidebar-nav-search" class="sidebar-search" type="text" placeholder="Menüde ara..." oninput="sidebarFilterNav(this.value)">
-    </div>
-  </div>
-
-  <!-- Nav — masaüstü (stok.html) ile aynı yapı / sıra / etiketler -->
-  <nav class="sidebar-nav" id="main-nav">
-
-    <div onclick="setAppMode('DASHBOARD'); closeAllSubs();" class="nav-pro active" id="nav-DASHBOARD">
-      <span class="nav-pro-icon">🏠</span> Anasayfa
-    </div>
-    <div onclick="toggleChicSub('siparis')" class="nav-pro" id="nav-siparis-toggle">
-      <span class="nav-pro-icon">🧾</span> Sipariş
-      <span class="nav-pro-chevron" id="chev-siparis">▾</span>
-    </div>
-    <div id="sub-siparis" class="nav-pro-sub-area">
-      <div onclick="setAppMode('SIPARIS_GIRIS')" class="nav-pro-sub" id="nav-SIPARIS_GIRIS">Yeni Sipariş</div>
-      <div onclick="setAppMode('SIPARIS_LISTE')" class="nav-pro-sub" id="nav-SIPARIS_LISTE">Siparişler Listesi</div>
-      <div onclick="setAppMode('SIPARIS_KAPANAN')" class="nav-pro-sub" id="nav-SIPARIS_KAPANAN">Kapanan Siparişler</div>
-      <div onclick="setAppMode('URUN_AGACI')" class="nav-pro-sub" id="nav-URUN_AGACI">Ürün Ağacı</div>
-    </div>
-
-    <div onclick="toggleChicSub('depo')" class="nav-pro" id="nav-depo-toggle">
-      <span class="nav-pro-icon">📦</span> Depo Stok
-      <span class="nav-pro-chevron" id="chev-depo">▾</span>
-    </div>
-    <div id="sub-depo" class="nav-pro-sub-area">
-      <div onclick="setAppMode('DEPO_HAREKET')" class="nav-pro-sub" id="nav-DEPO_HAREKET">Depo Giriş Çıkış</div>
-      <div onclick="setAppMode('IPLIK')" class="nav-pro-sub" id="nav-IPLIK">İplik Stoğu</div>
-      <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">Kumaş Stoğu</div>
-      <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">Mamül Stoğu</div>
-      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
-    </div>
-
-    <div onclick="toggleChicSub('kart')" class="nav-pro" id="nav-kart-toggle">
-      <span class="nav-pro-icon">🗂️</span> Stok Kartları
-      <span class="nav-pro-chevron" id="chev-kart">▾</span>
-    </div>
-    <div id="sub-kart" class="nav-pro-sub-area">
-      <div onclick="acKayitliStokKartlari()" class="nav-pro-sub" id="nav-KART_LISTE">Tüm Kartlar</div>
-      <div onclick="switchArchiveTab('IPLIK')" class="nav-pro-sub" id="nav-stok-IPLIK">İplik Kartları</div>
-      <div onclick="switchArchiveTab('KUMAS')" class="nav-pro-sub" id="nav-stok-KUMAS">Kumaş Kartları</div>
-      <div onclick="switchArchiveTab('MAMUL')" class="nav-pro-sub" id="nav-stok-MAMUL">Mamül Kartları</div>
-      <div onclick="openMamulKartGiris()" class="nav-pro-sub" id="nav-MAMUL_KART_GIRIS" data-erp-mode="MAMUL_KART_GIRIS">Yeni Mamül Kartı</div>
-    </div>
-
-    <div onclick="setAppMode('NUMUNE_URETIM'); closeAllSubs();" class="nav-pro" id="nav-NUMUNE_URETIM">
-      <span class="nav-pro-icon">🧪</span> Numune
-    </div>
-
-    <div class="nav-rail-divider" aria-hidden="true"></div>
-
-    <div class="nav-group">
-      <button type="button" class="nav-group-head" onclick="toggleNavGroup('group-uretim')">
-        <span class="nav-group-head-inner">
-          <span class="nav-pro-icon">🏭</span>
-          <span>Üretim</span>
-        </span>
-        <span class="nav-group-head-chevron" id="chev-group-uretim">▾</span>
-      </button>
-      <div class="nav-group-body" id="group-uretim">
-
-        <div onclick="toggleChicSub('dokuma')" class="nav-pro" id="nav-dokuma-toggle">
-          <span class="nav-pro-icon">🧵</span> Dokuma
-          <span class="nav-pro-chevron" id="chev-dokuma">▾</span>
-        </div>
-        <div id="sub-dokuma" class="nav-pro-sub-area">
-          <div onclick="setAppMode('DOKUMA_TAKIP')" class="nav-pro-sub" id="nav-DOKUMA_TAKIP">Dokuma Takip</div>
-          <div onclick="setAppMode('DOKUMA_DEPO')" class="nav-pro-sub" id="nav-DOKUMA_DEPO">Dokuma Depo</div>
-          <div onclick="setAppMode('DOKUMA_SEVK_GECMIS')" class="nav-pro-sub" id="nav-DOKUMA_SEVK_GECMIS">Sevk Geçmişi</div>
-        </div>
-
-        <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
-          <span class="nav-pro-icon">🎨</span> Terbiye
-          <span class="nav-pro-chevron" id="chev-terbiye">▾</span>
-        </div>
-        <div id="sub-terbiye" class="nav-pro-sub-area">
-          <div onclick="openTerbiye()" class="nav-pro-sub" id="nav-BOYAHANE_URETIM" data-erp-mode="BOYAHANE_URETIM">Terbiye Paneli</div>
-        </div>
-
-        <div onclick="toggleChicSub('konfeksiyon')" class="nav-pro" id="nav-konfeksiyon-toggle">
-          <span class="nav-pro-icon">👔</span> Konfeksiyon
-          <span class="nav-pro-chevron" id="chev-konfeksiyon">▾</span>
-        </div>
-        <div id="sub-konfeksiyon" class="nav-pro-sub-area">
-          <div onclick="openKonfeksiyonKesim()" class="nav-pro-sub" id="nav-KONFEKSIYON_KESIM">Kesim</div>
-          <div onclick="openKonfeksiyonYikama()" class="nav-pro-sub" id="nav-KONFEKSIYON_YIKAMA">Yıkama</div>
-          <div onclick="openKonfeksiyonKalite()" class="nav-pro-sub" id="nav-KONFEKSIYON_KALITE">Kalite</div>
-          <div onclick="openKonfeksiyonSevk()" class="nav-pro-sub" id="nav-KONFEKSIYON_SEVK">Konfeksiyon Sevk</div>
-          <div onclick="openKonfIslemRaporu('hafta')" class="nav-pro-sub" id="nav-KONF_ISLEM_RAPOR">İşlem Raporu</div>
-        </div>
-
-      </div>
-    </div>
-
-    <div class="nav-rail-divider" aria-hidden="true"></div>
-
-    <div onclick="toggleChicSub('planlama')" class="nav-pro" id="nav-planlama-toggle">
-      <span class="nav-pro-icon">🗓️</span> Planlama
-      <span class="nav-pro-chevron" id="chev-planlama">▾</span>
-    </div>
-    <div id="sub-planlama" class="nav-pro-sub-area">
-      <div onclick="setAppMode('PLANLAMA')" class="nav-pro-sub" id="nav-PLANLAMA">Üretim Planlama</div>
-      <div onclick="setAppMode('TEKNIK_FOY')" class="nav-pro-sub" id="nav-TEKNIK_FOY">Teknik Föy</div>
-      <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">Fason Takip</div>
-      <div onclick="openKonfeksiyonPlanlama()" class="nav-pro-sub" id="nav-KONFEKSIYON_PLANLAMA">Konfeksiyon Planlama</div>
-    </div>
-
-    <div onclick="toggleChicSub('yonetim')" class="nav-pro" id="nav-yonetim-toggle">
-      <span class="nav-pro-icon">⚙️</span> Yönetim
-      <span class="nav-pro-chevron" id="chev-yonetim">▾</span>
-    </div>
-    <div id="sub-yonetim" class="nav-pro-sub-area">
-      <div onclick="setAppMode('TODO_LISTE')" class="nav-pro-sub" id="nav-TODO_LISTE">Görevler</div>
-      <div onclick="setAppMode('RAPORLAR')" class="nav-pro-sub" id="nav-RAPORLAR">Raporlar</div>
-      <div onclick="setAppMode('MALIYET_HESAP')" class="nav-pro-sub" id="nav-MALIYET_HESAP">Maliyet Hesaplama</div>
-      <div onclick="setAppMode('MALIYET_LISTE')" class="nav-pro-sub" id="nav-MALIYET_LISTE">Kayıtlı Maliyetler</div>
-    </div>
-
-  </nav>
-
-
-
-  <!-- Bottom -->
-  <div class="sidebar-footer">
-    <button onclick="syncAllData(true)" class="sync-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
-      ↻ Senkronize Et
-    </button>
-    <button type="button" onclick="setAppMode('DIAGNOSTICS')" class="sidebar-ghost-btn" data-erp-mode="DIAGNOSTICS">
-      ⚙ Sistem Testi
-    </button>
-  <button type="button" onclick="erpLogout()" class="sidebar-ghost-btn" style="color:var(--rose-c);border-color:rgba(251,113,133,0.3)">
-      ⏻ Çıkış Yap
-    </button>
-  </div>
-
-</aside>
-<div id="mobile-sidebar-overlay" class="mobile-sidebar-overlay" onclick="erpCloseMobileSidebar()"></div>
-
-<main>
-    <div class="top-header">
-        <div style="display:flex;align-items:center;gap:10px">
-            <button type="button" class="mobile-menu-btn" onclick="erpToggleMobileSidebar()" title="Menü">☰</button>
-            <h2 id="current-title" style="font-family:'Instrument Serif',serif;font-size:20px;color:var(--text);font-weight:400;letter-spacing:0.01em">
-                Anasayfa
-            </h2>
-            <div id="loading-spinner" class="hidden animate-spin rounded-full h-3 w-3" style="border:2px solid var(--accent);border-top-color:transparent;border-radius:50%"></div>
-            <div id="erp-live-indicator" title="Diğer bilgisayarlardan gelen veriler otomatik güncellenir"
-                style="display:none;align-items:center;gap:6px;padding:6px 12px;min-height:36px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:10px;font-family:'DM Mono',monospace;font-weight:700;letter-spacing:.04em;cursor:default;touch-action:manipulation;-webkit-user-select:none;user-select:none">
-                <span id="erp-live-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
-                <span id="erp-live-label">CANLI</span>
-            </div>
-            <button type="button" id="erp-live-pending-btn" onclick="erpLiveApplyPending()" title="Başka bilgisayardan yeni veri var"
-                style="display:none;align-items:center;justify-content:center;gap:6px;padding:8px 12px;min-height:40px;border-radius:10px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.12);color:var(--amber-c);font-size:11px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent">
-                ↻ Yeni veri — yenile
-            </button>
-        </div>
-        <div style="flex:1"></div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
-            <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 14px">
-                <span style="color:var(--text3);font-size:13px">⌕</span>
-                <input type="text" id="search" oninput="handleGlobalSearch(this.value)" placeholder="Hızlı ara..."
-                    style="background:none;border:none;outline:none;font-size:11px;color:var(--text);width:180px;font-family:'DM Sans',sans-serif"
-                    placeholder-style="color:var(--text3)">
-            </div>
-            <div onclick="toggleTheme()" id="theme-btn" title="Tema Değiştir"
-                style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:15px;transition:all 0.15s"
-                onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">🌙</div>
-            <div onclick="syncAllData(true)" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
-        </div>
-    </div>
-    <input id="siparis-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importSiparisExcel(this)">
-    <input id="dt-excel-input" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="dtExcelDosyaOku(this)">
-    <input id="mamul-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="mamulExcelYukle(this)">
-
-    <div class="content-scroll">
-        <div class="content-container">
-            <div id="rapor-ozet-grid" style="display:none!important"></div>
-
-            <div id="filter-panel" class="hidden filter-card">
-                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-                    <div id="tab-IPLIK" onclick="switchRaporTab('IPLIK')" class="tab-btn tab-active">🧵 İPLİK ANALİZ</div>
-                    <div id="tab-KUMAS" onclick="switchRaporTab('KUMAS')" class="tab-btn tab-passive">🏁 KUMAŞ ANALİZ</div>
-                    <div id="tab-KART" onclick="switchRaporTab('KART')" class="tab-btn tab-passive">🗂️ STOK KARTLARI</div>
-                </div>
-                <div id="filter-inputs" class="grid grid-cols-1 md:grid-cols-4 gap-6"></div>
-                <div id="cikis-rapor-ozet" class="hidden mt-6 pt-6 border-t grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
-            </div>
-
-            <section id="form-container" class="main-card" style="margin-bottom:1.5rem">
-                <div id="depo-list-only-bar" style="display:none;margin-bottom:1rem;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-                    <div>
-                        <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace">Stok özeti</div>
-                        <div style="font-size:12px;color:var(--text2);margin-top:4px">Bu ekranda yalnızca bakiye ve liste görünür. <b>Depo girişi</b> ve <b>sevkiyat</b> kayıtlarını <b>Depo stok hareketleri</b> üzerinden girin.</div>
-                    </div>
-                    <button type="button" onclick="setAppMode('DEPO_HAREKET')" style="padding:10px 18px;font-size:11px;font-weight:700;border-radius:10px;cursor:pointer;border:none;background:var(--accent);color:#fff;font-family:'DM Sans',sans-serif">📦 Depo stok hareketleri</button>
-                </div>
-                <div id="depo-form-main-wrap">
-                <div class="depo-form-top">
-                    <div>
-                        <h3 class="depo-form-top__title" id="form-title">İşlem Girişi</h3>
-                        <div class="depo-form-top__sub" id="depo-form-subtitle">Stok hareketi kaydı</div>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                    <button type="button" id="depo-form-close-btn" class="depo-form-close-btn" onclick="depoHareketFormunuKapat()" style="display:none">◂ Listeye dön</button>
-                    <div id="toggle-area" class="depo-type-toggle" style="display:none">
-                        <div class="depo-type-toggle__lbl">İşlem tipi</div>
-                        <div class="depo-type-toggle__row">
-                            <button type="button" onclick="changeType('GİRİŞ')" id="btn-in" class="depo-type-btn">
-                                <div class="depo-type-btn__t">📥 Depo girişi</div>
-                                <div class="depo-type-btn__s">Stok artırır</div>
-                            </button>
-                            <button type="button" onclick="changeType('ÇIKIŞ')" id="btn-out" class="depo-type-btn">
-                                <div class="depo-type-btn__t">📤 Sevkiyat</div>
-                                <div class="depo-type-btn__s">Stok düşürür</div>
-                            </button>
-                        </div>
-                    </div>
-                    </div>
-                </div>
-                <div id="inputs-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
-                <div id="notes-container" class="mt-6"></div>
-                <button id="main-action-btn" onclick="handleSave()" style="width:100%;margin-top:1.25rem;background:var(--accent);color:white;font-weight:500;padding:0.7rem;border-radius:9px;font-size:11px;letter-spacing:0.05em;cursor:pointer;border:none;transition:all 0.12s;font-family:'DM Sans',sans-serif" onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">Kaydet</button>
-                <button id="cancel-edit-btn" onclick="setAppMode(appMode)" style="display:none;width:100%;margin-top:6px;background:transparent;color:var(--text3);font-weight:400;padding:0.55rem;border-radius:9px;font-size:10px;cursor:pointer;border:1px solid var(--border);font-family:'DM Sans',sans-serif">İptal / Temizle</button>
-                </div>
-            </section>
-
-            <section>
-                <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem">
-                    <span style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:2px;font-family:'DM Mono',monospace" id="list-title">Hareket Kayıtları</span>
-                    <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
-                </div>
-                <div id="main-list" class="pb-24"></div>
-            </section>
-        </div>
-    </div>
-</main>
-
-<nav class="erp-mobile-tabbar" id="erp-mobile-tabbar" aria-label="Mobil menü">
-    <button type="button" data-tab-mode="SIPARIS_LISTE" onclick="erpMobileTabGo('SIPARIS_LISTE')">
-        <span class="ico">🧾</span><span class="lbl">Sipariş</span>
-    </button>
-    <button type="button" data-tab-mode="DEPO_HAREKET" onclick="erpMobileTabGo('DEPO_HAREKET')">
-        <span class="ico">📦</span><span class="lbl">Depo</span>
-    </button>
-    <button type="button" data-tab-mode="KART_LISTE" onclick="erpMobileTabGo('KART_LISTE')">
-        <span class="ico">🗂️</span><span class="lbl">Kartlar</span>
-    </button>
-    <button type="button" data-tab-mode="KONFEKSIYON" onclick="erpMobileTabGo('KONFEKSIYON')">
-        <span class="ico">🧵</span><span class="lbl">Konfeksiyon</span>
-    </button>
-    <button type="button" data-tab-mode="MENU" onclick="erpToggleMobileSidebar(true)">
-        <span class="ico">☰</span><span class="lbl">Menü</span>
-    </button>
-</nav>
-
-<div id="detail-modal" onclick="closeModal(event)" style="display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center">
-    <div class="modal-box" onclick="event.stopPropagation()">
-
-        <!-- MODAL HEADER -->
-        <div class="modal-head-bar">
-            <div style="display:flex;align-items:flex-start;gap:10px;min-width:0;flex:1">
-                <div id="modal-type-badge"></div>
-                <h2 id="modal-title"></h2>
-            </div>
-            <div class="modal-head-actions">
-                <button type="button" id="modal-print-btn" onclick="exportToPDF()" class="modal-head-btn modal-head-btn--print" title="PDF olarak indir">🖨 PDF</button>
-                <button type="button" id="modal-excel-btn" onclick="exportAktifModalExcel()" class="modal-head-btn modal-head-btn--print" title="Excel indir" style="display:none">⤓ Excel</button>
-                <button type="button" id="modal-edit-btn" onclick="editRecord()" class="modal-head-btn modal-head-btn--edit" title="Bu kaydı düzenle">Düzenle</button>
-                <button type="button" id="modal-delete-btn" onclick="deleteRecord()" class="modal-head-btn modal-head-btn--delete" title="Kaydı veritabanından kalıcı sil">Kaydı sil</button>
-                <button type="button" onclick="hideDetailModal()" class="modal-head-btn modal-head-btn--close" title="Pencereyi kapat (geri dön)">Kapat</button>
-            </div>
-        </div>
-
-        <!-- MODAL BODY (tek dikey kaydırma) -->
-        <div id="modal-body" class="modal-body-scroll"></div>
-
-        <!-- MODAL FOOTER -->
-        <div id="log-section" class="modal-foot-bar" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-            <span id="log-user">— Kayıt sahibi</span>
-            <span id="log-time">— Tarih</span>
-        </div>
-    </div>
-</div>
-
-<div id="siparis-mamul-sec-modal" onclick="siparisMamulSeciciKapat(event)">
-    <div class="siparis-mamul-sec-box" onclick="event.stopPropagation()">
-        <div class="siparis-mamul-sec-head">
-            <h3>🧥 Mamül Stok Kodu Seç</h3>
-            <button type="button" onclick="siparisMamulSeciciKapat()" class="modal-head-btn modal-head-btn--close" title="Kapat">✕</button>
-        </div>
-        <div class="siparis-mamul-sec-ara-wrap">
-            <input id="siparis-mamul-sec-ara" class="pro-input" placeholder="Kod, ürün adı, firma, renk, ebat…" autocomplete="off"
-                oninput="siparisMamulSeciciAra(this.value)" style="font-size:12px;padding:10px 12px">
-        </div>
-        <div id="siparis-mamul-sec-list" class="siparis-mamul-sec-list"></div>
-        <div id="siparis-mamul-sec-foot" class="siparis-mamul-sec-foot">—</div>
-    </div>
-</div>
-
-<script>
-/* Script yolları: GitHub düz yükleme (mobil-app.js) VE assets/mobil/ yapısı */
-(function () {
-    var shown = false;
-    function goster(msg, detay) {
-        if (shown) return;
-        shown = true;
-        var el = document.getElementById('erp-yukleme-hatasi');
-        var m = document.getElementById('erp-yukleme-hatasi-msg');
-        var d = document.getElementById('erp-yukleme-hatasi-detay');
-        if (m && msg) m.textContent = msg;
-        if (d && detay) { d.style.display = 'block'; d.textContent = detay; }
-        if (el) el.style.display = 'block';
-    }
-    window.__erpMobilYuklemeHatasi = goster;
-
-    function loadScript(candidates) {
-        return new Promise(function (resolve, reject) {
-            var i = 0;
-            function tryNext() {
-                if (i >= candidates.length) {
-                    reject(new Error(candidates.join('  |  ')));
-                    return;
-                }
-                var src = candidates[i++];
-                var s = document.createElement('script');
-                s.async = false;
-                s.src = src;
-                s.onload = function () { resolve(src); };
-                s.onerror = function () { tryNext(); };
-                document.body.appendChild(s);
-            }
-            tryNext();
-        });
-    }
-
-    var chain = [
-        ['erp_auth_tablo_fix.embed.js', 'assets/erp_auth_tablo_fix.embed.js'],
-        ['stok-kart-desktop.js', 'assets/stok-kart-desktop.js'],
-        ['mamul-depo-toplu.js', 'assets/mamul-depo-toplu.js'],
-        ['mobil-app.js', 'assets/mobil/mobil-app.js']
-    ];
-
-    chain.reduce(function (p, cands) {
-        return p.then(function () { return loadScript(cands); });
-    }, Promise.resolve()).then(function () {
-        if (typeof setAppMode !== 'function') {
-            goster(
-                'mobil-app.js yüklendi ama uygulama başlamadı (muhtemel sözdizimi/çalışma hatası).',
-                'typeof setAppMode = ' + (typeof setAppMode)
-            );
+        /* Mamül depo toplu giriş/çıkış (mobil) */
+        .mamul-depo-mod-bar { display: flex; gap: 6px; padding: 4px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border); }
+        .mamul-depo-mod-btn { flex: 1; border: none; background: transparent; padding: 10px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; color: var(--text3); font-family: 'DM Mono', monospace; }
+        .mamul-depo-mod-btn.is-active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .mamul-toplu-hareket-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+        .mamul-toplu-hareket-head,
+        .mamul-toplu-hareket-row { display: grid; grid-template-columns: 100px 1fr 56px 1fr 32px; gap: 6px; padding: 8px 10px; align-items: center; }
+        .mamul-toplu-hareket-head { font-size: 8px; font-weight: 700; color: var(--text3); text-transform: uppercase; font-family: 'DM Mono', monospace; background: var(--surface2); border-bottom: 1px solid var(--border); }
+        .mamul-toplu-hareket-row { border-bottom: 1px solid var(--border); }
+        .mamul-toplu-hareket-row.has-error { background: rgba(251,113,133,0.06); }
+        .mamul-toplu-hareket-urun { font-size: 10px; color: var(--text2); line-height: 1.35; min-width: 0; }
+        .mamul-toplu-urun-ad { display: block; font-weight: 600; color: var(--text); }
+        .mamul-toplu-urun-meta { display: block; font-size: 9px; color: var(--text3); margin-top: 2px; }
+        #mamul-toplu-kod-drop { display: none; position: fixed; z-index: 100000; min-width: 280px; max-width: 92vw; background: var(--surface); border: 1px solid var(--border2); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 220px; overflow-y: auto; }
+        .mamul-toplu-kod-drop-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .mamul-toplu-kod-drop-item__kod { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 700; color: var(--amber-c); }
+        .mamul-toplu-kod-drop-item__meta { font-size: 9px; color: var(--text3); margin-top: 2px; }
+        .mamul-toplu-hareket-ozet { padding: 10px 12px; background: rgba(109,113,255,0.06); border-top: 1px solid var(--border); font-size: 10px; }
+        .mamul-toplu-hareket-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface2); }
+        @media (max-width: 480px) {
+            .mamul-toplu-hareket-head { display: none; }
+            .mamul-toplu-hareket-row { grid-template-columns: 1fr; gap: 8px; padding: 10px; }
         }
-    }).catch(function (err) {
-        goster(
-            'Script dosyası bulunamadı. mobil-erp.html ile aynı klasörde mobil-app.js olmalı (veya assets/mobil/mobil-app.js).',
-            String(err && err.message ? err.message : err)
-        );
-    });
 
-    window.addEventListener('error', function (e) {
-        if (e && e.filename && String(e.filename).indexOf('mobil-app') >= 0) {
-            goster(
-                'mobil-app.js içinde hata var (dosya bulundu ama çalışmadı).',
-                (e.message || '') + (e.lineno ? ('\nSatır: ' + e.lineno) : '')
-            );
-        }
-    }, true);
-
-    window.setTimeout(function () {
-        if (typeof setAppMode === 'function') return;
-        goster(
-            'Uygulama hazır olmadı. mobil-app.js eksik, bozuk veya çok yavaş yükleniyor olabilir.',
-            'typeof setAppMode = ' + (typeof setAppMode)
-        );
-    }, 20000);
-})();
-</script>
-<div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
-    <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
-    <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">Uygulama scripti çalışmadı.</p>
-    <pre id="erp-yukleme-hatasi-detay" style="display:none;margin:12px 0;padding:12px;background:#0b0f17;border:1px solid #334155;border-radius:8px;color:#fca5a5;font-size:12px;white-space:pre-wrap;word-break:break-word"></pre>
-    <p style="margin:12px 0 0;line-height:1.5;color:#64748b;font-size:12px">GitHub / hosting: tüm dosyaları <strong>aynı klasöre</strong> koyun (<code>mobil-erp.html</code> + <code>mobil-app.js</code> yan yana).</p>
-</div>
-<script>
-(function () {
-  if (!('serviceWorker' in navigator)) return;
-  window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
-  });
-})();
-</script>
-</body>
-</html>
+    
