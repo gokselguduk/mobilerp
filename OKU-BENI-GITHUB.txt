@@ -5,7 +5,7 @@ Bu klasörün İÇİNDEKİ dosyaları GitHub'a yükleyin.
 
 ÖNEMLİ — GitHub web sürükle-bırak:
   • En fazla 100 dosya kabul eder
-  • Bu paket sadeleştirildi (~88 dosya)
+  • Bu paket sadeleştirildi (~89 dosya)
   • Hata alırsanız: GitHub Desktop ile klasörü ekleyin (önerilir)
 
 NASIL (web)
@@ -29,4 +29,4 @@ BU PAKETTE YOK (bilerek)
   _main_script.js / node_modules / dist
   sunucuya-at* / releases/*.exe
 
-Boyut: ~8.4 MB  (88 dosya)
+Boyut: ~8.4 MB  (89 dosya)
