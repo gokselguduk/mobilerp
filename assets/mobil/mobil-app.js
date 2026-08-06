@@ -151,7 +151,7 @@ function $setVal(id, val) {
 let SB_URL = '';
 let SB_KEY = '';
 let sb = null;
-const ERP_QUERY_TIMEOUT_MS = 15000;
+const ERP_QUERY_TIMEOUT_MS = window.ERP_MOBIL_LITE ? 25000 : 15000;
 
 async function erpWithTimeout(promise, label = 'Sorgu', timeoutMs = ERP_QUERY_TIMEOUT_MS) {
     let timeoutId = null;
@@ -214,10 +214,7 @@ const ERP_PERM_MODES = [
     ['DEPO_HAREKET', 'Depo giriş çıkış'],
     ['DEPO_HAREKET_LISTE', 'Depo hareketleri'],
     ['BOYAHANE_URETIM', 'Boyahane'],
-    ['YIKAMA_TAKIP', 'Yıkama'],
-    ['TEZGAH_YONETIMI', 'Gantt planlama'],
-    ['TEZGAH_GIRIS', 'Tezgah tanımlama'],
-    ['DOKUMA_TAKIP', 'Dokuma takip'],
+    ['YIKAMA_TAKIP', 'Yıkama'],    ['DOKUMA_TAKIP', 'Dokuma takip'],
     ['KONFEKSIYON', 'Konfeksiyon'],
     ['FASON_TAKIP', 'Fason takip'],
     ['KONFEKSIYON_PLANLAMA', 'Konfeksiyon planlama'],
@@ -237,7 +234,7 @@ const ERP_PERM_GROUP_DEFS = [
     { id: 'genel', label: 'Genel', icon: '🏠', codes: ['DASHBOARD', 'PLANLAMA', 'TODO_LISTE', 'RAPORLAR'] },
     { id: 'siparis', label: 'Sipariş', icon: '📋', codes: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN'] },
     { id: 'stok', label: 'Stok & Depo', icon: '📦', codes: ['IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE'] },
-    { id: 'uretim', label: 'Üretim', icon: '⚙️', codes: ['BOYAHANE_URETIM', 'YIKAMA_TAKIP', 'TEZGAH_YONETIMI', 'TEZGAH_GIRIS', 'DOKUMA_TAKIP'] },
+    { id: 'uretim', label: 'Üretim', icon: '⚙️', codes: ['BOYAHANE_URETIM', 'YIKAMA_TAKIP', 'DOKUMA_TAKIP'] },
     { id: 'konf', label: 'Konfeksiyon', icon: '🧵', codes: ['KONFEKSIYON', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI'] },
     { id: 'kart', label: 'Kart & Arşiv', icon: '🗂️', codes: ['KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS'] },
     { id: 'sistem', label: 'Sistem', icon: '🔧', codes: ['DIAGNOSTICS'] }
@@ -780,7 +777,6 @@ async function erpSessionBootstrap() {
 }
 
 // --- GLOBAL DEĞİŞKENLER ---
-let ganttVisible = false;
 let dataCache = {
     iplik_stok: [],
     kumas_stok: [],
@@ -1839,11 +1835,6 @@ function sortTezgahlarByTezgahNo(list) {
         String(x.tezgah_no ?? '').localeCompare(String(y.tezgah_no ?? ''), 'tr', { numeric: true, sensitivity: 'base' })
     );
 }
-function sortTezgahNoKeys(keys) {
-    return [...(keys || [])].sort((a, b) =>
-        String(a ?? '').localeCompare(String(b ?? ''), 'tr', { numeric: true, sensitivity: 'base' })
-    );
-}
 function suggestNextSiparisNo() {
     let maxSeq = 399;
     for (const s of (dataCache.siparisler || [])) {
@@ -2084,7 +2075,10 @@ let siparisFotoOkumaPromise = Promise.resolve();
 let _siparisEditKayitBekleyen = null;
 let _erpDataPollTimer = null;
 let _syncAllDataBusy = false;
+let _detailOpenRecordId = null;
+let _erpDeferredUiRefresh = false;
 const ERP_LISTE_POLL_MS = 120000;
+const ERP_MOBIL_LISTE_POLL_MS = 180000;
 const ERP_DATA_CACHE_LS_KEY = 'erp_data_cache_v3';
 const ERP_DATA_CACHE_MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
 const ERP_TABLE_HEAVY_COLS = {
@@ -3065,7 +3059,7 @@ function renderDepoHareketDefteri() {
         </div>
         <div>
           <label class="pro-label" style="margin-bottom:4px">Stok kodu</label>
-          <input type="text" id="depo-defter-f-stok" class="pro-input" style="min-width:140px;padding:8px 10px;font-size:11px;font-family:'DM Mono',monospace" value="${pdfEsc(depoDefterStokAra)}" placeholder="26001" oninput="depoDefterStokAraUygula(this.value)">
+          <input type="text" id="depo-defter-f-stok" class="pro-input" style="min-width:140px;padding:8px 10px;font-size:11px;font-family:'DM Mono',monospace" value="${pdfEsc(depoDefterStokAra)}" placeholder="2026-001" oninput="depoDefterStokAraUygula(this.value)">
         </div>
         <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:var(--surface2)" onclick="depoHareketDefterFiltreleriSifirla()">Filtreleri sıfırla</button>
         <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:rgba(59,130,246,0.12);color:#3b82f6;border-color:rgba(59,130,246,0.35)" onclick="exportDepoHareketExcel()">⤓ Excel İndir</button>
@@ -3400,7 +3394,7 @@ const UI_STATE_LS_KEY = 'erp_ui_state_v1';
 const APP_MODE_WHITELIST = [
     'DASHBOARD','PLANLAMA','DEPO_HAREKET','DEPO_HAREKET_LISTE','IPLIK','KUMAS','SIPARIS_GIRIS','SIPARIS_LISTE','SIPARIS_KAPANAN','KART_LISTE','MAMUL_DEPO',
     'KART_GIRIS','IPLIK_KART_GIRIS','KUMAS_KART_GIRIS',
-    'MAMUL_KART_GIRIS','BOYAHANE_URETIM','YIKAMA_TAKIP','TEZGAH_YONETIMI','TEZGAH_GIRIS','TODO_LISTE',
+    'MAMUL_KART_GIRIS','BOYAHANE_URETIM','YIKAMA_TAKIP','TODO_LISTE',
     'TODO_GIRIS','RAPOR','KONFEKSIYON','FASON_TAKIP','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','RAPORLAR','DOKUMA_TAKIP','DIAGNOSTICS'
 ];
 function saveUiState(partial = {}) {
@@ -3435,15 +3429,6 @@ function saveUiState(partial = {}) {
 function loadUiState() {
     try { return JSON.parse(localStorage.getItem(UI_STATE_LS_KEY) || '{}'); } catch (e) { return {}; }
 }
-let ganttFilters = {
-    search: '',
-    status: 'HEPSİ',
-    tip: 'HEPSİ',
-    teni: 'HEPSİ',
-    trakno: 'HEPSİ',
-    marka: 'HEPSİ'
-};
-
 // ============================================================
 // getChangeLog — JSON formatı
 // ============================================================
@@ -3683,15 +3668,6 @@ function getDetailedChangeLog() {
         mamul_boy:      'val-mamul-boy',        mamul_gramaj:   'val-mamul-gramaj',
         mamul_gsm:      'val-mamul-gsm',        terbiye:        'val-terbiye',
         boya_not:       'val-boya-not',         cekme:          'val-cekme',
-        // Mamül kart
-        urun_kat:       'val-urun-kat',         agirlik:        'val-agirlik',
-        set_adet:       'val-set-adet',         ambalaj:        'val-ambalaj',
-        ambalaj_adet:   'val-ambalaj-adet',     bakim:          'val-bakim',
-        ham_kumas_kodu: 'val-ham-kumas-kodu',   kumas_tuketim:  'val-kumas-tuketim',
-        fiber:          'val-fiber',             aksesuar:       'val-aksesuar',
-        fire:           'val-fire',             uretim_sure:    'val-uretim-sure',
-        maliyet:        'val-maliyet',           satis_fiyat:    'val-satis-fiyat',
-        kdv:            'val-kdv',
         siparis_grubu:  'val-siparis-grubu',
     };
 
@@ -5250,7 +5226,7 @@ function iplikStokListeChromeUygula() {
     if (listHdr) listHdr.style.display = liste ? 'none' : '';
 }
 
-// --- OTOMATİK KOD ÜRETİCİ (KUMAŞ / GENEL) ---
+/** Mamül stok kodu: assets/stok-kart-desktop.js (YYYY-NNN) kullanılır. */
 async function getNextStockCode(prefix = 'SM') {
     if (prefix === 'MA') return getNextMamulAnaKod();
     const data = dataCache.kumas_kutuphanesi
@@ -5265,83 +5241,6 @@ async function getNextStockCode(prefix = 'SM') {
         }
     }
     return `${prefix}-0001`;
-}
-
-/** Mamül stok kodu: YY### (1–999) veya YY#### (1000+); varyant: -n. Eski MA-0001 formatı da desteklenir. */
-function getMamulYilSuffix() {
-    return String(new Date().getFullYear()).slice(-2);
-}
-
-function mamulYeniFormatSeqParse(kod) {
-    const s = String(kod || '').trim().toUpperCase();
-    const yy = getMamulYilSuffix();
-    if (!s.startsWith(yy) || /^MA-/i.test(s)) return 0;
-    const ana = s.split('-')[0];
-    if (/^\d{5}$/.test(ana) || /^\d{6}$/.test(ana)) {
-        const seq = parseInt(ana.slice(2), 10);
-        return Number.isFinite(seq) && seq > 0 ? seq : 0;
-    }
-    return 0;
-}
-
-function mamulYeniFormatAnaKodFormatla(seq) {
-    const yy = getMamulYilSuffix();
-    const n = parseInt(seq, 10) || 0;
-    if (n <= 0) return `${yy}001`;
-    if (n <= 999) return `${yy}${String(n).padStart(3, '0')}`;
-    return `${yy}${String(n).padStart(4, '0')}`;
-}
-
-function mamulStokKoduFormatMi(kod) {
-    const s = String(kod || '').trim().toUpperCase();
-    if (!s) return false;
-    if (/^MA-\d+/i.test(s) || /^MM-\d+/i.test(s)) return true;
-    if (/^\d{5}(-\d+)?$/.test(s)) return true;
-    if (/^\d{6}(-\d+)?$/.test(s)) return true;
-    return false;
-}
-
-function mamulAnaKodGecerliMi(ana) {
-    const s = String(ana || '').trim().toUpperCase();
-    if (/^MA-\d+$/i.test(s)) return true;
-    if (/^\d{5}$/.test(s)) {
-        const seq = parseInt(s.slice(2), 10);
-        return seq >= 1 && seq <= 999;
-    }
-    if (/^\d{6}$/.test(s)) {
-        const seq = parseInt(s.slice(2), 10);
-        return seq >= 1;
-    }
-    return false;
-}
-
-function getNextMamulAnaKod() {
-    const yy = getMamulYilSuffix();
-    let maxSeq = 0;
-    (dataCache.kumas_kutuphanesi || []).forEach(item => {
-        const kod = String(item.desen_kodu || '').trim().toUpperCase();
-        if (!kod.startsWith(yy)) return;
-        const seq = mamulYeniFormatSeqParse(kod);
-        if (seq > 0) maxSeq = Math.max(maxSeq, seq);
-    });
-    return mamulYeniFormatAnaKodFormatla(maxSeq + 1);
-}
-
-function mamulAnaKodBul(kod) {
-    const s = String(kod || '').trim().toUpperCase();
-    let m = s.match(/^(\d{5,6})-\d+$/);
-    if (m) return m[1];
-    if (/^\d{5,6}$/.test(s)) return s;
-    m = s.match(/^(MA-\d+)(?:-\d+)?$/i);
-    return m ? m[1].toUpperCase() : s;
-}
-
-function mamulVaryantNoBul(kod) {
-    const s = String(kod || '').trim().toUpperCase();
-    let m = s.match(/^\d{5,6}-(\d+)$/);
-    if (m) return parseInt(m[1], 10) || 0;
-    m = s.match(/^MA-\d+-(\d+)$/i);
-    return m ? (parseInt(m[1], 10) || 0) : 0;
 }
 
 function numuneNormalizeId(v) {
@@ -7632,7 +7531,7 @@ function erpModeLoadDataGuvenliMi(mode = appMode) {
         'DEPO_HAREKET', 'DEPO_HAREKET_LISTE',
         'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'SIPARIS_GIRIS',
         'KART_LISTE', 'KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS',
-        'TODO_LISTE', 'TODO_GIRIS', 'TEZGAH_GIRIS', 'NUMUNE_URETIM'
+        'TODO_LISTE', 'TODO_GIRIS', 'NUMUNE_URETIM'
     ].includes(mode);
 }
 
@@ -7647,9 +7546,52 @@ function erpIsUserEditingUi() {
     return false;
 }
 
+function erpIsDetailModalOpen() {
+    const modal = document.getElementById('detail-modal');
+    if (!modal) return false;
+    const d = modal.style.display;
+    return d !== 'none' && d !== '';
+}
+
+function erpDetailKayitBul() {
+    if (_detailOpenRecordId != null) {
+        const sid = String(_detailOpenRecordId);
+        const fromCache = (dataCache.siparisler || []).find(s => String(s.id) === sid);
+        if (fromCache) return fromCache;
+        const fromList = (currentData || []).find(s => String(s.id) === sid);
+        if (fromList) return fromList;
+    }
+    if (selectedIndex != null && currentData?.[selectedIndex]) return currentData[selectedIndex];
+    return null;
+}
+
+function erpShouldDeferUiRefresh() {
+    if (erpIsUserEditingUi() || erpIsDetailModalOpen()) return true;
+    if (typeof dtIsUserEditingUi === 'function' && dtIsUserEditingUi()) return true;
+    return false;
+}
+
+function erpScheduleDeferredUiRefresh() {
+    _erpDeferredUiRefresh = true;
+}
+
+function erpFlushDeferredUiRefresh() {
+    if (!_erpDeferredUiRefresh) return;
+    _erpDeferredUiRefresh = false;
+    if (erpShouldDeferUiRefresh()) {
+        _erpDeferredUiRefresh = true;
+        return;
+    }
+    erpRefreshCurrentScreen({ force: false });
+}
+
 async function erpRefreshCurrentScreen(opts = {}) {
     const force = !!opts.force;
     const mode = appMode;
+    if (!force && erpIsDetailModalOpen()) {
+        erpScheduleDeferredUiRefresh();
+        return;
+    }
     try {
         if (mode === 'DASHBOARD') {
             if (typeof renderDashboard === 'function') renderDashboard();
@@ -7660,12 +7602,11 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return;
         }
         if (mode === 'DOKUMA_TAKIP') {
-            if (!force && erpIsUserEditingUi()) return;
+            if (!force && erpShouldDeferUiRefresh()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
             if (typeof renderDokumaTakip === 'function') await renderDokumaTakip();
-            return;
-        }
-        if (mode === 'TEZGAH_YONETIMI') {
-            if (typeof renderTezgahYonetimi === 'function') renderTezgahYonetimi();
             return;
         }
         if (mode === 'KONFEKSIYON') {
@@ -7705,7 +7646,8 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return;
         }
         if (erpModeLoadDataGuvenliMi(mode) && typeof loadData === 'function') {
-            if (!force && erpIsUserEditingUi()) {
+            if (!force && erpIsUserEditingUi() && !['SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET_LISTE'].includes(mode)) {
+                erpScheduleDeferredUiRefresh();
                 return;
             }
             if (!force && (mode === 'SIPARIS_LISTE' || mode === 'SIPARIS_KAPANAN')
@@ -7722,6 +7664,10 @@ async function erpRefreshCurrentScreen(opts = {}) {
 
 function erpSyncRefreshUi() {
     updateSummary();
+    if (erpShouldDeferUiRefresh()) {
+        erpScheduleDeferredUiRefresh();
+        return;
+    }
     erpRefreshCurrentScreen({ force: false });
 }
 
@@ -7794,6 +7740,7 @@ function erpLiveInvalidateFromPayload(table, payload) {
     if (tip && sid != null && sid !== '') {
         const key = `${tip}_${sid}`;
         if (tip === 'KD_URUN_AGACI' && typeof uaIsKdDirty === 'function' && uaIsKdDirty(sid)) return;
+        if (tip === 'KD_DOKUMA' && String(dtSeciliSiparisId) === String(sid) && typeof dtIsUserEditingUi === 'function' && dtIsUserEditingUi()) return;
         delete _kdCache[key];
         if (typeof _uaKdHydrated !== 'undefined') delete _uaKdHydrated[key];
         return;
@@ -8021,13 +7968,14 @@ function erpStartListeDataPoll() {
     erpStopListeDataPoll();
     if (_erpLiveStarted) return;
     if (!erpListePollModMu()) return;
+    const pollMs = window.ERP_MOBIL_NO_LIVE ? ERP_MOBIL_LISTE_POLL_MS : ERP_LISTE_POLL_MS;
     _erpDataPollTimer = setInterval(() => {
-        if (document.hidden || _syncAllDataBusy || isSaveInProgress || erpIsUserEditingUi()) return;
+        if (document.hidden || _syncAllDataBusy || isSaveInProgress || erpShouldDeferUiRefresh()) return;
         if (!erpListePollModMu()) return;
         syncAllData(false, { silent: true, siparisLight: true })
             .then(() => erpSyncRefreshUi())
             .catch(() => {});
-    }, ERP_LISTE_POLL_MS);
+    }, pollMs);
 }
 
 function erpStopListeDataPoll() {
@@ -8125,82 +8073,6 @@ function toggleNavGroup(groupId) {
     body.classList.toggle('open');
     const chev = document.getElementById('chev-' + groupId);
     if (chev) chev.style.transform = isOpen ? '' : 'rotate(180deg)';
-}
-
-// Dashboard tezgah Gantt — gün sayısı (başlıkla aynı tutun)
-const DASHBOARD_TEZGAH_GUN = 45;
-
-// --- DASHBOARD — tezgah mini Gantt ---
-function dashboardTezgahGanttHtml(tezgahlar, today) {
-    const daySpan = DASHBOARD_TEZGAH_GUN;
-    const dayMs = 86400000;
-    const win0 = new Date(today);
-    win0.setHours(0, 0, 0, 0);
-    const win1 = new Date(win0.getTime() + daySpan * dayMs);
-    const totalMs = Math.max(1, win1 - win0);
-    const dayHeaders = Array.from({ length: daySpan }, (_, i) => {
-        const d = new Date(win0.getTime() + i * dayMs);
-        return `<div style="text-align:center;font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;border-left:${i ? 1 : 0}px solid var(--border);padding:4px 1px">${d.getDate()}/${d.getMonth() + 1}</div>`;
-    }).join('');
-    const gridStripes = `repeating-linear-gradient(90deg, transparent 0, transparent calc(100%/${daySpan} - 1px), var(--border) calc(100%/${daySpan} - 1px), var(--border) calc(100%/${daySpan}))`;
-    if (!tezgahlar || !tezgahlar.length) {
-        return `<div onclick="setAppMode('TEZGAH_YONETIMI')" style="padding:24px;text-align:center;color:var(--text3);font-size:11px;font-family:'DM Mono',monospace;cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'" title="Tezgah yönetimine git">Tezgah kaydı yok — Tezgah tanımlama ekleyin</div>`;
-    }
-    const rows = tezgahlar.map(t => {
-        const no = pdfEsc(t.tezgah_no || '?');
-        const sip = (t.siparis_no || '').trim();
-        const calis = (t.durum || '').toUpperCase() === 'ÇALIŞIYOR';
-        const dolu = !!(sip || calis);
-        let leftPct = 0;
-        let widthPct = (100 / daySpan) * 2.5;
-        let bg = 'linear-gradient(90deg, rgba(99,102,241,0.4), rgba(129,140,248,0.65))';
-        let barTitle = '';
-        if (dolu) {
-            let tStart = win0.getTime();
-            let tEnd = win0.getTime() + Math.min(5, daySpan - 1) * dayMs;
-            if (t.dokuma_termini) {
-                const term = new Date(t.dokuma_termini);
-                if (!Number.isNaN(term.getTime())) {
-                    tEnd = term.getTime();
-                    tStart = Math.min(tEnd - 4 * dayMs, win0.getTime());
-                }
-            }
-            tStart = Math.max(tStart, win0.getTime());
-            tEnd = Math.min(Math.max(tEnd, tStart + dayMs), win1.getTime());
-            leftPct = ((tStart - win0.getTime()) / totalMs) * 100;
-            widthPct = Math.max(100 / daySpan, ((tEnd - tStart) / totalMs) * 100);
-            const kGun = t.dokuma_termini ? Math.ceil((new Date(t.dokuma_termini) - today) / dayMs) : 999;
-            if (kGun < 0) bg = 'linear-gradient(90deg, rgba(251,113,133,0.55), rgba(244,63,94,0.75))';
-            else if (kGun <= 3) bg = 'linear-gradient(90deg, rgba(251,191,36,0.5), rgba(245,158,11,0.65))';
-            barTitle = pdfEsc(sip || t.musteri || t.tezgah_no || 'İş');
-        }
-        const lbl = dolu ? pdfEsc(sip || (t.musteri || '').slice(0, 18) || 'Aktif') : '';
-        return `
-        <div onclick="setAppMode('TEZGAH_YONETIMI')" title="Tezgah yönetimine git" style="display:grid;grid-template-columns:72px 1fr;gap:8px;align-items:center;padding:3px 10px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s"
-            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
-            <div>
-                <div style="font-size:9px;font-weight:800;font-family:'DM Mono',monospace;color:var(--text)">${no}</div>
-                <div style="font-size:7px;color:var(--text3);margin-top:1px">${pdfEsc((t.durum || '—').slice(0, 12))}</div>
-            </div>
-            <div style="position:relative;height:17px;border-radius:6px;overflow:hidden;background:var(--surface2);background-image:${gridStripes}">
-                ${dolu ? `<div title="${barTitle}" style="position:absolute;left:${leftPct}%;width:${widthPct}%;top:2px;bottom:2px;border-radius:4px;background:${bg};border:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;padding:0 6px;font-size:8px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none">${lbl}</div>` : ''}
-            </div>
-        </div>`;
-    }).join('');
-    const timelineMinW = 72 + daySpan * 11;
-    return `
-    <div style="padding:2px 10px 8px">
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -6px;padding:0 6px 4px">
-            <div style="min-width:${timelineMinW}px">
-                <div style="display:grid;grid-template-columns:72px 1fr;gap:8px;margin-bottom:2px;padding-bottom:4px;border-bottom:1px solid var(--border)">
-                    <div style="font-size:7px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase">Tezgah</div>
-                    <div style="display:grid;grid-template-columns:repeat(${daySpan},1fr)">${dayHeaders}</div>
-                </div>
-                ${rows}
-            </div>
-        </div>
-        <div onclick="setAppMode('TEZGAH_YONETIMI')" style="font-size:8px;color:var(--text3);padding:6px 6px 2px;font-family:'DM Mono',monospace;line-height:1.35;cursor:pointer" title="Tezgah yönetimine git">${daySpan} günlük pencere · çubuk <b>dokuma terminine</b> göre · Geciken kırmızı, ≤3 gün amber — tıklayınca tezgah</div>
-    </div>`;
 }
 
 // --- DASHBOARD --- (mobilde kapalı — sipariş listesine yönlendir)
@@ -11360,11 +11232,10 @@ function siparisDurumPollStart(siparisId) {
         if (siparisDurumPollBusy) return;
         siparisDurumPollBusy = true;
         try {
-            let fresh = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
-            if (!fresh && typeof currentData !== 'undefined' && selectedIndex != null && currentData[selectedIndex] && String(currentData[selectedIndex].id) === String(siparisId)) {
-                fresh = currentData[selectedIndex];
-            }
-            if (!fresh) {
+            const sid = String(siparisId);
+            let fresh = (dataCache.siparisler || []).find(s => String(s.id) === sid);
+            if (!fresh) fresh = erpDetailKayitBul();
+            if (!fresh || String(fresh.id) !== sid) {
                 siparisDurumPollStop();
                 return;
             }
@@ -11726,6 +11597,62 @@ let dtHareketFiltre = {
 // dtGetKd/dtSetKd — Supabase'e geçildi (sbKdGet/sbKdSet)
 async function dtGetKd(id) { return await sbKdGet(id, 'KD_DOKUMA'); }
 async function dtSetKd(id, kd) { await sbKdSet(id, 'KD_DOKUMA', kd); }
+
+function dtIsUserEditingUi() {
+    if (appMode !== 'DOKUMA_TAKIP') return false;
+    const root = document.getElementById('dt-root');
+    if (!root) return false;
+    const ae = document.activeElement;
+    if (ae && root.contains(ae)) {
+        const tag = String(ae.tagName || '').toUpperCase();
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return true;
+        if (ae.isContentEditable) return true;
+    }
+    for (const inp of root.querySelectorAll('input[id^="dt-input-metre-"], input[id^="dt-input-kg-"], input[id^="dt-input-adet-"]')) {
+        const raw = String(inp.value || '').trim();
+        if (raw && (parseFloat(raw.replace(',', '.')) || 0) !== 0) return true;
+    }
+    return false;
+}
+
+function dtToplamMetreFromKd(kd) {
+    if (!kd || !kd.urunler) return 0;
+    return Object.values(kd.urunler).reduce((a, u) => a + (parseFloat(u?.toplam_metre) || 0), 0);
+}
+
+function dtSiparisOptionHtml(s) {
+    const kd = _kdCache[`KD_DOKUMA_${s.id}`];
+    const topMetre = kd ? dtToplamMetreFromKd(kd) : null;
+    const mark = topMetre != null ? (topMetre > 0 ? '✓' : '○') : '○';
+    const sel = String(dtSeciliSiparisId) === String(s.id) ? 'selected' : '';
+    return `<option value="${s.id}" ${sel}>${mark} ${pdfEsc(s.sno || '?')} — ${pdfEsc(s.firma || '?')}</option>`;
+}
+
+function dtRefreshSiparisSelMarks() {
+    const sel = document.getElementById('dt-siparis-sel');
+    if (!sel || appMode !== 'DOKUMA_TAKIP') return;
+    const siparisler = (dataCache.siparisler || []).filter(s => String(s.durum || '').toUpperCase() !== 'TAMAMLANDI');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Sipariş —</option>' + siparisler.map(dtSiparisOptionHtml).join('');
+    if (cur) sel.value = cur;
+}
+
+function dtPrefetchSeciliKd() {
+    const sid = dtSeciliSiparisId;
+    if (!sid || _kdCache[`KD_DOKUMA_${sid}`]) return;
+    dtGetKd(sid).then(() => {
+        if (appMode === 'DOKUMA_TAKIP' && !dtIsUserEditingUi()) dtRefreshSiparisSelMarks();
+    }).catch(() => {});
+}
+
+let _dtRenderToken = 0;
+
+async function dtEnsureSeciliKdLoaded() {
+    if (!dtSeciliSiparisId) return;
+    if (_kdCache[`KD_DOKUMA_${dtSeciliSiparisId}`] === undefined) {
+        await dtGetKd(dtSeciliSiparisId);
+    }
+}
 
 function dtCurrentUserLabel() {
     try {
@@ -12535,7 +12462,7 @@ function renderDokumaTezgahAyarPanel(siparis) {
         <input type="${type}" class="pro-input" style="width:100%;padding:5px 8px;font-size:10px" value="${pdfEsc(kayit[field] ?? '')}" placeholder="${ph}" onchange="dtSiparisOpsFieldSet('${sid}','tezgah_ayar',null,'${field}',this.value)"></div>`;
     return `<div class="panel-box" style="padding:14px 16px">
         <div class="panel-head" style="margin:-14px -16px 12px;padding:10px 16px"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text2)"></span>Tezgah Ayarlanması</span>
-            <button type="button" onclick="setAppMode('TEZGAH_YONETIMI')" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:9px">🏭 Tezgah planlama</button></div>
+            </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
             ${fld('Tezgah No', 'tezgah_no', 'text', 'T-01')}
             ${fld('Ayar tarihi', 'ayar_tarih', 'date')}
@@ -12634,6 +12561,7 @@ function openDtUretimGiris() {
 async function renderDokumaTakip() {
     const list = document.getElementById('main-list');
     if (!list) return;
+    const token = ++_dtRenderToken;
     dtDosyaAktif = dtMigrateDosyaAktif(dtDosyaAktif);
     if (!dtKulvarGecerli(dtDosyaAktif)) dtDosyaAktif = 'IPLIK_HESAP';
     const siparisler = (dataCache.siparisler || []).filter(s => s.durum !== 'TAMAMLANDI');
@@ -12644,14 +12572,11 @@ async function renderDokumaTakip() {
     if (!uretimGirisModu && !tabKulvarlar.some(k => k.id === dtDosyaAktif)) dtDosyaAktif = tabKulvarlar[0]?.id || 'IPLIK_HESAP';
     const aktifKulvar = dtAllKulvarlar().find(k => k.id === dtDosyaAktif) || DT_KULVARLAR[DT_KULVARLAR.length - 1];
     const siparisGerekli = aktifKulvar.siparisGerekli;
-    const sipOpts = await Promise.all(siparisler.map(async s => {
-        const kd = await dtGetKd(s.id);
-        const topMetre = Object.values(kd.urunler || {}).reduce((a, u) => a + (parseFloat(u.toplam_metre) || 0), 0);
-        return `<option value="${s.id}" ${String(dtSeciliSiparisId) === String(s.id) ? 'selected' : ''}>${topMetre > 0 ? '✓' : '○'} ${s.sno} — ${s.firma || '?'}</option>`;
-    }));
+    const sipOpts = siparisler.map(s => dtSiparisOptionHtml(s));
     let icerikHtml = '';
     if (dtDosyaAktif === 'HAREKET') {
         icerikHtml = await renderDokumaHareketListesi();
+        if (token !== _dtRenderToken) return;
     } else if (siparisGerekli && !seciliSiparis) {
         icerikHtml = `<div class="empty-pro" style="padding:60px 20px">
             <div class="empty-pro-icon">🧵</div>
@@ -12671,11 +12596,18 @@ async function renderDokumaTakip() {
     } else if (dtDosyaAktif === 'BUKUM') {
         icerikHtml = renderDokumaBukumPanel(seciliSiparis);
     } else if (dtDosyaAktif === 'URETIM_GIRIS') {
-        icerikHtml = seciliSiparis ? await renderDtForm() : `<div class="empty-pro" style="padding:60px 20px">
+        if (seciliSiparis) {
+            await dtEnsureSeciliKdLoaded();
+            if (token !== _dtRenderToken) return;
+            icerikHtml = await renderDtForm();
+            if (token !== _dtRenderToken) return;
+        } else {
+            icerikHtml = `<div class="empty-pro" style="padding:60px 20px">
             <div class="empty-pro-icon">🧵</div>
             <div class="empty-pro-title">Sipariş seçin</div>
             <div class="empty-pro-sub">Üretim girişi için sipariş seçin — mevcut form aynen korunur</div>
         </div>`;
+        }
     } else {
         icerikHtml = renderDokumaOperasyonPanelleri(seciliSiparis, dtDosyaAktif);
     }
@@ -12695,6 +12627,7 @@ async function renderDokumaTakip() {
             ${dtKulvarDuzenleAcik ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap">${dtAllKulvarlar().map(chk).filter(Boolean).join('')}</div>` : ''}
         </div>`;
     })() : '';
+    if (token !== _dtRenderToken) return;
     list.innerHTML = `<div id="dt-root" style="display:flex;flex-direction:column;gap:12px;width:100%;min-width:0">
         <div class="panel-box" style="padding:12px 16px">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -12720,12 +12653,17 @@ async function renderDokumaTakip() {
             ${icerikHtml}
         </div>
     </div>`;
+    dtPrefetchSeciliKd();
 }
 
 function dtSelectSiparis(id) {
     dtSeciliSiparisId = id || null;
     saveUiState({ dtSeciliSiparisId });
-    renderDokumaTakip();
+    if (id) {
+        dtGetKd(id).finally(() => renderDokumaTakip());
+    } else {
+        renderDokumaTakip();
+    }
 }
 
 function dtSetDosya(dosya) {
@@ -13153,8 +13091,10 @@ async function renderDtForm() {
     if (!siparis) return '';
     let kalemler = [];
     try { kalemler = typeof siparis.cins==='string'?JSON.parse(siparis.cins):(siparis.cins||[]); } catch(e){}
-    const kd = await dtGetKd(dtSeciliSiparisId);
-    const urunler = kd.urunler || {};  // { idx: { toplam_metre, toplam_kg, toplam_adet, girisler:[] } }
+    let kd = _kdCache[`KD_DOKUMA_${dtSeciliSiparisId}`];
+    if (kd === undefined) kd = await dtGetKd(dtSeciliSiparisId);
+    kd = kd || {};
+    const urunler = kd.urunler || {};
 
     const toplamMetre = Object.values(urunler).reduce((a,u)=>a+(parseFloat(u.toplam_metre)||0),0);
     const toplamKg    = Object.values(urunler).reduce((a,u)=>a+(parseFloat(u.toplam_kg)||0),0);
@@ -13961,24 +13901,6 @@ async function dtUygulaGirisPaketi(siparisId, satirlar) {
 function openDtExcelImport() {
     const el = document.getElementById('dt-excel-input');
     if (el) { el.value = ''; el.click(); }
-}
-
-function downloadDtExcelSablon() {
-    if (typeof XLSX === 'undefined') { erpToast('Excel kütüphanesi yüklenemedi.', 'error'); return; }
-    const rows = [
-        { 'Sipariş No': 'S-2024-001', 'Ürün Kodu': 'URUN-01', 'Ürün Adı': 'Örnek kumaş', Renk: 'Lacivert', Ebat: '180x200', 'Bu Sefer (m)': 120.5, 'Bu Sefer (kg)': '', 'Bu Sefer (adet)': 4 },
-        { 'Sipariş No': 'S-2024-001', 'Ürün Kodu': 'URUN-02', 'Ürün Adı': 'Örnek 2', Renk: 'Beyaz', Ebat: '140x210', 'Bu Sefer (m)': 85, 'Bu Sefer (kg)': 42.3, 'Bu Sefer (adet)': '' },
-    ];
-    const aciklama = [
-        { Konu: 'Kullanım', Aciklama: 'Günlük dokuma formunuzdaki sütun adları farklıysa içe aktarırken kolon eşleştirme yapılır; bir kez kaydedilir.' },
-        { Konu: 'Sipariş', Aciklama: 'Sipariş No boş bırakılırsa ekranda seçili sipariş kullanılır.' },
-        { Konu: 'Metre + birim', Aciklama: 'Her satırda hem metre hem kg VEYA hem metre hem adet girilmelidir (sipariş kalem birimine göre).' },
-        { Konu: 'Eşleştirme', Aciklama: 'Kalem; ürün kodu, ad, renk ve ebata göre sipariş kalemiyle eşleştirilir.' },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Gunluk');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(aciklama), 'Aciklama');
-    XLSX.writeFile(wb, `Dokuma_Gunluk_Form_Sablon_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function dtExcelModalKapat() {
@@ -25569,6 +25491,7 @@ document.addEventListener('keydown', (e) => {
 
 // --- APP MOD YÖNETİMİ ---
 async function setAppMode(mode, keepEditingId = false) {
+    if (mode === 'TEZGAH_YONETIMI' || mode === 'TEZGAH_GIRIS') mode = 'DOKUMA_TAKIP';
     erpCloseMobileSidebar();
     if (mode === 'RAPOR') mode = 'RAPORLAR';
     if (mode === 'SIPARIS_TERMIN_PLAN') mode = window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE';
@@ -25584,6 +25507,7 @@ async function setAppMode(mode, keepEditingId = false) {
     const prevMode = appMode;
     appMode = mode;
     try { document.body.setAttribute('data-erp-mode', mode); } catch (e) {}
+    syncSiparisWizardChrome();
     try { erpMobileTabbarSync(mode); } catch (e) {}
     erpClearTransientUi();
     saveUiState({ appMode: mode });
@@ -25634,8 +25558,6 @@ async function setAppMode(mode, keepEditingId = false) {
         'IPLIK_KART_GIRIS': 'İplik Stok Kartı',
         'KUMAS_KART_GIRIS': 'Kumaş Stok Kartı',
         'MAMUL_KART_GIRIS': 'Mamül Stok Kartı',
-        'TEZGAH_YONETIMI': 'Dokuma Planlama',
-        'TEZGAH_GIRIS': 'Tezgah Tanımlama',
         'TODO_LISTE': 'Görevler',
         'RAPOR': 'Analiz',
         'KONFEKSIYON': 'Konfeksiyon',
@@ -25670,7 +25592,7 @@ async function setAppMode(mode, keepEditingId = false) {
         stokExcelTemplateBtn.style.display = 'none';
     }
     if (toggleArea) {
-        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'TEZGAH_GIRIS', 'TODO_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'DIAGNOSTICS', 'BOYAHANE_URETIM'];
+        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'TODO_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'DIAGNOSTICS', 'BOYAHANE_URETIM'];
         const depoListeModes = ['IPLIK', 'HAM_KUMAS', 'MAMUL_KUMAS', 'KUMAS', 'MAMUL_DEPO'];
         if (staticModes.includes(mode) || depoListeModes.includes(mode) || mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE') {
             toggleArea.style.display = 'none';
@@ -25778,13 +25700,6 @@ async function setAppMode(mode, keepEditingId = false) {
         await renderPlanlama();
         return;
     }
-    if (mode === 'TEZGAH_YONETIMI') {
-        if (formContainer) formContainer.style.display = 'none';
-        if (listTitle) listTitle.innerText = "TEZGAH GÜNCEL DURUMU";
-        renderTezgahYonetimi();
-        return;
-    }
-
     if (mode === 'DOKUMA_TAKIP') {
         if (formContainer) formContainer.style.display = 'none';
         if (listTitle) listTitle.innerText = dtDosyaAktif === 'URETIM_GIRIS' ? 'DOKUMA · ÜRETİM GİRİŞİ' : 'DOKUMA ÜRETİM HATTI';
@@ -25909,121 +25824,6 @@ async function setAppMode(mode, keepEditingId = false) {
     else erpStopListeDataPoll();
 }
 
-// --- JAKAR ALANI ---
-function toggleJakarFields() {
-    const tip = document.getElementById('val-ttip')?.value;
-    const jakarDiv = document.getElementById('jakar-extra-fields');
-    if (!jakarDiv) return;
-    if (tip === 'JAKARLI') {
-        jakarDiv.style.display = 'block';
-    } else {
-        jakarDiv.style.display = 'none';
-        if (document.getElementById('val-dizim')) document.getElementById('val-dizim').value = '';
-    }
-}
-
-function toggleSecondPlan() {
-    const area = document.getElementById('second-plan-area');
-    const icon = document.getElementById('second-plan-icon');
-    if (!area) return;
-    const isHidden = area.style.display === 'none' || area.style.display === '';
-    area.style.display = isHidden ? 'block' : 'none';
-    if (icon) icon.innerText = isHidden ? '−' : '+';
-}
-
-function tezgahAktifPlanInit(seciliSiparisNo = '', seciliUrun = '') {
-    const sipEl = document.getElementById('val-sno');
-    if (!sipEl) return;
-    const siparisler = dataCache.siparisler || [];
-    const bySno = new Map();
-    siparisler.forEach(s => {
-        const sno = String(s?.sno || '').trim();
-        if (!sno) return;
-        if (!bySno.has(sno)) bySno.set(sno, s);
-    });
-    const options = ['<option value="">Sipariş seçin...</option>'];
-    for (const [sno, s] of bySno.entries()) {
-        options.push(`<option value="${erpAttr(sno)}">${erpEscapeHtml(sno)} · ${erpEscapeHtml(s?.firma || '—')}</option>`);
-    }
-    sipEl.innerHTML = options.join('');
-    const hedefSiparisNo = String(seciliSiparisNo || sipEl.dataset.prefSiparisNo || sipEl.value || '').trim();
-    if (hedefSiparisNo) sipEl.value = hedefSiparisNo;
-    tezgahAktifPlanSiparisDegisti(seciliUrun);
-}
-
-function tezgahDokumaBazGruplar(siparis) {
-    const kalemler = siparisListeKalemleriArr(siparis);
-    const DOKUMA_RENK_KELIMELERI = [
-        'BEYAZ','SIYAH','SİYAH','GRI','GRİ','MAVI','MAVİ','LACIVERT','LACİVERT','KIRMIZI','BORDO','PEMBE',
-        'YESIL','YEŞİL','MOR','SARI','TURUNCU','EKRU','KREM','BEJ','ANTRASIT','ANTRASİT','VIZON','VİZON'
-    ];
-    const temizBazAd = (txt) => {
-        let s = String(txt || '').toUpperCase().trim();
-        if (!s) return '';
-        s = s.replace(/\([^)]*\)/g, ' ');
-        s = s.replace(/\b\d{2,3}\s*[Xx]\s*\d{2,3}\b/g, ' ');
-        DOKUMA_RENK_KELIMELERI.forEach(r => {
-            s = s.replace(new RegExp(`\\b${r}\\b`, 'g'), ' ');
-        });
-        s = s.replace(/\s+/g, ' ').trim();
-        return s;
-    };
-    const map = new Map();
-    kalemler.forEach((k, idx) => {
-        const kod = String(k?.kod || '').trim();
-        const ad = String(k?.ad || '').trim();
-        const adBaz = temizBazAd(ad);
-        // Dokuma için renk/ebat kırılımlarını dikkate alma.
-        const key = (adBaz || temizBazAd(kod) || kod || ad || `KALEM-${idx + 1}`).toUpperCase();
-        const miktar = Math.max(0, parseFloat(k?.miktar || 0) || 0);
-        if (!map.has(key)) {
-            map.set(key, {
-                key,
-                kod,
-                ad: adBaz || ad || kod || `KALEM-${idx + 1}`,
-                toplam: 0
-            });
-        }
-        map.get(key).toplam += miktar;
-    });
-    return [...map.values()];
-}
-
-function tezgahAktifPlanSiparisDegisti(seciliUrun = '') {
-    const sipEl = document.getElementById('val-sno');
-    const musteriEl = document.getElementById('val-musteri');
-    const urunEl = document.getElementById('val-urun');
-    const ozetEl = document.getElementById('val-urun-ozet');
-    if (!sipEl || !musteriEl || !urunEl) return;
-    const siparisNo = String(sipEl.value || '').trim();
-    const siparis = (dataCache.siparisler || []).find(s => String(s?.sno || '').trim() === siparisNo);
-    musteriEl.value = siparis ? String(siparis.firma || '') : '';
-
-    const bazGruplar = tezgahDokumaBazGruplar(siparis);
-    const urunOpts = ['<option value="">Baz ürün seçin...</option>', ...bazGruplar.map(g => {
-        const etiket = g.kod ? `${g.kod} · ${g.ad}` : g.ad;
-        const adet = g.toplam > 0 ? ` · toplam ${g.toplam.toLocaleString('tr-TR')} adet` : '';
-        return `<option value="${erpAttr(etiket)}">${erpEscapeHtml(etiket)}${erpEscapeHtml(adet)}</option>`;
-    })];
-    urunEl.innerHTML = urunOpts.join('');
-
-    const mevcut = String(seciliUrun || urunEl.dataset.prefUrun || '').trim();
-    const etiketler = bazGruplar.map(g => (g.kod ? `${g.kod} · ${g.ad}` : g.ad));
-    if (mevcut && etiketler.includes(mevcut)) urunEl.value = mevcut;
-    else if (etiketler.length === 1) urunEl.value = etiketler[0];
-    else if (mevcut && !etiketler.includes(mevcut)) {
-        // Eski kayıtlardaki serbest ürün değerini kaybetmeyelim.
-        urunEl.innerHTML += `<option value="${erpAttr(mevcut)}">${erpEscapeHtml(mevcut)} (eski kayıt)</option>`;
-        urunEl.value = mevcut;
-    }
-
-    if (ozetEl) {
-        const toplamKalem = siparisListeKalemleriArr(siparis).length;
-        ozetEl.textContent = siparis
-            ? `${toplamKalem} kalem -> ${bazGruplar.length} baz dokuma ürünü`
-            : 'Sipariş seçildiğinde baz ürün grupları çıkacak.';
-    }
-}
 
 // ============================================================
 // renderInputs — Tüm if/else if zinciri doğru kapatıldı
@@ -26033,7 +25833,7 @@ function renderInputs() {
     const notesContainer = document.getElementById('notes-container');
     if (!grid || !notesContainer) return;
 
-    grid.classList.remove('numune-layout');
+    grid.classList.remove('numune-layout', 'mamul-layout');
     grid.innerHTML = '';
     notesContainer.innerHTML = '';
 
@@ -26570,192 +26370,6 @@ function renderInputs() {
                 if (el) el.textContent = kaliteEl.value || '—';
             });
         }, 100);
-    }
-
-    // --- TEZGAH GİRİŞİ ---
-    else if (appMode === 'TEZGAH_GIRIS') {
-        grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 280px;gap:14px;align-items:start';
-        grid.innerHTML = `
-
-        <!-- SOL: TEZGAH KİMLİĞİ -->
-        <div style="display:flex;flex-direction:column;gap:12px">
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--accent)">
-                <div class="panel-head">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>⚙️ TEZGAH KİMLİĞİ</div>
-                </div>
-                <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--accent)">TEZGAH NO <span class="req-star">★</span></label>
-                        <input id="val-tno" class="pro-input" placeholder="A-1, B-3..."
-                            style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--accent);border-color:rgba(109,113,255,0.35)">
-                    </div>
-                    <div>
-                        <label class="pro-label">TEZGAH TİPİ</label>
-                        <select id="val-ttip" class="pro-input" onchange="toggleJakarFields()">
-                            <option value="ARMÜRLÜ">⚙️ ARMÜRLÜ</option>
-                            <option value="JAKARLI">✨ JAKARLI</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--cyan-c)">TEZGAH ENİ (cm)</label>
-                        <input id="val-eni" class="pro-input" placeholder="330"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(34,211,238,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label">DURUM</label>
-                        <select id="val-durum" class="pro-input">
-                            <option value="ÇALIŞIYOR">🟢 ÇALIŞIYOR</option>
-                            <option value="MÜSAİT">🔵 MÜSAİT</option>
-                            <option value="ARIZALI">🔴 ARIZALI</option>
-                            <option value="BAKIM">🟡 BAKIM</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TEKNİK DETAYLAR -->
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--emerald-c)">
-                <div class="panel-head">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>🛠️ TEKNİK DETAYLAR</div>
-                </div>
-                <div style="padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">TARAK ENİ</label>
-                        <input id="val-trakeni" class="pro-input" placeholder="cm"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">TARAK NO</label>
-                        <input id="val-trakno" class="pro-input" placeholder="—"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">ÇÖZGÜ NO</label>
-                        <input id="val-cozguno" class="pro-input" placeholder="—"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">ÇÖZGÜ MARKA</label>
-                        <input id="val-cozgumarka" class="pro-input" placeholder="—"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div id="jakar-extra-fields" style="grid-column:1/-1;display:none">
-                        <label class="pro-label" style="color:var(--accent2)">DİZİM SIKLIĞI (Jakar)</label>
-                        <input id="val-dizim" class="pro-input"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(139,92,246,0.35);color:var(--accent2)">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ORTA: AKTİF PLAN -->
-        <div style="display:flex;flex-direction:column;gap:12px">
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--emerald-c)">
-                <div class="panel-head">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>📅 AKTİF PLAN</div>
-                    <button onclick="toggleSecondPlan()"
-                        style="width:24px;height:24px;border-radius:50%;background:var(--emerald-c);border:none;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;font-weight:700">
-                        <span id="second-plan-icon">+</span>
-                    </button>
-                </div>
-                <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--accent)">SİPARİŞ NO</label>
-                        <select id="val-sno" class="pro-input" onchange="tezgahAktifPlanSiparisDegisti()"
-                            style="font-family:'DM Mono',monospace;font-weight:600;border-color:rgba(109,113,255,0.3)">
-                            <option value="">Sipariş seçin...</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="pro-label">MÜŞTERİ</label>
-                        <input id="val-musteri" class="pro-input" placeholder="Siparişten otomatik gelir..." style="text-transform:uppercase" readonly>
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--cyan-c)">ÜRÜN</label>
-                        <select id="val-urun" class="pro-input" style="border-color:rgba(34,211,238,0.3)">
-                            <option value="">Önce sipariş seçin...</option>
-                        </select>
-                        <div id="val-urun-ozet" style="margin-top:5px;font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">
-                            Sipariş seçildiğinde baz ürün grupları çıkacak.
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                        <div>
-                            <label class="pro-label">BAŞLAMA</label>
-                            <input id="val-baslama" type="date" class="pro-input">
-                        </div>
-                        <div>
-                            <label class="pro-label" style="color:var(--rose-c)">TERMİN</label>
-                            <input id="val-bitis" type="date" class="pro-input"
-                                style="border-color:rgba(251,113,133,0.3)">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PLAN 2 (gizli) -->
-            <div id="second-plan-area" style="display:none">
-                <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--amber-c)">
-                    <div class="panel-head">
-                        <div class="panel-head-title" style="color:var(--amber-c)"><span class="panel-head-dot" style="background:var(--amber-c)"></span>🕒 SIRADAKİ İŞ — PLAN 2</div>
-                    </div>
-                    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-                        <div>
-                            <label class="pro-label" style="color:var(--amber-c)">SİPARİŞ NO</label>
-                            <input id="val-sno-2" class="pro-input" placeholder="SIP-2026/002"
-                                style="font-family:'DM Mono',monospace;font-weight:600;border-color:rgba(245,158,11,0.3)">
-                        </div>
-                        <div>
-                            <label class="pro-label">MÜŞTERİ</label>
-                            <input id="val-musteri-2" class="pro-input" placeholder="Firma..." style="text-transform:uppercase">
-                        </div>
-                        <div>
-                            <label class="pro-label">ÜRÜN</label>
-                            <input id="val-urun-2" class="pro-input" placeholder="Ürün/Desen...">
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                            <div>
-                                <label class="pro-label">BAŞLAMA</label>
-                                <input id="val-baslama-2" type="date" class="pro-input">
-                            </div>
-                            <div>
-                                <label class="pro-label" style="color:var(--rose-c)">TERMİN</label>
-                                <input id="val-bitis-2" type="date" class="pro-input"
-                                    style="border-color:rgba(251,113,133,0.3)">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- SAĞ: NOT PANELİ -->
-        <div style="display:flex;flex-direction:column;gap:12px;position:sticky;top:0">
-            <div class="panel-box" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>📝 TEZGAH NOTU</div>
-                </div>
-                <div style="padding:12px 14px">
-                    <textarea id="val-tnot" rows="6" class="pro-input" placeholder="Arıza, bakım, özel durum notları..."
-                        style="resize:none;line-height:1.6;font-size:11px"></textarea>
-                </div>
-            </div>
-
-            <!-- Tezgah durumu badge -->
-            <div class="panel-box" style="padding:12px 14px;border-left:3px solid var(--accent)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:6px">HIZLI DURUM</div>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                    ${[['ÇALIŞIYOR','var(--emerald-c)','🟢'],['MÜSAİT','var(--accent)','🔵'],['BAKIM','var(--amber-c)','🟡'],['ARIZALI','var(--rose-c)','🔴']].map(([d,r,e])=>`
-                    <div onclick="document.getElementById('val-durum').value='${d}'"
-                        style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:${r};font-family:'DM Mono',monospace;transition:background 0.12s"
-                        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
-                        ${e} ${d}
-                    </div>`).join('')}
-                </div>
-            </div>
-        </div>`;
-        notesContainer.innerHTML = '';
-        tezgahAktifPlanInit();
     }
 
     // --- NUMUNE ÜRETİM ---
@@ -27297,7 +26911,7 @@ function renderInputs() {
                 <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;overflow:visible">
                     <div style="position:relative">
                         <label class="pro-label" style="color:${accentColor}">STOK KODU veya ÜRÜN ADI ile Ara</label>
-                        <input id="mamul-search" class="pro-input" placeholder="26001 veya ürün adı yazın..."
+                        <input id="mamul-search" class="pro-input" placeholder="2026-001 veya desen adı..."
                             oninput="mamulSearch(this.value)"
                             style="font-family:'DM Mono',monospace;border-color:rgba(${accentRgb},0.35)">
                         <div id="mamul-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;margin-top:4px"></div>
@@ -27854,261 +27468,20 @@ function renderInputs() {
     // ══════════════════════════════════════════════════════
     else if (appMode === 'MAMUL_KART_GIRIS') {
         if (!editingId) {
-            getNextStockCode('MA').then(code => {
+            const assignKod = () => {
                 const input = document.getElementById('val-kodu');
-                if (input) input.value = code;
-            });
-        }
-        grid.style.cssText = 'display:grid;grid-template-columns:1fr 260px;gap:16px;align-items:start';
-        grid.innerHTML = `
-
-        <!-- SOL: MAMÜL FORM -->
-        <div style="display:flex;flex-direction:column;gap:14px">
-
-            <!-- 1. MAMÜL KİMLİĞİ -->
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--amber-c)">
-                <div class="panel-head" style="background:rgba(251,191,36,0.05)">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>🧥 01 — MAMÜL KİMLİĞİ</div>
-                    <select id="val-durum" class="pro-input" style="width:auto;padding:4px 10px;font-size:10px">
-                        <option value="AKTİF">✅ AKTİF</option>
-                        <option value="PASİF">💤 PASİF</option>
-                        <option value="ARŞİV">📁 ARŞİV</option>
-                    </select>
-                </div>
-                <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-                    <div>
-                        <label class="pro-label" style="color:var(--amber-c)">STOK KODU (YY###)</label>
-                        <input id="val-kodu" class="pro-input" readonly
-                            style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--amber-c);border-color:rgba(251,191,36,0.4);background:rgba(251,191,36,0.05)">
-                    </div>
-                    <div>
-                        <label class="pro-label">ÜRÜN ADI <span class="req-star">★</span></label>
-                        <input id="val-urun-adi" class="pro-input" placeholder="Çarşaf, Yastık kılıfı, Havlu..."
-                            style="text-transform:uppercase">
-                    </div>
-                    <div>
-                        <label class="pro-label">MÜŞTERİ / FİRMA <span class="req-star">★</span></label>
-                        <input id="val-firma" class="pro-input" placeholder="Firma..."
-                            style="text-transform:uppercase">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--cyan-c)">ÜRÜN KATEGORİSİ</label>
-                        <select id="val-urun-kat" class="pro-input" style="border-color:rgba(34,211,238,0.3)">
-                            <option value="YATAK ÖRTÜSÜ">🛏️ Yatak Örtüsü</option>
-                            <option value="ÇARŞAF">📋 Çarşaf</option>
-                            <option value="YASTIK KILIFI">💤 Yastık Kılıfı</option>
-                            <option value="NEVRESIM">🛌 Nevresim Takımı</option>
-                            <option value="HAVLU">🧖 Havlu</option>
-                            <option value="MASA ÖRTÜSÜ">🍽️ Masa Örtüsü</option>
-                            <option value="PERDE">🪟 Perde</option>
-                            <option value="HALI">🟫 Halı</option>
-                            <option value="DİĞER">📦 Diğer</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="pro-label">DESEN KODU / ADI</label>
-                        <input id="val-desen-adi" class="pro-input" placeholder="Desen kodu..."
-                            style="text-transform:uppercase">
-                    </div>
-                    <div>
-                        <label class="pro-label">RENK / VARYANT</label>
-                        <input id="val-renk" class="pro-input" placeholder="Renk veya varyant kodu">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 2. MAMÜL BOYUTLARI & ÖLÇÜLERİ -->
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--emerald-c)">
-                <div class="panel-head" style="background:rgba(52,211,153,0.05)">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>📐 02 — ÖLÇÜLER & BOYUTLAR</div>
-                </div>
-                <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">EN (cm)</label>
-                        <input id="val-mamul-en" type="number" class="pro-input" placeholder="0"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">BOY (cm)</label>
-                        <input id="val-mamul-boy" type="number" class="pro-input" placeholder="0"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label">GSM (gr/m²)</label>
-                        <input id="val-mamul-gsm" type="number" class="pro-input" placeholder="0"
-                            style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--amber-c)">
-                    </div>
-                    <div>
-                        <label class="pro-label">AĞIRLIK (gr/adet)</label>
-                        <input id="val-agirlik" type="number" step="0.1" class="pro-input" placeholder="0"
-                            style="font-family:'DM Mono',monospace">
-                    </div>
-                    <div>
-                        <label class="pro-label">SET İÇERİĞİ (adet)</label>
-                        <input id="val-set-adet" type="number" class="pro-input" placeholder="1"
-                            style="font-family:'DM Mono',monospace">
-                    </div>
-                    <div>
-                        <label class="pro-label">AMBALAJ TİPİ</label>
-                        <select id="val-ambalaj" class="pro-input">
-                            <option value="TORBA">🛍️ Torba</option>
-                            <option value="KUTU">📦 Kutu</option>
-                            <option value="VAKUM">🔒 Vakumlu</option>
-                            <option value="ASKILI">👗 Askılı</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="pro-label">AMBALAJ ADET</label>
-                        <input id="val-ambalaj-adet" type="number" class="pro-input" placeholder="1"
-                            style="font-family:'DM Mono',monospace">
-                    </div>
-                    <div>
-                        <label class="pro-label">BAKIM TALİMATI</label>
-                        <input id="val-bakim" class="pro-input" placeholder="30° yıkama, ütüleme..."
-                            style="font-size:10px">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 3. HAMMADDE BİLEŞİMİ -->
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--accent)">
-                <div class="panel-head" style="background:rgba(109,113,255,0.04)">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>🧵 03 — HAMMADDE BİLEŞİMİ</div>
-                </div>
-                <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--accent)">KULLANILAN KUMAŞ KODU</label>
-                        <input id="val-ham-kumas-kodu" class="pro-input" placeholder="SM-XXXX"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(109,113,255,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--accent)">KUMAŞ TÜKETİMİ (mt/adet)</label>
-                        <input id="val-kumas-tuketim" type="number" step="0.01" class="pro-input" placeholder="0.00"
-                            style="font-family:'DM Mono',monospace;border-color:rgba(109,113,255,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label">FİBER İÇERİĞİ (%)</label>
-                        <input id="val-fiber" class="pro-input" placeholder="100% Pamuk, 50/50 vb."
-                            style="text-transform:uppercase">
-                    </div>
-                    <div>
-                        <label class="pro-label">AKSESUAR BİLGİSİ</label>
-                        <input id="val-aksesuar" class="pro-input" placeholder="Etiket, Bant, Fermuvar vb."
-                            style="text-transform:uppercase">
-                    </div>
-                    <div>
-                        <label class="pro-label">FIRE ORANI (%)</label>
-                        <input id="val-fire" type="number" step="0.1" class="pro-input" placeholder="0.0"
-                            style="font-family:'DM Mono',monospace">
-                    </div>
-                    <div>
-                        <label class="pro-label">ÜRETİM SÜRESİ (dk/adet)</label>
-                        <input id="val-uretim-sure" type="number" step="0.1" class="pro-input" placeholder="0.0"
-                            style="font-family:'DM Mono',monospace">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 4. FİYATLANDIRMA -->
-            <div class="panel-box" style="padding:0;overflow:hidden;border-left:3px solid var(--rose-c)">
-                <div class="panel-head" style="background:rgba(251,113,133,0.04)">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--rose-c)"></span>💰 04 — FİYATLANDIRMA</div>
-                </div>
-                <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-                    <div>
-                        <label class="pro-label" style="color:var(--rose-c)">MALİYET FİYATI (₺)</label>
-                        <input id="val-maliyet" type="number" step="0.01" class="pro-input" placeholder="0.00"
-                            style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--rose-c);border-color:rgba(251,113,133,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label" style="color:var(--emerald-c)">SATIŞ FİYATI (₺)</label>
-                        <input id="val-satis-fiyat" type="number" step="0.01" class="pro-input" placeholder="0.00"
-                            style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--emerald-c);border-color:rgba(52,211,153,0.3)">
-                    </div>
-                    <div>
-                        <label class="pro-label">PARA BİRİMİ</label>
-                        <select id="val-para-birimi" class="pro-input">
-                            <option value="TRY">🇹🇷 TL</option>
-                            <option value="USD">🇺🇸 USD</option>
-                            <option value="EUR">🇪🇺 EUR</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="pro-label">KDV ORANI (%)</label>
-                        <select id="val-kdv" class="pro-input">
-                            <option value="0">%0</option>
-                            <option value="10" selected>%10</option>
-                            <option value="20">%20</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- SAĞ PANEL -->
-        <div style="display:flex;flex-direction:column;gap:12px;position:sticky;top:0">
-
-            <!-- Tip kartı -->
-            <div class="panel-box" style="padding:14px;border-left:4px solid var(--amber-c)">
-                <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:6px">KART TİPİ</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--amber-c)">🧥 Mamül Stok Kartı</div>
-                <div style="font-size:9px;color:var(--text3);margin-top:4px;font-family:'DM Mono',monospace">YY### serisi (999'a kadar) · kumas_kutuphanesi</div>
-            </div>
-
-            <!-- Kar marjı hesap -->
-            <div class="panel-box" style="padding:12px 14px;border-left:3px solid var(--emerald-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:8px">💹 KAR MARJI</div>
-                <div id="mamul-kar-display" style="font-family:'Instrument Serif',serif;font-size:28px;color:var(--emerald-c);line-height:1">—</div>
-                <div style="font-size:9px;color:var(--text3);margin-top:3px;font-family:'DM Mono',monospace">maliyet → satış fiyatı</div>
-            </div>
-
-            <!-- Fotoğraf -->
-            <div class="panel-box" style="padding:12px;text-align:center">
-                <div class="panel-head-title" style="margin-bottom:10px;justify-content:center"><span class="panel-head-dot" style="background:var(--text3)"></span>MAMÜL FOTOĞRAFI</div>
-                <input type="file" id="val-foto" onchange="handleImageUpload(this)" class="hidden">
-                <label for="val-foto" style="display:block;cursor:pointer;border-radius:12px;overflow:hidden;height:180px;border:2px dashed var(--border2);transition:border-color 0.2s;position:relative">
-                    <img id="img-preview" src="${currentImageBase64 || ''}"
-                        style="width:100%;height:100%;object-fit:cover;${currentImageBase64 ? '' : 'display:none'}">
-                    <div id="foto-placeholder" style="${currentImageBase64 ? 'display:none' : 'display:flex'};flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px">
-                        <div style="font-size:28px">📷</div>
-                        <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Fotoğraf Ekle</div>
-                    </div>
-                </label>
-            </div>
-
-            <!-- Teknik Not -->
-            <div class="panel-box" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>ÜRETİM NOTU</div>
-                </div>
-                <div style="padding:12px 14px">
-                    <textarea id="val-notlar" rows="5" class="pro-input"
-                        placeholder="Kalite standartları, özel talimatlar, müşteri notları..."
-                        style="resize:none;line-height:1.6;font-size:11px"></textarea>
-                </div>
-            </div>
-        </div>`;
-
-        // Kar marjı canlı hesap
-        setTimeout(() => {
-            const calcKar = () => {
-                const mal = erpValDecimal('val-maliyet') || 0;
-                const sat = erpValDecimal('val-satis-fiyat') || 0;
-                const el = document.getElementById('mamul-kar-display');
-                if (!el) return;
-                if (mal > 0 && sat > 0) {
-                    const kar = ((sat - mal) / mal * 100).toFixed(1);
-                    el.textContent = (kar >= 0 ? '+' : '') + kar + '%';
-                    el.style.color = kar >= 0 ? 'var(--emerald-c)' : 'var(--rose-c)';
-                } else {
-                    el.textContent = '—';
-                    el.style.color = 'var(--text3)';
-                }
+                if (!input) return;
+                input.value = typeof getNextMamulAnaKod === 'function'
+                    ? getNextMamulAnaKod()
+                    : `${new Date().getFullYear()}-001`;
             };
-            document.getElementById('val-maliyet')?.addEventListener('input', calcKar);
-            document.getElementById('val-satis-fiyat')?.addEventListener('input', calcKar);
-        }, 100);
+            assignKod();
+        }
+        grid.classList.add('mamul-layout');
+        grid.style.cssText = 'display:block;width:100%';
+        grid.innerHTML = typeof mamulStokKartFormHtml === 'function'
+            ? mamulStokKartFormHtml(currentImageBase64)
+            : '<div style="padding:20px;color:var(--rose-c)">Mamül form modülü yüklenemedi.</div>';
         notesContainer.innerHTML = '';
     }
 
@@ -28180,7 +27553,7 @@ function renderInputs() {
                     </div>
                 </div>
                 <div style="display:flex;justify-content:flex-end;margin-top:16px">
-                    <button onclick="_wizardGo('siparis',1,2)" class="wizard-nav-btn" style="--wizard-color:var(--accent)">Ürün Kalemleri →</button>
+                    <button type="button" onclick="_wizardGo('siparis',1,2)" class="wizard-nav-btn" style="--wizard-color:var(--accent)">Ürün Kalemleri →</button>
                 </div>
             </div>
 
@@ -28195,8 +27568,8 @@ function renderInputs() {
                     ＋ YENİ ÜRÜN SATIRI EKLE
                 </button>
                 <div style="display:flex;justify-content:space-between;margin-top:16px">
-                    <button onclick="_wizardGo('siparis',2,1)" class="wizard-nav-btn btn-back">← Geri</button>
-                    <button onclick="_wizardGo('siparis',2,3)" class="wizard-nav-btn" style="--wizard-color:var(--accent)">Onay →</button>
+                    <button type="button" onclick="_wizardGo('siparis',2,1)" class="wizard-nav-btn btn-back">← Geri</button>
+                    <button type="button" onclick="_wizardGo('siparis',2,3)" class="wizard-nav-btn" style="--wizard-color:var(--accent)">Onay →</button>
                 </div>
             </div>
 
@@ -28207,8 +27580,8 @@ function renderInputs() {
                 <div style="margin-top:12px;padding:12px 14px;background:rgba(109,113,255,0.06);border:1px solid rgba(109,113,255,0.15);border-radius:10px;font-size:10px;color:var(--accent2);font-weight:500">
                     ℹ️ Kayıt sisteme işlendikten sonra sipariş listesine düşer. Bilgileri kontrol edin.
                 </div>
-                <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
-                    <button type="button" onclick="handleSave()" class="btn-pro btn-primary-pro siparis-step-kaydet" style="width:100%;min-height:52px;font-size:14px;font-weight:800;background:var(--accent);border:none;border-radius:10px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Siparişi Kaydet</button>
+                <div class="siparis-wizard-actions" style="display:flex;flex-direction:column;gap:10px;margin-top:16px">
+                    <button type="button" onclick="handleSave()" class="btn-pro btn-primary-pro siparis-step-kaydet" style="width:100%;min-height:52px;font-size:14px;font-weight:800;background:var(--accent);border:none;border-radius:10px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;touch-action:manipulation">✓ Siparişi Kaydet</button>
                     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
                         <button type="button" onclick="_wizardGo('siparis',3,2)" class="wizard-nav-btn btn-back">← Geri</button>
                         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -28313,6 +27686,7 @@ function renderInputs() {
             }
             updateSiparisPreview();
             siparisFormSiparisDurumUiSync();
+            syncSiparisWizardChrome(1);
         }, 100);
     }
 
@@ -28478,7 +27852,7 @@ function loadData() {
         s = '';
     }
 
-    if (appMode === 'DASHBOARD' || appMode === 'TEZGAH_YONETIMI') return;
+    if (appMode === 'DASHBOARD') return;
 
     if (appMode === 'DEPO_HAREKET_LISTE') {
         renderDepoHareketDefteri();
@@ -29270,6 +28644,24 @@ window.iplikCikisSecim = function(secim) {
 // ============================================================
 // WIZARD FONKSİYONLARI — İplik / Kumaş / Mamül
 // ============================================================
+function siparisKalemGecerliMi(k) {
+    const adKod = String(k?.ad || k?.kod || '').trim();
+    const mik = erpParseDecimal(k?.miktar);
+    return adKod !== '' && mik != null && mik > 0;
+}
+
+function syncSiparisWizardChrome(step) {
+    const act = document.getElementById('main-action-btn');
+    if (appMode !== 'SIPARIS_GIRIS') {
+        document.body.classList.remove('siparis-wizard-step-3');
+        if (act) act.style.removeProperty('display');
+        return;
+    }
+    const adim = step != null ? step : siparisWizardAktifAdim();
+    document.body.classList.toggle('siparis-wizard-step-3', adim === 3);
+    if (act) act.style.display = 'none';
+}
+
 function _wizardGo(prefix, fromStep, toStep) {
     if (prefix === 'siparis' && toStep > fromStep) {
         if (fromStep === 1) {
@@ -29285,9 +28677,8 @@ function _wizardGo(prefix, fromStep, toStep) {
             syncSiparisNoInput();
         }
         if (fromStep === 2) {
-            const kalemler = collectSiparisKalemlerFromForm().filter(k =>
-                (String(k.ad || k.kod || '').trim() !== '') && (parseFloat(k.miktar || 0) > 0));
-            if (!kalemler.length) { erpToast('En az 1 geçerli ürün kalemi girin (ürün adı/kodu + miktar).', 'error'); return; }
+            const kalemler = collectSiparisKalemlerFromForm().filter(siparisKalemGecerliMi);
+            if (!kalemler.length) { erpToast('En az 1 geçerli ürün kalemi girin (ürün adı veya stok kodu + miktar > 0).', 'error'); return; }
         }
     }
     const total = 3;
@@ -29303,12 +28694,13 @@ function _wizardGo(prefix, fromStep, toStep) {
         else if (s === toStep) { dot.className = 'step-dot active'; }
         else { dot.className = 'step-dot pending'; if (line) line.className = 'step-line'; }
     }
-    if (toStep === 3) {
-        _buildConfirmSummary(prefix);
-        if (prefix === 'siparis') {
+    if (toStep === 3) _buildConfirmSummary(prefix);
+    if (prefix === 'siparis') {
+        syncSiparisWizardChrome(toStep);
+        if (toStep === 3) {
             setTimeout(() => {
                 try {
-                    document.querySelector('.siparis-step-kaydet')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    document.querySelector('.siparis-wizard-actions')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 } catch (e) {}
             }, 120);
         }
@@ -30433,13 +29825,23 @@ function siparisListeAramaYenile() {
         loadData();
         return;
     }
+    if (erpIsDetailModalOpen()) {
+        erpScheduleDeferredUiRefresh();
+        return;
+    }
     const list = document.getElementById('main-list');
     if (!list || !list.querySelector('.siparis-liste-toolbar')) {
+        if (erpShouldDeferUiRefresh()) {
+            erpScheduleDeferredUiRefresh();
+            return;
+        }
         loadData();
         return;
     }
 
     const q = siparisListeTekAramaOku();
+    const scrollHost = list.closest('.content-scroll') || list.parentElement;
+    const prevScroll = scrollHost?.scrollTop ?? 0;
 
     let data = (dataCache.siparisler || []).slice();
     if (appMode === 'SIPARIS_KAPANAN') {
@@ -30468,6 +29870,7 @@ function siparisListeAramaYenile() {
         ? currentData.map((i, idx) => siparisListeSatirHtml(i, idx)).join('')
         : `<div class="siparis-liste-bos" style="padding:28px 16px;text-align:center;color:var(--text3);font-size:12px">Eşleşen sipariş yok</div>`;
     list.insertAdjacentHTML('beforeend', rowsHtml);
+    if (scrollHost) scrollHost.scrollTop = prevScroll;
 }
 
 function siparisListeSetKolonFiltre(key, value) {
@@ -30795,14 +30198,19 @@ async function handleSave() {
         erpToast('Kaydetme işlemi zaten devam ediyor, lütfen bekleyin.', 'warn');
         return;
     }
-    erpNormalizeAllDecimalInputsInForm();
     isSaveInProgress = true;
-    if (appMode === 'SIPARIS_GIRIS') {
-        await erpAwaitSiparisFoto();
+    try {
+        erpNormalizeAllDecimalInputsInForm();
+        if (appMode === 'SIPARIS_GIRIS') {
+            await erpAwaitSiparisFoto();
+        }
+    } catch (preErr) {
+        isSaveInProgress = false;
+        erpToast('Kayıt hazırlanırken hata: ' + (preErr?.message || preErr), 'error', 3600);
+        return;
     }
     let table = 'kumas_stok';
     if (appMode === 'TODO_GIRIS') table = 'todo_list';
-    else if (appMode === 'TEZGAH_GIRIS') table = 'tezgahlar';
     else if (appMode === 'SIPARIS_GIRIS') table = 'siparisler';
     else if (['KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'NUMUNE_URETIM'].includes(appMode)) table = 'kumas_kutuphanesi';
     else if (appMode === 'IPLIK_KART_GIRIS') table = 'iplik_stok';
@@ -30817,9 +30225,7 @@ async function handleSave() {
 
     if (editingId) {
         // Tezgahlar tablosunda islem_gecmisi kolonu yok; log'u notlar icine yazariz.
-        const eskiGecmis = (appMode === 'TEZGAH_GIRIS')
-            ? (originalRecordSnapshot?.notlar || "")
-            : (originalRecordSnapshot?.islem_gecmisi || "");
+        const eskiGecmis = (originalRecordSnapshot?.islem_gecmisi || "");
         const degisiklikDetayi = getDetailedChangeLog();
         yeniLog = eskiGecmis + degisiklikDetayi;
         // Hiç alan değişmemişse yine de zaman damgası ekle
@@ -30893,70 +30299,42 @@ async function handleSave() {
             };
             if (!p.desen_kodu || !p.desen_adi) { erpToast('Kumaş kartı için Desen Kodu ve Desen Adı zorunludur.', 'error'); return; }
         } else if (appMode === 'MAMUL_KART_GIRIS') {
+            const ekMeta = typeof mamulEkAlanFormOku === 'function' ? mamulEkAlanFormOku() : {};
+            const hamE = typeof mamulExcelEbatParcala === 'function'
+                ? mamulExcelEbatParcala(ekMeta.ham_ebat || ekMeta.olculen_ham_ebat || '')
+                : { en: '', boy: '' };
+            const mamulE = typeof mamulExcelEbatParcala === 'function'
+                ? mamulExcelEbatParcala(ekMeta.istenen_mamul_ebat || ekMeta.olculen_mamul_ebat || '')
+                : { en: '', boy: '' };
+            const desenAdi = document.getElementById('val-desen-adi')?.value?.toUpperCase() || '';
+            const kumasCinsi = document.getElementById('val-kumas-cinsi')?.value || '';
             p = {
                 ...p,
                 desen_kodu:     document.getElementById('val-kodu')?.value || '',
-                urun_adi:       document.getElementById('val-urun-adi')?.value?.toUpperCase() || '',
+                urun_adi:       desenAdi || kumasCinsi || document.getElementById('val-kodu')?.value || '',
                 firma:          document.getElementById('val-firma')?.value?.toUpperCase() || '',
-                urun_kat:       document.getElementById('val-urun-kat')?.value || '',
-                desen_adi:      document.getElementById('val-desen-adi')?.value?.toUpperCase() || '',
-                renk:           document.getElementById('val-renk')?.value || '',
-                mamul_en:       erpValDecimal('val-mamul-en') || null,
-                mamul_boy:      erpValDecimal('val-mamul-boy') || null,
-                mamul_gsm:      erpValDecimal('val-mamul-gsm') || null,
-                agirlik:        erpValDecimal('val-agirlik') || null,
-                set_adet:       parseInt(document.getElementById('val-set-adet')?.value) || 1,
-                ambalaj:        document.getElementById('val-ambalaj')?.value || '',
-                ambalaj_adet:   parseInt(document.getElementById('val-ambalaj-adet')?.value) || 1,
-                bakim:          document.getElementById('val-bakim')?.value || '',
-                ham_kumas_kodu: document.getElementById('val-ham-kumas-kodu')?.value || '',
-                kumas_tuketim:  erpValDecimal('val-kumas-tuketim') || null,
-                fiber:          document.getElementById('val-fiber')?.value?.toUpperCase() || '',
-                aksesuar:       document.getElementById('val-aksesuar')?.value?.toUpperCase() || '',
-                fire:           erpValDecimal('val-fire') || null,
-                uretim_sure:    erpValDecimal('val-uretim-sure') || null,
-                maliyet:        erpValDecimal('val-maliyet') || null,
-                satis_fiyat:    erpValDecimal('val-satis-fiyat') || null,
-                para_birimi:    document.getElementById('val-para-birimi')?.value || 'TRY',
-                kdv:            parseInt(document.getElementById('val-kdv')?.value) || 10,
+                kumas_cinsi:    kumasCinsi,
+                desen_adi:      desenAdi,
+                tarak_no:       document.getElementById('val-tarak-no')?.value || '',
+                tarak_eni:      document.getElementById('val-tarak-eni')?.value || '',
+                atki_sikligi:   document.getElementById('val-mamul-atki-sikligi')?.value || '',
+                cozgu_no:       document.getElementById('val-mamul-cozgu-iplik-no')?.value || '',
+                cozgu_cinsi:    document.getElementById('val-mamul-cozgu-iplik-markasi')?.value || '',
+                ham_en:         hamE.en || ekMeta.ham_ebat || '',
+                ham_boy:        hamE.boy || '',
+                ham_gsm:        ekMeta.ham_gram_m2 || '',
+                mamul_en:       mamulE.en || ekMeta.istenen_mamul_ebat || '',
+                mamul_boy:      mamulE.boy || '',
+                mamul_gsm:      ekMeta.mamul_gram_m2 || '',
                 kalite:         document.getElementById('val-durum')?.value || 'AKTİF',
-                notlar:         document.getElementById('val-notlar')?.value || '',
                 fotograf:       currentImageBase64,
                 ana_grup:       'MAMUL',
+                notlar:         typeof kumasNotlarOlustur === 'function'
+                    ? kumasNotlarOlustur(ekMeta.aciklama || '', ekMeta)
+                    : (ekMeta.aciklama || ''),
             };
-            if (!p.desen_kodu || !p.urun_adi) { erpToast('Mamül kartı için Ürün Kodu ve Ürün Adı zorunludur.', 'error'); return; }
-        } else if (appMode === 'TEZGAH_GIRIS') {
-            const userNot = document.getElementById('val-tnot')?.value || '';
-            const logBlock = `\n═══════════════════════════════\n${editingId ? '🔄' : '✨'} ${now} — [${currentUser}]\n  • Tezgah planı kaydedildi.`;
-            const notlarBirlesik = String(userNot || '').trim()
-                ? `${String(userNot).trim()}${logBlock}`
-                : logBlock.trimStart();
-            p = {
-                ...p,
-                tezgah_no: document.getElementById('val-tno')?.value?.toUpperCase() || '',
-                tezgah_tipi: document.getElementById('val-ttip')?.value || '',
-                tezgah_eni: document.getElementById('val-eni')?.value || '',
-                tarak_eni: document.getElementById('val-trakeni')?.value || '',
-                tarak_no: document.getElementById('val-trakno')?.value || '',
-                cozgu_no: document.getElementById('val-cozguno')?.value || '',
-                cozgu_marka: document.getElementById('val-cozgumarka')?.value || '',
-                dizim_sikligi: document.getElementById('val-dizim')?.value || '',
-                giris_tarihi: document.getElementById('val-baslama')?.value || null,
-                dokuma_termini: document.getElementById('val-bitis')?.value || null,
-                musteri: document.getElementById('val-musteri')?.value || '',
-                urun_adi: document.getElementById('val-urun')?.value || '',
-                siparis_no: document.getElementById('val-sno')?.value || '',
-                baslama_2: document.getElementById('val-baslama-2')?.value || null,
-                bitis_2: document.getElementById('val-bitis-2')?.value || null,
-                musteri_2: document.getElementById('val-musteri-2')?.value || '',
-                urun_2: document.getElementById('val-urun-2')?.value || '',
-                sno_2: document.getElementById('val-sno-2')?.value || '',
-                durum: 'ÇALIŞIYOR',
-                notlar: notlarBirlesik
-            };
-            // islem_gecmisi kolonunu tezgahlar'a gonderme
-            try { delete p.islem_gecmisi; } catch (e) {}
-            if (!p.tezgah_no) { erpToast('Tezgah kaydı için Tezgah No zorunludur.', 'error'); return; }
+            if (!p.desen_kodu) { erpToast('Mamül kartı için stok kodu zorunludur.', 'error'); return; }
+            if (!p.desen_adi && !p.kumas_cinsi) { erpToast('Desen adı veya kumaş cinsi zorunludur.', 'error'); return; }
         } else if (appMode === 'TODO_GIRIS') {
             p = {
                 ...p,
@@ -31047,7 +30425,7 @@ async function handleSave() {
                 fotoDbVal = null;
             }
             const kalemler = collectSiparisKalemlerFromForm();
-            const kalemlerValid = kalemler.filter(k => (String(k.ad || k.kod || '').trim() !== '') && (parseFloat(k.miktar || 0) > 0));
+            const kalemlerValid = kalemler.filter(siparisKalemGecerliMi);
             let durumVal = editingId
                 ? (originalRecordSnapshot?.durum || 'BEKLEMEDE')
                 : 'BEKLEMEDE';
@@ -31382,8 +30760,15 @@ async function handleSave() {
         }
 
         if (!error) {
+            let mamulVaryantOlusturulan = 0;
+            if (appMode === 'MAMUL_KART_GIRIS' && typeof mamulVaryantKayitlariOlustur === 'function') {
+                const ekMetaV = typeof mamulEkAlanFormOku === 'function' ? mamulEkAlanFormOku() : {};
+                const vr = await mamulVaryantKayitlariOlustur(p, ekMetaV);
+                if (!vr.ok && vr.error) console.warn('Mamül varyant kaydı:', vr.error.message);
+                else mamulVaryantOlusturulan = vr.created || 0;
+            }
             const savedId = _siparisSonKayitId || editingId;
-            const returnMode = appMode === 'TEZGAH_GIRIS' ? 'TEZGAH_YONETIMI' : appMode;
+            const returnMode = appMode;
             if (savedId) erpCacheKayitGuncelle(table, { ...p, id: savedId });
             if (appMode === 'NUMUNE_URETIM') {
                 numuneFormGoster = false;
@@ -32071,7 +31456,7 @@ function siparisDetailModalSetTab(tab) {
         }
     });
     if (tab === 'detay') {
-        const sip = (typeof currentData !== 'undefined' && selectedIndex != null) ? currentData[selectedIndex] : null;
+        const sip = erpDetailKayitBul();
         if (sip && sip.id != null) {
             siparisDurumPollStart(sip.id);
             queueMicrotask(() => siparisDetailModalBaslatDurumTab(sip, true));
@@ -32080,7 +31465,7 @@ function siparisDetailModalSetTab(tab) {
         siparisDurumPollStop();
     }
     if (tab === 'notlar') {
-        const sipN = (typeof currentData !== 'undefined' && selectedIndex != null) ? currentData[selectedIndex] : null;
+        const sipN = erpDetailKayitBul();
         if (sipN && sipN.id != null) siparisNotlarPanelWire(sipN.id);
     }
 }
@@ -32429,26 +31814,30 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
 async function siparisDetailModalBaslatDurumTab(siparis, quietRefresh = false) {
     const el = document.getElementById('siparis-durum-icerik');
     if (!el || !siparis || siparis.id == null) return;
+    const sid = String(siparis.id);
+    const fresh = (dataCache.siparisler || []).find(s => String(s.id) === sid) || siparis;
     if (!quietRefresh) {
         el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3)">Sipariş aşaması verileri yükleniyor…</div>';
     }
     try {
-        await sbKdGet(siparis.id, 'KD_KONFEKSIYON', true);
-        await sbKdGet(siparis.id, 'KD_DOKUMA', true);
-        await sbKdGet(siparis.id, 'KD_URUN_AGACI', true);
-        await sbKdGet(siparis.id, 'KD_FASON_TAKIP', true);
-        await konfLoadIslemLog(siparis.id);
-        const kdK0 = _kdCache[`KD_KONFEKSIYON_${siparis.id}`] || {};
-        const kdFason = _kdCache[`KD_FASON_TAKIP_${siparis.id}`] || {};
-        const kdK = fasonTakipKdKonfBirlestir(siparis.id, kdK0, kdFason);
-        const kdD = _kdCache[`KD_DOKUMA_${siparis.id}`] || {};
-        const rows = _konfIslemLogCache[siparis.id] || [];
-        const allUa = _kdCache[`KD_URUN_AGACI_${siparis.id}`] || {};
+        await sbKdGet(fresh.id, 'KD_KONFEKSIYON', true);
+        await sbKdGet(fresh.id, 'KD_DOKUMA', true);
+        await sbKdGet(fresh.id, 'KD_URUN_AGACI', true);
+        await sbKdGet(fresh.id, 'KD_FASON_TAKIP', true);
+        await konfLoadIslemLog(fresh.id);
+        const kdK0 = _kdCache[`KD_KONFEKSIYON_${fresh.id}`] || {};
+        const kdFason = _kdCache[`KD_FASON_TAKIP_${fresh.id}`] || {};
+        const kdK = fasonTakipKdKonfBirlestir(fresh.id, kdK0, kdFason);
+        const kdD = _kdCache[`KD_DOKUMA_${fresh.id}`] || {};
+        const rows = _konfIslemLogCache[fresh.id] || [];
+        const allUa = _kdCache[`KD_URUN_AGACI_${fresh.id}`] || {};
+        if (!erpIsDetailModalOpen()) return;
         el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
-            <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="siparisKapamaRaporPdf('${siparis.id}')">📄 Sipariş kapama raporu (PDF)</button>
+            <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="siparisKapamaRaporPdf('${fresh.id}')">📄 Sipariş kapama raporu (PDF)</button>
             <span style="font-size:9px;color:var(--text3)">Dokuma, konfeksiyon, fason takip ve aksesuar — tek rapor</span>
-        </div>` + buildSiparisDurumIncelemeHtml(siparis, kdK, kdD, rows, allUa);
+        </div>` + buildSiparisDurumIncelemeHtml(fresh, kdK, kdD, rows, allUa);
     } catch (e) {
+        if (!erpIsDetailModalOpen()) return;
         el.innerHTML = `<div style="padding:16px;border-radius:10px;border:1px solid rgba(251,113,133,0.35);background:rgba(251,113,133,0.08);color:var(--rose-c);font-size:12px">Veri yüklenemedi: ${pdfEsc(e && e.message ? e.message : String(e))}</div>`;
     }
 }
@@ -32458,9 +31847,11 @@ function showDetail(idx) {
     selectedIndex = idx;
     const i = currentData[idx];
     if (!i) {
+        _detailOpenRecordId = null;
         _openDetailGecmisAfter = false;
         return;
     }
+    _detailOpenRecordId = i.id != null ? i.id : null;
 
     const modal = document.getElementById('detail-modal');
     const title = document.getElementById('modal-title');
@@ -32796,31 +32187,30 @@ function numuneUretimFormDoldur(i) {
 function mamulKartGirisFormDoldur(i) {
     const mv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
     mv('val-kodu', i.desen_kodu);
-    mv('val-urun-adi', i.urun_adi);
     mv('val-firma', i.firma);
-    mv('val-urun-kat', i.urun_kat);
+    mv('val-kumas-cinsi', i.kumas_cinsi);
     mv('val-desen-adi', i.desen_adi);
-    mv('val-renk', i.renk);
-    mv('val-mamul-en', i.mamul_en);
-    mv('val-mamul-boy', i.mamul_boy);
-    mv('val-mamul-gsm', i.mamul_gsm);
-    mv('val-agirlik', i.agirlik);
-    mv('val-set-adet', i.set_adet);
-    mv('val-ambalaj', i.ambalaj);
-    mv('val-ambalaj-adet', i.ambalaj_adet);
-    mv('val-bakim', i.bakim);
-    mv('val-ham-kumas-kodu', i.ham_kumas_kodu);
-    mv('val-kumas-tuketim', i.kumas_tuketim);
-    mv('val-fiber', i.fiber);
-    mv('val-aksesuar', i.aksesuar);
-    mv('val-fire', i.fire);
-    mv('val-uretim-sure', i.uretim_sure);
-    mv('val-maliyet', i.maliyet);
-    mv('val-satis-fiyat', i.satis_fiyat);
-    mv('val-para-birimi', i.para_birimi);
-    mv('val-kdv', i.kdv);
+    mv('val-tarak-no', i.tarak_no);
+    mv('val-tarak-eni', i.tarak_eni);
+    mv('val-mamul-atki-sikligi', i.atki_sikligi);
+    mv('val-mamul-cozgu-iplik-no', i.cozgu_no);
+    mv('val-mamul-cozgu-iplik-markasi', i.cozgu_cinsi);
     mv('val-durum', i.kalite);
-    mv('val-notlar', i.notlar);
+    const meta = (typeof kumasMetaDecode === 'function' ? kumasMetaDecode(i.notlar) : null)
+        || (typeof mamulEkAlanMetaDecode === 'function' ? mamulEkAlanMetaDecode(i.notlar) : {})
+        || {};
+    if (i.ham_en && i.ham_boy && !meta.ham_ebat) meta.ham_ebat = `${i.ham_en}*${i.ham_boy}`;
+    if (i.mamul_en && !meta.istenen_mamul_ebat) {
+        meta.istenen_mamul_ebat = i.mamul_boy ? `${i.mamul_en}*${i.mamul_boy}` : String(i.mamul_en);
+    }
+    if (i.ham_gsm && !meta.ham_gram_m2) meta.ham_gram_m2 = String(i.ham_gsm);
+    if (i.mamul_gsm && !meta.mamul_gram_m2) meta.mamul_gram_m2 = String(i.mamul_gsm);
+    if (!meta.aciklama && typeof kumasNotlarTemizle === 'function') {
+        meta.aciklama = kumasNotlarTemizle(i.notlar || '');
+    }
+    if (!meta.kumas_cinsi && i.kumas_cinsi) meta.kumas_cinsi = i.kumas_cinsi;
+    if (!meta.desen_adi && i.desen_adi) meta.desen_adi = i.desen_adi;
+    if (typeof mamulEkAlanFormDoldur === 'function') mamulEkAlanFormDoldur(meta);
     erpFotoOnizleGuncelle(i.fotograf || null);
 }
 
@@ -32900,27 +32290,6 @@ function editRecord() {
         const kartMod = appMode === 'KART_GIRIS' ? 'KUMAS_KART_GIRIS' : appMode;
         syncKartGirisBaslik(kartMod, i);
         setTimeout(() => kartGirisFormDoldur(i, kartMod), 60);
-    } else if (appMode === 'TEZGAH_GIRIS') {
-        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-        setVal('val-tno', i.tezgah_no);
-        setVal('val-ttip', i.tezgah_tipi);
-        setVal('val-eni', i.tezgah_eni);
-        setVal('val-trakeni', i.tarak_eni);
-        setVal('val-trakno', i.tarak_no);
-        setVal('val-cozguno', i.cozgu_no);
-        setVal('val-cozgumarka', i.cozgu_marka);
-        setVal('val-dizim', i.dizim_sikligi);
-        setVal('val-baslama', i.giris_tarihi);
-        setVal('val-bitis', i.dokuma_termini);
-        setVal('val-sno', i.siparis_no);
-        const sipEl = document.getElementById('val-sno');
-        const urunEl = document.getElementById('val-urun');
-        if (sipEl) sipEl.dataset.prefSiparisNo = i.siparis_no || '';
-        if (urunEl) urunEl.dataset.prefUrun = i.urun_adi || '';
-        tezgahAktifPlanInit(i.siparis_no || '', i.urun_adi || '');
-        if (!document.getElementById('val-musteri')?.value) setVal('val-musteri', i.musteri);
-        setVal('val-tnot', i.notlar);
-        if (typeof toggleJakarFields === "function") toggleJakarFields();
     } else if (appMode === 'KART_IPLIK') {
         const sv = (id, val) => { const el = $id(id); if (el) el.value = val || ''; };
         sv('val-iplik-stok-kodu', i.stok_kodu);
@@ -33052,7 +32421,6 @@ async function deleteRecord() {
     else if (['IPLIK', 'BOYAHANE_URETIM', 'DOKUMA_URETIM', 'KONFEKSIYON_URETIM', 'AKSESUAR_URETIM'].includes(appMode)) table = 'iplik_stok';
     else if (appMode === 'MAMUL_DEPO') table = 'kumas_stok';
     else if (appMode.includes('TODO')) table = 'todo_list';
-    else if (appMode.includes('TEZGAH')) table = 'tezgahlar';
 
     const { error } = await sb.from(table).delete().eq('id', item.id);
     if (!error) {
@@ -34147,6 +33515,7 @@ function changeType(t) {
 
 function hideDetailModal() {
     siparisDurumPollStop();
+    _detailOpenRecordId = null;
     const modal = document.getElementById('detail-modal');
     if (!modal) return;
     modal.style.display = 'none';
@@ -34158,6 +33527,7 @@ function hideDetailModal() {
         bod.style.cssText = '';
     }
     document.querySelectorAll('.kayit-gecmis-details').forEach(d => { d.open = false; });
+    erpFlushDeferredUiRefresh();
 }
 
 function closeModal(e) {
@@ -38154,370 +37524,6 @@ function selectProductForWeaving(el) {
     }
 }
 
-// --- TEZGAH YÖNETİMİ / GANTT ---
-function renderTezgahYonetimi() {
-    const list = document.getElementById('main-list');
-    if (!list) return;
-
-    let hamVeriler = dataCache.tezgahlar || [];
-    const s = ganttFilters.search.toLowerCase();
-
-    let veriler = hamVeriler.filter(t => {
-        const arama = (t.tezgah_no + " " + (t.musteri || "") + " " + (t.siparis_no || "")).toLowerCase();
-        const matchesSearch = arama.includes(s);
-        const matchesStatus = ganttFilters.status === 'HEPSİ' || t.durum === ganttFilters.status;
-        return matchesSearch && matchesStatus;
-    });
-
-    const gruplanmisTezgahlar = veriler.reduce((acc, t) => {
-        if (!acc[t.tezgah_no]) acc[t.tezgah_no] = [];
-        acc[t.tezgah_no].push(t);
-        return acc;
-    }, {});
-
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const daysToShow = 30;
-
-    const totalT  = hamVeriler.length;
-    const calisanT = hamVeriler.filter(t => t.durum === 'ÇALIŞIYOR').length;
-    const musaitT  = hamVeriler.filter(t => t.durum !== 'ÇALIŞIYOR').length;
-    const doluluk  = totalT > 0 ? Math.round(calisanT / totalT * 100) : 0;
-
-    list.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:12px">
-
-            <!-- KONTROL BARI -->
-            <div class="panel-box" style="padding:12px 16px;position:sticky;top:0;z-index:60">
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-
-                    <!-- KPI Özet -->
-                    <div style="display:flex;align-items:center;gap:16px;padding-right:16px;border-right:1px solid var(--border)">
-                        <div style="text-align:center">
-                            <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--text);line-height:1">${totalT}</div>
-                            <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase">Toplam</div>
-                        </div>
-                        <div style="text-align:center">
-                            <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--accent);line-height:1">${calisanT}</div>
-                            <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase">Çalışıyor</div>
-                        </div>
-                        <div style="text-align:center">
-                            <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--emerald-c);line-height:1">${musaitT}</div>
-                            <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase">Müsait</div>
-                        </div>
-                        <!-- Doluluk bar -->
-                        <div style="width:80px">
-                            <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:5px;text-align:right">%${doluluk}</div>
-                            <div style="height:4px;background:var(--surface2);border-radius:4px;overflow:hidden">
-                                <div style="height:100%;width:${doluluk}%;background:var(--accent);border-radius:4px;transition:width 0.5s ease"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Arama -->
-                    <div style="position:relative;flex:1;max-width:260px">
-                        <input type="text" id="gantt-search-input"
-                            oninput="ganttFilters.search=this.value;renderTezgahYonetimi();"
-                            value="${ganttFilters.search}"
-                            placeholder="Tezgah veya müşteri..."
-                            class="pro-input" style="width:100%;padding-left:32px">
-                        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;opacity:0.4">⌕</span>
-                    </div>
-
-                    <!-- Durum filtre -->
-                    <div style="display:flex;align-items:center;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">
-                        ${['HEPSİ','MÜSAİT','ÇALIŞIYOR'].map(st => `
-                        <button onclick="applyGanttFilters('status','${st}')"
-                            style="font-size:10px;font-weight:500;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;transition:all 0.12s;font-family:'DM Sans',sans-serif;background:${ganttFilters.status===st?'var(--accent)':'transparent'};color:${ganttFilters.status===st?'#fff':'var(--text2)'}">
-                            ${st}
-                        </button>`).join('')}
-                    </div>
-
-                    <!-- Gantt toggle -->
-                    <button onclick="toggleGanttArea()"
-                        style="margin-left:auto;padding:7px 16px;font-size:10px;font-weight:500;border-radius:8px;border:1px solid ${ganttVisible?'var(--border)':'var(--accent)'};cursor:pointer;transition:all 0.12s;font-family:'DM Sans',monospace;background:${ganttVisible?'var(--surface2)':'var(--accent)'};color:${ganttVisible?'var(--text2)':'#fff'}">
-                        ${ganttVisible ? '✕ Planı Kapat' : '▤ Gantt Planı'}
-                    </button>
-                </div>
-            </div>
-
-            <!-- GANTT -->
-            ${ganttVisible ? `
-            <div class="panel-box" style="overflow:hidden">
-                <div class="panel-head">
-                    <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>30 Günlük Üretim Planı</span>
-                    <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${today.toLocaleDateString('tr-TR')} — ${new Date(today.getTime()+29*86400000).toLocaleDateString('tr-TR')}</span>
-                </div>
-                <div id="gantt-scroll-container" style="overflow-x:auto;overflow-y:auto;max-height:65vh;cursor:grab">
-                    <div style="min-width:1400px">
-
-                        <!-- Tarih başlıkları -->
-                        <div style="display:flex;margin-left:80px;padding:8px 0;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:40">
-                            ${Array.from({length:daysToShow}).map((_,i) => {
-                                const d = new Date(today.getTime() + i*86400000);
-                                const isToday = i===0;
-                                const isWeekend = d.getDay()===0||d.getDay()===6;
-                                const monthStart = d.getDate()===1;
-                                return `<div style="flex:1;text-align:center;min-width:0">
-                                    ${monthStart ? `<div style="font-size:7px;color:var(--accent2);font-family:'DM Mono',monospace;letter-spacing:0.1em;text-transform:uppercase">${d.toLocaleDateString('tr-TR',{month:'short'})}</div>` : '<div style="height:11px"></div>'}
-                                    <div style="font-size:9px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--accent)':isWeekend?'var(--rose-c)':'var(--text3)'};font-family:'DM Mono',monospace;${isToday?'background:rgba(109,113,255,0.1);border-radius:4px;':''}">${d.getDate()}</div>
-                                    <div style="font-size:7px;color:${isToday?'var(--accent2)':'var(--text3)'};font-family:'DM Mono',monospace;opacity:0.7">${d.toLocaleDateString('tr-TR',{weekday:'short'}).slice(0,2)}</div>
-                                </div>`;
-                            }).join('')}
-                        </div>
-
-                        <!-- Tezgah satırları -->
-                        <div style="position:relative">
-                            <!-- Arka plan grid çizgileri -->
-                            <div style="position:absolute;inset:0;display:flex;margin-left:80px;pointer-events:none;z-index:0">
-                                ${Array.from({length:daysToShow}).map((_,i) => {
-                                    const d = new Date(today.getTime() + i*86400000);
-                                    const isToday = i===0;
-                                    const isWeekend = d.getDay()===0||d.getDay()===6;
-                                    return `<div style="flex:1;border-right:1px solid var(--border);${isToday?'background:rgba(109,113,255,0.04);':''}${isWeekend?'background:rgba(251,113,133,0.025);':''}"></div>`;
-                                }).join('')}
-                            </div>
-
-                            ${sortTezgahNoKeys(Object.keys(gruplanmisTezgahlar)).map(tNo => {
-                                const planlar = gruplanmisTezgahlar[tNo];
-                                const aktif = planlar.some(t => t.durum==='ÇALIŞIYOR');
-                                return `
-                                <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);position:relative;z-index:1" class="gantt-row">
-                                    <!-- Tezgah label -->
-                                    <div style="width:80px;flex-shrink:0;padding:8px 12px;display:flex;align-items:center;gap:6px;position:sticky;left:0;background:var(--surface);z-index:30;border-right:1px solid var(--border)">
-                                        <div style="width:5px;height:5px;border-radius:50%;background:${aktif?'var(--accent)':'var(--text3)'};${aktif?'box-shadow:0 0 6px var(--accent)':''}"></div>
-                                        <span style="font-size:10px;font-weight:600;color:${aktif?'var(--text)':'var(--text2)'};font-family:'DM Mono',monospace">${tNo}</span>
-                                    </div>
-                                    <!-- Bar alanı -->
-                                    <div style="flex:1;height:36px;position:relative">
-                                        ${planlar.map(t => {
-                                            const b1 = createSlimBar(t, t.giris_tarihi, t.dokuma_termini, t.siparis_no, 'primary', false, today, daysToShow);
-                                            const b2 = createSlimBar(t, t.baslama_2, t.bitis_2, t.sno_2, 'secondary', true, today, daysToShow);
-                                            return b1 + b2;
-                                        }).join('')}
-                                    </div>
-                                </div>`;
-                            }).join('')}
-                        </div>
-
-                    </div>
-                </div>
-            </div>
-            ` : ''}
-
-            <!-- TEZGAH GRID -->
-            <div class="panel-box" style="overflow:hidden">
-                <div class="panel-head">
-                    <span class="panel-head-title"><span class="panel-head-dot" style="background:${calisanT>0?'var(--accent)':'var(--text3)'}"></span>Tezgah Durumu</span>
-                    <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${veriler.length} tezgah</span>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1px;background:var(--border)">
-                    ${veriler.length === 0 ? '<div style="grid-column:1/-1;padding:40px;text-align:center"><div style="font-size:11px;color:var(--text3)">Tezgah bulunamadı</div></div>' :
-                    veriler.map(t => {
-                        const aktif = t.durum === 'ÇALIŞIYOR';
-                        const termin = t.dokuma_termini ? new Date(t.dokuma_termini) : null;
-                        const kalanGun = termin ? Math.ceil((termin - new Date()) / 86400000) : null;
-                        const terminRenk = kalanGun === null ? 'var(--text3)' : kalanGun < 0 ? 'var(--rose-c)' : kalanGun <= 5 ? 'var(--amber-c)' : 'var(--emerald-c)';
-                        return `
-                        <div onclick="hizliTezgahDuzenle('${t.id}')"
-                            style="background:var(--surface);padding:14px 16px;cursor:pointer;transition:background 0.12s;position:relative;overflow:hidden"
-                            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'">
-
-                            <!-- Üst aksent çizgi -->
-                            <div style="position:absolute;top:0;left:0;right:0;height:2px;background:${aktif?'var(--accent)':'var(--border)'}"></div>
-
-                            <!-- Tezgah No + Durum -->
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                                <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:600;color:var(--text)">${t.tezgah_no}</span>
-                                <div style="display:flex;align-items:center;gap:4px">
-                                    <div style="width:6px;height:6px;border-radius:50%;background:${aktif?'var(--accent)':'var(--text3)'};${aktif?'box-shadow:0 0 8px var(--accent);animation:pulse 2s infinite':''}"></div>
-                                    <span style="font-size:8px;color:${aktif?'var(--accent)':'var(--text3)'};font-family:'DM Mono',monospace">${aktif?'aktif':'boş'}</span>
-                                </div>
-                            </div>
-
-                            <!-- Müşteri -->
-                            <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px">${t.musteri||'—'}</div>
-
-                            <!-- Ürün -->
-                            <div style="font-size:11px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px">${t.urun_adi||'Plan yok'}</div>
-
-                            <!-- Termin -->
-                            ${termin ? `
-                            <div style="display:flex;align-items:center;justify-content:space-between">
-                                <span style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">${termin.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit'})}</span>
-                                <span style="font-size:8px;font-weight:600;color:${terminRenk};font-family:'DM Mono',monospace">${kalanGun<0?Math.abs(kalanGun)+'g gecikti':kalanGun===0?'Bugün':kalanGun+'g'}</span>
-                            </div>` : `<div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">Termin yok</div>`}
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>
-
-        </div>`;
-
-    const input = document.getElementById('gantt-search-input');
-    if (input && ganttFilters.search) {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-    }
-    setTimeout(initGanttScroll, 100);
-}
-
-function createSlimBar(t, start, end, sno, colorType, isPlan2, today, daysToShow) {
-    if (!start || !end) return '';
-    const s = new Date(start); const e = new Date(end);
-    const diffStart = Math.floor((s.getTime() - today.getTime()) / 86400000);
-    const duration = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
-    if (diffStart + duration <= 0 || diffStart >= daysToShow) return '';
-    const bStart = Math.max(0, diffStart);
-    let bWidth = (diffStart < 0) ? (duration + diffStart) : duration;
-    if (bStart + bWidth > daysToShow) bWidth = daysToShow - bStart;
-
-    // Renk sistemi — CSS var ile
-    const bgColor = isPlan2
-        ? 'rgba(139,143,168,0.35)'
-        : 'var(--accent)';
-    const borderColor = isPlan2
-        ? 'rgba(139,143,168,0.5)'
-        : 'rgba(109,113,255,0.6)';
-
-    // Termin uyarısı: son 3 gün
-    const kalanGun = Math.ceil((e.getTime() - today.getTime()) / 86400000);
-    const gecikti = kalanGun < 0;
-    const kritik  = !gecikti && kalanGun <= 3;
-    const barBg   = !isPlan2 && gecikti ? 'var(--rose-c)'
-                  : !isPlan2 && kritik  ? 'var(--amber-c)'
-                  : bgColor;
-
-    return `
-        <div style="position:absolute;height:60%;top:20%;left:${(bStart/daysToShow)*100}%;width:${Math.max((bWidth/daysToShow)*100,2)}%;min-width:32px;
-            background:${barBg};border:1px solid ${borderColor};border-radius:5px;
-            display:flex;align-items:center;padding:0 8px;cursor:pointer;z-index:10;
-            transition:filter 0.12s,transform 0.12s;overflow:hidden"
-            onmouseover="this.style.filter='brightness(1.15)';this.style.transform='scaleY(1.1)'"
-            onmouseout="this.style.filter='none';this.style.transform='none'"
-            onclick="hizliTezgahDuzenle('${t.id}')"
-            title="${sno||''} · ${start} → ${end}">
-            <span style="font-size:8px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'DM Mono',monospace;opacity:0.9">${isPlan2?'○ ':''}${sno||''}</span>
-            ${!isPlan2 ? `<button onclick="event.stopPropagation();isiTamamlaVeKaydir('${t.id}')"
-                style="margin-left:auto;flex-shrink:0;font-size:9px;color:rgba(255,255,255,0.7);background:none;border:none;cursor:pointer;padding:0 2px;line-height:1"
-                title="Tamamla & Kaydır">✓</button>` : ''}
-        </div>`;
-}
-
-function toggleGanttArea() {
-    ganttVisible = !ganttVisible;
-    renderTezgahYonetimi();
-}
-
-function applyGanttFilters(key, value) {
-    ganttFilters[key] = value;
-    renderTezgahYonetimi();
-}
-
-function handleGlobalSearch(val) {
-    const searchVal = val.toLowerCase().trim();
-    debounce('globalSearch', () => {
-        if (appMode === 'TEZGAH_YONETIMI') {
-            ganttFilters.search = searchVal;
-            renderTezgahYonetimi();
-        } else if (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN') {
-            siparisListeAramaYenile();
-        } else {
-            loadData();
-        }
-    }, 250);
-}
-
-function resetGanttFilters() {
-    ganttFilters = { search: '', status: 'HEPSİ', tip: 'HEPSİ', teni: 'HEPSİ', trakno: 'HEPSİ', marka: 'HEPSİ' };
-    renderTezgahYonetimi();
-}
-
-function initGanttScroll() {
-    const slider = document.getElementById('gantt-scroll-container');
-    if (!slider) return;
-    let isDown = false, startX, scrollLeft;
-    slider.addEventListener('mousedown', (e) => { isDown = true; startX = e.pageX - slider.offsetLeft; scrollLeft = slider.scrollLeft; });
-    slider.addEventListener('mouseleave', () => { isDown = false; });
-    slider.addEventListener('mouseup', () => { isDown = false; });
-    slider.addEventListener('mousemove', (e) => {
-        if (!isDown) return;
-        e.preventDefault();
-        const x = e.pageX - slider.offsetLeft;
-        slider.scrollLeft = scrollLeft - (x - startX) * 2;
-    });
-    slider.addEventListener('wheel', (e) => {
-        if (e.deltaY !== 0) { e.preventDefault(); slider.scrollLeft += e.deltaY; }
-    });
-}
-
-async function hizliTezgahDuzenle(id) {
-    const tezgah = dataCache.tezgahlar.find(x => x.id == id);
-    if (!tezgah) return;
-
-    await setAppMode('TEZGAH_GIRIS');
-    editingId = id;
-
-    setTimeout(() => {
-        try {
-            const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-            setVal('val-tno', tezgah.tezgah_no);
-            setVal('val-ttip', tezgah.tezgah_tipi);
-            setVal('val-eni', tezgah.tezgah_eni);
-            setVal('val-trakeni', tezgah.tarak_eni);
-            setVal('val-trakno', tezgah.tarak_no);
-            setVal('val-cozguno', tezgah.cozgu_no);
-            setVal('val-cozgumarka', tezgah.cozgu_marka);
-            setVal('val-dizim', tezgah.dizim_sikligi);
-            setVal('val-baslama', tezgah.giris_tarihi);
-            setVal('val-bitis', tezgah.dokuma_termini);
-            setVal('val-sno', tezgah.siparis_no);
-            const sipEl = document.getElementById('val-sno');
-            const urunEl = document.getElementById('val-urun');
-            if (sipEl) sipEl.dataset.prefSiparisNo = tezgah.siparis_no || '';
-            if (urunEl) urunEl.dataset.prefUrun = tezgah.urun_adi || '';
-            tezgahAktifPlanInit(tezgah.siparis_no || '', tezgah.urun_adi || '');
-            if (!document.getElementById('val-musteri')?.value) setVal('val-musteri', tezgah.musteri);
-            setVal('val-tnot', tezgah.notlar);
-            if (typeof toggleJakarFields === "function") toggleJakarFields();
-            const actionBtn = document.getElementById('main-action-btn');
-            if (actionBtn) actionBtn.innerText = "TEZGAH PLANINI KAYDET";
-            const formTitle = document.getElementById('form-title');
-            if (formTitle) formTitle.innerText = (tezgah.tezgah_no || '') + " - DÜZENLEME";
-            const cancelBtn = document.getElementById('cancel-edit-btn');
-            if (cancelBtn) cancelBtn.style.display = 'block';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        } catch (err) {
-            console.error("Form doldurma hatası:", err); diagLog("Form doldurma: "+err.message,'ERR');
-        }
-    }, 200);
-}
-
-async function isiTamamlaVeKaydir(id) {
-    if (!confirm("Bu iş tamamlandı olarak işaretlensin ve sıradaki plana geçilsin mi?")) return;
-    if (!erpIsSupabaseReady()) return;
-    const t = dataCache.tezgahlar.find(x => x.id == id);
-    if (!t) return;
-    const guncelVeri = {
-        siparis_no: t.sno_2 || '',
-        musteri: t.musteri_2 || '',
-        urun_adi: t.urun_2 || '',
-        giris_tarihi: t.baslama_2 || null,
-        dokuma_termini: t.bitis_2 || null,
-        sno_2: '', musteri_2: '', urun_2: '', baslama_2: null, bitis_2: null,
-        durum: t.sno_2 ? 'ÇALIŞIYOR' : 'MÜSAİT'
-    };
-    try {
-        const { error } = await sb.from('tezgahlar').update(guncelVeri).eq('id', id);
-        if (error) throw error;
-        alert("İş başarıyla tamamlandı. Sıradaki plana geçildi!");
-        await syncAllData();
-        renderTezgahYonetimi();
-    } catch (e) {
-        const msg = e?.message || String(e || 'Bilinmeyen hata');
-        alert("Hata oluştu: " + msg);
-    }
-}
-
 // --- SİPARİŞ / DASHBOARD ---
 async function openOrderFromDashboard(id) {
     appMode = 'SIPARIS_LISTE';
@@ -39920,8 +38926,6 @@ window.editMamulKartFromListe = editMamulKartFromListe;
     w.erpLiveStartPoll = function () {};
     w.erpLiveStopPoll = function () {};
     w.erpLiveStartRealtime = function () { return false; };
-    w.erpStartListeDataPoll = function () {};
-    w.erpStopListeDataPoll = function () {};
     if (typeof w.siparisDurumPollStop === 'function') {
         try { w.siparisDurumPollStop(); } catch (e) {}
     }
@@ -39929,13 +38933,30 @@ window.editMamulKartFromListe = editMamulKartFromListe;
     w.konfStartLiveSync = function () {};
     w.konfStopLiveSync = function () {};
 
+    // —— Mobilde: canlı yok; hafif arka plan yenileme (3 dk + sekme geri dönüşü) ——
+    function erpMobilResumeSync() {
+        if (document.hidden || !w.erpCurrentUser) return;
+        if (typeof w.erpShouldDeferUiRefresh === 'function' && w.erpShouldDeferUiRefresh()) return;
+        if (typeof w.erpBackgroundDataSync === 'function') {
+            w.erpBackgroundDataSync({ reason: 'visible' });
+        }
+    }
+    if (!w._erpMobilResumeBound) {
+        w._erpMobilResumeBound = true;
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) erpMobilResumeSync();
+        });
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) erpMobilResumeSync();
+        });
+    }
+
     // —— Dashboard → sipariş listesi ——
     const bootMode = w.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE';
     w.renderDashboard = function () {
         if (typeof w.setAppMode === 'function') w.setAppMode(bootMode);
     };
-    w.dashboardTezgahGanttHtml = function () { return ''; };
-
+    
     const _setAppMode = typeof w.setAppMode === 'function' ? w.setAppMode.bind(w) : null;
     if (_setAppMode) {
         w.setAppMode = async function (mode, keepEditingId) {
@@ -40026,5 +39047,5 @@ window.editMamulKartFromListe = editMamulKartFromListe;
     setTimeout(hideLiteUi, 800);
     setTimeout(hideLiteUi, 2500);
 
-    console.info('[mobil-lite] Dashboard / canlı senkron / Chart / Excel kapalı');
+    console.info('[mobil-lite] Dashboard / canlı senkron / Chart / Excel kapalı; hafif arka plan yenileme açık');
 })(window);

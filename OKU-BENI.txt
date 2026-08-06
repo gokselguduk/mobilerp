@@ -12,10 +12,11 @@ Dosyalar (hepsi gerekli):
   index.html
   erp-config.js          → Supabase (GitHub'a ATMAYIN)
   assets/mobil/mobil-app.js
+  assets/stok-kart-desktop.js
   assets/erp_auth_tablo_fix.embed.js
   robots.txt
 
 Nasıl oluşturuldu:
   Proje klasöründe SUNUCUYA-AT-MOBIL.bat çift tıklayın.
 
-Boyut: yaklaşık 2437 KB
+Boyut: yaklaşık 2449 KB
