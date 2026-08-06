@@ -1,0 +1,23 @@
+SIMTEKS MOBIL — YUKLEME
+=======================
+
+1) Bu klasordeki TUM dosyalari secin
+2) GitHub → Add file → Upload files → surukleyin
+3) Commit
+
+KONTROL (cok onemli):
+  Sayfa acilinca TARAYICI SEKME BASLIGI soyle olmali:
+    "Simteks ERP Mobil · FLAT-20260806"
+
+  Hala "assets/mobil/... bulunamadi" yazisi goruyorsaniz
+  ESKI dosya acik demektir → Gizli pencere (Incognito) ile acin.
+
+Dosyalar (hepsi ayni klasorde):
+  mobil-erp.html
+  mobil-app.js          (~2 MB)
+  erp-config.js
+  erp-build.js
+  stok-kart-desktop.js
+  mamul-depo-toplu.js
+  erp_auth_tablo_fix.embed.js
+  index.html
