@@ -1,5 +1,5 @@
 /* Simteks ERP Mobil — uygulama kabuğu önbelleği */
-const CACHE = 'simteks-erp-mobil-v3';
+const CACHE = 'simteks-erp-mobil-v4-standalone';
 const PRECACHE = [
   './',
   './index.html',
