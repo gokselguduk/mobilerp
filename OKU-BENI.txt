@@ -1,15 +1,25 @@
-SIMTEKS ERP — MOBİL PAKET (DÜZ KLASÖR)
-=====================================
+﻿SIMTEKS MOBIL — SADECE BU 4 DOSYAYI YUKLEYIN
+=============================================
 
-Bu klasördeki HER ŞEYİ GitHub / hosting köküne yükleyin.
-Dosyalar YAN YANA olmalı (alt klasör yok):
+1) mobil-erp.html   (~3 MB)  ← BU DOSYA SART. 200 KB ise YANLIS!
+2) erp-config.js
+3) erp-build.js
+4) index.html
 
-  mobil-erp.html
-  mobil-app.js          ← şart
-  erp-config.js
-  index.html
-  ...
+NASIL:
+  GitHub repo sayfasinda "Add file" → "Upload files"
+  Bu klasordeki dosyalari SECIP surukleyin
+  Commit changes
 
-Açılış: https://siteniz.com/mobil-erp.html
+KONTROL:
+  Yukledikten sonra GitHub'da mobil-erp.html dosyasina tiklayin
+  Dosya boyutu ~3 MB / ~3.000.000 bytes olmali
+  200 KB goruyorsaniz ESKI dosya duruyor demektir
 
-Boyut: yaklaşık 5172 KB
+SONRA:
+  Tarayicide Ctrl+Shift+Delete → onbellek sil
+  Veya gizli pencere (Incognito) acin
+  Sayfayi yeniden acin
+
+ESKI hata metni ("assets/mobil/... bulunamadi") SADECE eski HTML'de vardir.
+Yeni dosyada bu yazi YOKTUR.
