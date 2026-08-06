@@ -12,8 +12,13 @@
     <meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
     <meta name="theme-color" content="#111827">
     <meta name="color-scheme" content="dark light">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/mobil/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/mobil/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="assets/mobil/icons/icon-512.png">
     <title>Simteks Tekstil ERP — Mobil</title>
     <script src="erp-config.js"></script>
+    <script src="erp-build.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -21,14 +26,31 @@
     <script src="assets/erp_auth_tablo_fix.embed.js"></script>
     <style id="mobil-erp-inline-css">
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
-        /* Mobil lite: anasayfa / excel / canlı göstergeleri gizli */
-        body.erp-mobil-lite #erp-live-indicator,
-        body.erp-mobil-lite #erp-live-pending-btn,
+        /* Mobil lite: excel gizli — menü Anasayfa açık (masaüstü ile aynı) */
         body.erp-mobil-lite #modal-excel-btn,
         body.erp-mobil-lite #stok-excel-import-btn,
-        body.erp-mobil-lite #stok-excel-template-btn,
-        body.erp-mobil-lite #nav-DASHBOARD {
+        body.erp-mobil-lite #stok-excel-template-btn {
             display: none !important;
+        }
+        /* Canlı senkron — dokunmatik uyumlu */
+        #erp-live-indicator,
+        #erp-live-pending-btn {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #erp-live-pending-btn {
+            min-height: 40px;
+        }
+        @media (max-width: 640px) {
+            .top-header {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            #erp-live-indicator {
+                font-size: 10px !important;
+                padding: 6px 10px !important;
+            }
         }
         /* Uygulama hissi: pinch / double-tap zoom kapalı, kaydırma sınırlı */
         html {
@@ -2336,9 +2358,34 @@
             box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
         }
         .sidebar-brand {
-            padding: 16px 14px 13px;
+            padding: 12px 14px 10px;
             border-bottom: 1px solid var(--border);
             background: color-mix(in srgb, var(--surface2) 55%, transparent);
+            text-align: center;
+        }
+        .sidebar-brand-logo-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2px 6px;
+        }
+        .sidebar-brand-logo {
+            display: block;
+            width: auto;
+            max-width: 112px;
+            max-height: 30px;
+            height: auto;
+            object-fit: contain;
+            opacity: 0.9;
+            filter: brightness(0.95);
+        }
+        .sidebar-brand-version {
+            margin-top: 5px;
+            font-size: 9px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: 0.06em;
+            color: var(--text3);
+            line-height: 1.2;
         }
         .sidebar-brand-icon {
             width: 34px;
@@ -2528,42 +2575,110 @@
             border-color: rgba(109,113,255,0.45);
             color: var(--text);
         }
-        .nav-group { margin-bottom: 4px; }
+        .nav-group { margin: 4px 0 6px; }
         .nav-group-head {
-            width: calc(100% - 16px);
-            margin: 0 8px;
-            padding: 8px 10px;
+            width: calc(100% - 20px);
+            margin: 1px 10px;
+            padding: 8px 12px;
             border-radius: 9px;
             border: 1px solid transparent;
             background: transparent;
-            color: var(--text3);
+            color: var(--text2);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            font-size: 9px !important;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            font-family: 'DM Mono', monospace;
-            transition: all 0.12s;
+            gap: 8px;
+            font-size: 12px !important;
+            font-weight: 600;
+            text-transform: none;
+            letter-spacing: 0.01em;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.14s ease;
+            line-height: 1.25;
+        }
+        .nav-group-head-inner {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
         }
         .nav-group-head:hover {
-            color: var(--text2);
-            border-color: var(--border);
-            background: color-mix(in srgb, var(--surface3) 55%, transparent);
+            color: var(--text);
+            border-color: color-mix(in srgb, var(--border2) 70%, transparent);
+            background: color-mix(in srgb, var(--surface3) 75%, transparent);
+        }
+        .nav-group-head:has(+ .nav-group-body.open) {
+            color: var(--text);
+            background: color-mix(in srgb, var(--accent) 8%, var(--surface2));
+            border-color: color-mix(in srgb, var(--accent2) 24%, transparent);
+            box-shadow: inset 3px 0 0 var(--accent2);
         }
         .nav-group-head-chevron {
-            font-size: 8px;
+            font-size: 10px;
             color: var(--text3);
-            transition: transform 0.2s;
+            width: 18px;
+            height: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            transition: transform 0.22s ease, color 0.12s, background 0.12s;
+            flex-shrink: 0;
+        }
+        .nav-group-head:has(+ .nav-group-body.open) .nav-group-head-chevron {
+            transform: rotate(180deg);
+            color: var(--accent2);
+            background: color-mix(in srgb, var(--accent2) 12%, transparent);
         }
         .nav-group-body {
             max-height: 0;
             overflow: hidden;
-            transition: max-height 0.25s ease;
+            transition: max-height 0.28s ease, opacity 0.2s ease, margin 0.2s ease;
+            opacity: 0;
+            margin: 0 10px;
+            padding: 0;
         }
-        .nav-group-body.open { max-height: 460px; }
+        .nav-group-body.open {
+            max-height: 720px;
+            opacity: 1;
+            margin: 4px 10px 6px;
+            padding: 6px 8px 8px 10px;
+            border-radius: 10px;
+            border: 1px solid color-mix(in srgb, var(--border2) 75%, transparent);
+            background: color-mix(in srgb, var(--surface2) 55%, transparent);
+            box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+        }
+        .nav-group-body .nav-pro {
+            margin: 1px 0;
+            padding: 7px 10px;
+            font-size: 11.5px;
+            font-weight: 600;
+            background: color-mix(in srgb, var(--surface) 40%, transparent);
+        }
+        .nav-group-body .nav-pro-icon {
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+        }
+        .nav-group-body .nav-pro-sub-area {
+            margin: 0 0 0 14px;
+            padding-left: 11px;
+            border-left-color: color-mix(in srgb, var(--accent2) 28%, var(--border2));
+        }
+        .nav-group-body .nav-pro-sub {
+            font-size: 10.5px;
+            padding-left: 6px;
+        }
+        .nav-group:has(.nav-pro-sub.active) .nav-group-head {
+            color: var(--accent2);
+        }
+        .nav-rail-divider {
+            height: 1px;
+            margin: 10px 12px;
+            background: var(--border);
+            opacity: 0.85;
+        }
         .sidebar-footer {
             padding: 12px 14px;
             border-top: 1px solid var(--border);
@@ -3854,6 +3969,28 @@
                 padding: 2px 4px; font-size: 9px; min-height: 20px; height: 20px;
                 min-width: 0; width: 100%; box-sizing: border-box;
             }
+            /* TEMP: mamul toplu temizleme — sonradan silinecek */
+            .mamul-toplu-wrap {
+                margin: 0 0 12px; padding: 12px 14px; border-radius: 12px;
+                border: 1px solid rgba(251,113,133,0.35); background: rgba(251,113,133,0.06);
+            }
+            .mamul-toplu-wrap--collapsed { margin-bottom: 10px; padding: 0; border: none; background: transparent; }
+            .mamul-toplu-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+            .mamul-toplu-head__title { font-size: 11px; font-weight: 700; color: var(--rose-c); }
+            .mamul-toplu-head__sub { font-size: 9px; color: var(--text3); margin-top: 4px; line-height: 1.4; }
+            .mamul-toplu-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+            .mamul-toplu-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+            .mamul-toplu-liste { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+            .mamul-toplu-row {
+                display: grid; grid-template-columns: auto 88px 1fr auto; gap: 6px; align-items: center;
+                padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+                cursor: pointer; font-size: 10px;
+            }
+            .mamul-toplu-row.is-selected { border-color: rgba(251,113,133,0.45); background: rgba(251,113,133,0.05); }
+            .mamul-toplu-row__kod { font-family: 'DM Mono', monospace; font-weight: 600; color: var(--amber-c); font-size: 9px; }
+            .mamul-toplu-row__ad { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+            .mamul-toplu-row__pill { display: flex; gap: 3px; flex-wrap: wrap; justify-content: flex-end; }
+            .mamul-toplu-empty { font-size: 10px; color: var(--text3); padding: 12px; text-align: center; }
             body[data-erp-mode="KART_LISTE"] .stok-kart-toolbar__head {
                 flex-direction: column;
                 align-items: stretch;
@@ -4164,7 +4301,10 @@
 
   <!-- Brand -->
   <div class="sidebar-brand">
-    <img src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks Tekstil Logo" style="display:block;width:100%;height:auto;max-height:56px;object-fit:contain;">
+    <div class="sidebar-brand-logo-wrap">
+      <img class="sidebar-brand-logo" src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks Tekstil">
+    </div>
+    <div class="sidebar-brand-version" id="erp-sidebar-version">sürüm …</div>
   </div>
 
   <!-- User -->
@@ -4184,89 +4324,118 @@
     </div>
   </div>
 
-  <!-- Nav -->
+  <!-- Nav — masaüstü (stok.html) ile aynı yapı / sıra / etiketler -->
   <nav class="sidebar-nav" id="main-nav">
 
-    <div onclick="setAppMode('SIPARIS_LISTE'); closeAllSubs();" class="nav-pro" id="nav-DASHBOARD" style="display:none!important" aria-hidden="true">
+    <div onclick="setAppMode('DASHBOARD'); closeAllSubs();" class="nav-pro active" id="nav-DASHBOARD">
       <span class="nav-pro-icon">🏠</span> Anasayfa
     </div>
     <div onclick="toggleChicSub('siparis')" class="nav-pro" id="nav-siparis-toggle">
       <span class="nav-pro-icon">🧾</span> Sipariş
-      <span class="nav-pro-chevron" id="chev-siparis">▼</span>
+      <span class="nav-pro-chevron" id="chev-siparis">▾</span>
     </div>
     <div id="sub-siparis" class="nav-pro-sub-area">
-      <div onclick="setAppMode('SIPARIS_GIRIS')" class="nav-pro-sub" id="nav-SIPARIS_GIRIS">↳ Yeni Sipariş</div>
-      <div onclick="setAppMode('SIPARIS_LISTE')" class="nav-pro-sub" id="nav-SIPARIS_LISTE">↳ Siparişler Listesi</div>
-      <div onclick="setAppMode('SIPARIS_KAPANAN')" class="nav-pro-sub" id="nav-SIPARIS_KAPANAN">↳ Kapanan Siparişler</div>
-      <div onclick="setAppMode('URUN_AGACI')" class="nav-pro-sub" id="nav-URUN_AGACI">↳ Ürün Ağacı</div>
+      <div onclick="setAppMode('SIPARIS_GIRIS')" class="nav-pro-sub" id="nav-SIPARIS_GIRIS">Yeni Sipariş</div>
+      <div onclick="setAppMode('SIPARIS_LISTE')" class="nav-pro-sub" id="nav-SIPARIS_LISTE">Siparişler Listesi</div>
+      <div onclick="setAppMode('SIPARIS_KAPANAN')" class="nav-pro-sub" id="nav-SIPARIS_KAPANAN">Kapanan Siparişler</div>
+      <div onclick="setAppMode('URUN_AGACI')" class="nav-pro-sub" id="nav-URUN_AGACI">Ürün Ağacı</div>
     </div>
 
     <div onclick="toggleChicSub('depo')" class="nav-pro" id="nav-depo-toggle">
       <span class="nav-pro-icon">📦</span> Depo Stok
-      <span class="nav-pro-chevron" id="chev-depo">▼</span>
+      <span class="nav-pro-chevron" id="chev-depo">▾</span>
     </div>
     <div id="sub-depo" class="nav-pro-sub-area">
-      <div onclick="setAppMode('DEPO_HAREKET')" class="nav-pro-sub" id="nav-DEPO_HAREKET">↳ Depo Giriş Çıkış</div>
-      <div onclick="setAppMode('IPLIK')" class="nav-pro-sub" id="nav-IPLIK">↳ İplik Stoğu</div>
-      <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">↳ Kumaş Stoğu</div>
-      <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">↳ Mamül Stoğu</div>
-      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">↳ Depo Hareketleri</div>
+      <div onclick="setAppMode('DEPO_HAREKET')" class="nav-pro-sub" id="nav-DEPO_HAREKET">Depo Giriş Çıkış</div>
+      <div onclick="setAppMode('IPLIK')" class="nav-pro-sub" id="nav-IPLIK">İplik Stoğu</div>
+      <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">Kumaş Stoğu</div>
+      <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">Mamül Stoğu</div>
+      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
     </div>
 
-    <div onclick="acKayitliStokKartlari()" class="nav-pro" id="nav-kart-toggle">
+    <div onclick="toggleChicSub('kart')" class="nav-pro" id="nav-kart-toggle">
       <span class="nav-pro-icon">🗂️</span> Stok Kartları
-      <span class="nav-pro-chevron" id="chev-kart">▼</span>
+      <span class="nav-pro-chevron" id="chev-kart">▾</span>
     </div>
     <div id="sub-kart" class="nav-pro-sub-area">
-      <div onclick="acKayitliStokKartlari()" class="nav-pro-sub" id="nav-KART_LISTE">↳ Tüm Kartlar</div>
-      <div onclick="switchArchiveTab('IPLIK')" class="nav-pro-sub" id="nav-IPLIK_KART_GIRIS">↳ İplik Kartları</div>
-      <div onclick="switchArchiveTab('KUMAS')" class="nav-pro-sub" id="nav-KUMAS_KART_GIRIS">↳ Kumaş Kartları</div>
-      <div onclick="switchArchiveTab('MAMUL')" class="nav-pro-sub" id="nav-MAMUL_KART_GIRIS">↳ Mamül Kartları</div>
+      <div onclick="acKayitliStokKartlari()" class="nav-pro-sub" id="nav-KART_LISTE">Tüm Kartlar</div>
+      <div onclick="switchArchiveTab('IPLIK')" class="nav-pro-sub" id="nav-stok-IPLIK">İplik Kartları</div>
+      <div onclick="switchArchiveTab('KUMAS')" class="nav-pro-sub" id="nav-stok-KUMAS">Kumaş Kartları</div>
+      <div onclick="switchArchiveTab('MAMUL')" class="nav-pro-sub" id="nav-stok-MAMUL">Mamül Kartları</div>
+      <div onclick="openMamulKartGiris()" class="nav-pro-sub" id="nav-MAMUL_KART_GIRIS" data-erp-mode="MAMUL_KART_GIRIS">Yeni Mamül Kartı</div>
     </div>
 
-    <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
-      <span class="nav-pro-icon">🧪</span> Terbiye
-      <span class="nav-pro-chevron" id="chev-terbiye">▼</span>
-    </div>
-    <div id="sub-terbiye" class="nav-pro-sub-area">
-      <div onclick="openYikamaTakip()" class="nav-pro-sub" id="nav-YIKAMA_TAKIP">↳ Yıkama</div>
+    <div onclick="setAppMode('NUMUNE_URETIM'); closeAllSubs();" class="nav-pro" id="nav-NUMUNE_URETIM">
+      <span class="nav-pro-icon">🧪</span> Numune
     </div>
 
-    <div onclick="toggleChicSub('dokuma')" class="nav-pro" id="nav-dokuma-toggle">
-      <span class="nav-pro-icon">🧵</span> Dokuma
-      <span class="nav-pro-chevron" id="chev-dokuma">▼</span>
-    </div>
-    <div id="sub-dokuma" class="nav-pro-sub-area">
-      <div onclick="openDtDokumaHat()" class="nav-pro-sub" id="nav-DOKUMA_TAKIP">↳ Dokuma Hattı</div>
-      <div onclick="openDtUretimGiris()" class="nav-pro-sub" id="nav-DOKUMA_URETIM_GIRIS">↳ Üretim Girişi</div>
+    <div class="nav-rail-divider" aria-hidden="true"></div>
+
+    <div class="nav-group">
+      <button type="button" class="nav-group-head" onclick="toggleNavGroup('group-uretim')">
+        <span class="nav-group-head-inner">
+          <span class="nav-pro-icon">🏭</span>
+          <span>Üretim</span>
+        </span>
+        <span class="nav-group-head-chevron" id="chev-group-uretim">▾</span>
+      </button>
+      <div class="nav-group-body" id="group-uretim">
+
+        <div onclick="toggleChicSub('dokuma')" class="nav-pro" id="nav-dokuma-toggle">
+          <span class="nav-pro-icon">🧵</span> Dokuma
+          <span class="nav-pro-chevron" id="chev-dokuma">▾</span>
+        </div>
+        <div id="sub-dokuma" class="nav-pro-sub-area">
+          <div onclick="setAppMode('DOKUMA_TAKIP')" class="nav-pro-sub" id="nav-DOKUMA_TAKIP">Dokuma Takip</div>
+          <div onclick="setAppMode('DOKUMA_DEPO')" class="nav-pro-sub" id="nav-DOKUMA_DEPO">Dokuma Depo</div>
+          <div onclick="setAppMode('DOKUMA_SEVK_GECMIS')" class="nav-pro-sub" id="nav-DOKUMA_SEVK_GECMIS">Sevk Geçmişi</div>
+        </div>
+
+        <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
+          <span class="nav-pro-icon">🎨</span> Terbiye
+          <span class="nav-pro-chevron" id="chev-terbiye">▾</span>
+        </div>
+        <div id="sub-terbiye" class="nav-pro-sub-area">
+          <div onclick="openTerbiye()" class="nav-pro-sub" id="nav-BOYAHANE_URETIM" data-erp-mode="BOYAHANE_URETIM">Terbiye Paneli</div>
+        </div>
+
+        <div onclick="toggleChicSub('konfeksiyon')" class="nav-pro" id="nav-konfeksiyon-toggle">
+          <span class="nav-pro-icon">👔</span> Konfeksiyon
+          <span class="nav-pro-chevron" id="chev-konfeksiyon">▾</span>
+        </div>
+        <div id="sub-konfeksiyon" class="nav-pro-sub-area">
+          <div onclick="openKonfeksiyonKesim()" class="nav-pro-sub" id="nav-KONFEKSIYON_KESIM">Kesim</div>
+          <div onclick="openKonfeksiyonYikama()" class="nav-pro-sub" id="nav-KONFEKSIYON_YIKAMA">Yıkama</div>
+          <div onclick="openKonfeksiyonKalite()" class="nav-pro-sub" id="nav-KONFEKSIYON_KALITE">Kalite</div>
+          <div onclick="openKonfeksiyonSevk()" class="nav-pro-sub" id="nav-KONFEKSIYON_SEVK">Konfeksiyon Sevk</div>
+          <div onclick="openKonfIslemRaporu('hafta')" class="nav-pro-sub" id="nav-KONF_ISLEM_RAPOR">İşlem Raporu</div>
+        </div>
+
+      </div>
     </div>
 
-    <div onclick="toggleChicSub('konfeksiyon')" class="nav-pro" id="nav-konfeksiyon-toggle">
-      <span class="nav-pro-icon">👔</span> Konfeksiyon
-      <span class="nav-pro-chevron" id="chev-konfeksiyon">▼</span>
-    </div>
-    <div id="sub-konfeksiyon" class="nav-pro-sub-area">
-      <div onclick="setAppMode('TEKNIK_FOY')" class="nav-pro-sub" id="nav-TEKNIK_FOY">↳ Teknik Föy</div>
-      <div onclick="setAppMode('KONFEKSIYON')" class="nav-pro-sub" id="nav-KONFEKSIYON">↳ Konfeksiyon</div>
-      <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">↳ Fason Takip</div>
-      <div onclick="openKonfeksiyonPlanlama()" class="nav-pro-sub" id="nav-KONFEKSIYON_PLANLAMA">↳ Konfeksiyon Planlama</div>
-    </div>
+    <div class="nav-rail-divider" aria-hidden="true"></div>
 
     <div onclick="toggleChicSub('planlama')" class="nav-pro" id="nav-planlama-toggle">
       <span class="nav-pro-icon">🗓️</span> Planlama
-      <span class="nav-pro-chevron" id="chev-planlama">▼</span>
+      <span class="nav-pro-chevron" id="chev-planlama">▾</span>
     </div>
     <div id="sub-planlama" class="nav-pro-sub-area">
-      <div onclick="setPlanlamaAlt('ANA'); closeAllSubs();" class="nav-pro-sub" id="nav-PLANLAMA">↳ Planlama Ana</div>
+      <div onclick="setAppMode('PLANLAMA')" class="nav-pro-sub" id="nav-PLANLAMA">Üretim Planlama</div>
+      <div onclick="setAppMode('TEKNIK_FOY')" class="nav-pro-sub" id="nav-TEKNIK_FOY">Teknik Föy</div>
+      <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">Fason Takip</div>
+      <div onclick="openKonfeksiyonPlanlama()" class="nav-pro-sub" id="nav-KONFEKSIYON_PLANLAMA">Konfeksiyon Planlama</div>
     </div>
 
     <div onclick="toggleChicSub('yonetim')" class="nav-pro" id="nav-yonetim-toggle">
       <span class="nav-pro-icon">⚙️</span> Yönetim
-      <span class="nav-pro-chevron" id="chev-yonetim">▼</span>
+      <span class="nav-pro-chevron" id="chev-yonetim">▾</span>
     </div>
     <div id="sub-yonetim" class="nav-pro-sub-area">
-      <div onclick="setAppMode('TODO_LISTE')" class="nav-pro-sub" id="nav-TODO_LISTE">↳ Görevler</div>
-      <div onclick="setAppMode('RAPORLAR')" class="nav-pro-sub" id="nav-RAPORLAR">↳ Raporlar</div>
+      <div onclick="setAppMode('TODO_LISTE')" class="nav-pro-sub" id="nav-TODO_LISTE">Görevler</div>
+      <div onclick="setAppMode('RAPORLAR')" class="nav-pro-sub" id="nav-RAPORLAR">Raporlar</div>
+      <div onclick="setAppMode('MALIYET_HESAP')" class="nav-pro-sub" id="nav-MALIYET_HESAP">Maliyet Hesaplama</div>
+      <div onclick="setAppMode('MALIYET_LISTE')" class="nav-pro-sub" id="nav-MALIYET_LISTE">Kayıtlı Maliyetler</div>
     </div>
 
   </nav>
@@ -4298,12 +4467,12 @@
             </h2>
             <div id="loading-spinner" class="hidden animate-spin rounded-full h-3 w-3" style="border:2px solid var(--accent);border-top-color:transparent;border-radius:50%"></div>
             <div id="erp-live-indicator" title="Diğer bilgisayarlardan gelen veriler otomatik güncellenir"
-                style="display:none;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:9px;font-family:'DM Mono',monospace;font-weight:700;letter-spacing:.04em;cursor:default">
-                <span id="erp-live-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
+                style="display:none;align-items:center;gap:6px;padding:6px 12px;min-height:36px;border-radius:999px;border:1px solid var(--border);background:var(--surface2);font-size:10px;font-family:'DM Mono',monospace;font-weight:700;letter-spacing:.04em;cursor:default;touch-action:manipulation;-webkit-user-select:none;user-select:none">
+                <span id="erp-live-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
                 <span id="erp-live-label">CANLI</span>
             </div>
             <button type="button" id="erp-live-pending-btn" onclick="erpLiveApplyPending()" title="Başka bilgisayardan yeni veri var"
-                style="display:none;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.12);color:var(--amber-c);font-size:9px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">
+                style="display:none;align-items:center;justify-content:center;gap:6px;padding:8px 12px;min-height:40px;border-radius:10px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.12);color:var(--amber-c);font-size:11px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent">
                 ↻ Yeni veri — yenile
             </button>
         </div>
@@ -4319,12 +4488,9 @@
                 style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:15px;transition:all 0.15s"
                 onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">🌙</div>
             <div onclick="syncAllData(true)" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
-            <div id="stok-excel-template-btn" onclick="downloadStokExcelTemplate()" style="display:none;height:34px;align-items:center;justify-content:center;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);border-radius:9px;cursor:pointer;padding:0 10px;font-size:10px;color:#3b82f6;font-weight:700;letter-spacing:.03em" title="Stok Excel Şablonu İndir">⤓ Stok Şablon</div>
-            <div id="stok-excel-import-btn" onclick="openStokExcelImport()" style="display:none;height:34px;align-items:center;justify-content:center;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:9px;cursor:pointer;padding:0 10px;font-size:10px;color:var(--emerald-c);font-weight:700;letter-spacing:.03em" title="Excel'den Stok Girişi Yükle">⬆ Stok Yükle</div>
         </div>
     </div>
     <input id="siparis-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importSiparisExcel(this)">
-    <input id="stok-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importStokExcel(this)">
     <input id="dt-excel-input" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="dtExcelDosyaOku(this)">
     <input id="mamul-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="mamulExcelYukle(this)">
 
@@ -4454,6 +4620,7 @@
 </div>
 
 <script src="assets/stok-kart-desktop.js"></script>
+<script src="assets/mamul-depo-toplu.js"></script>
 <script src="assets/mobil/mobil-app.js"></script>
 <div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
     <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
@@ -4472,6 +4639,14 @@
     window.setTimeout(function () {
         if (typeof setAppMode !== 'function') goster();
     }, 4000);
+})();
+</script>
+<script>
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
 })();
 </script>
 </body>
