@@ -1,0 +1,23 @@
+# Netlify: proje kökünü yayınlayın (Deploy directory: . veya boş)
+[build]
+  publish = "."
+  # Statik site; build komutu gerekmez
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=()"
+    # İsteğe bağlı: özel alan adında HSTS’yi hosting panelinden açın (Netlify HTTPS zorunlu)
+
+[[headers]]
+  for = "*.html"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
+  for = "/erp-config.js"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"

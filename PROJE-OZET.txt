@@ -1,0 +1,35 @@
+Simteks Tekstil ERP — proje özeti
+=================================
+
+GÜNCELLEME (masaüstü EXE)
+-------------------------
+  Tek komut:  GUNCELLEME-YAYINLA.bat
+  Rehber:     GUNCELLEME-UZAKTAN-OKU.txt
+  (Yama ayrı değil — her şey tek güncelleme)
+
+
+SUNUCUYA SADECE MOBİL
+---------------------
+  1) SUNUCUYA-AT-MOBIL.bat
+  2) sunucuya-at-mobil\ içeriğini sunucuya yükle
+  Detay: GITHUB-NE-ATILIR.txt
+
+
+ANA DOSYALAR
+------------
+  stok.html       — masaüstü ERP
+  mobil-erp.html  — mobil arayüz
+  erp-config.js   — Supabase (GitHub'a koyma)
+  electron/       — Windows kabuğu
+  package.json    — sürüm + npm
+
+
+FABRİKA PC
+----------
+  İlk kurulum: Setup EXE (bir kez)
+  Sonrası: uygulama açılınca "Güncelleme yükle"
+
+
+VERİTABANI
+----------
+  supabase/migrations/

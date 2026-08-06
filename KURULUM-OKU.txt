@@ -1,0 +1,25 @@
+Simteks Tekstil ERP — Windows Kurulum
+=====================================
+
+KURULUM
+-------
+1. Simteks-Tekstil-ERP-Setup-1.0.2.exe dosyasını çalıştırın.
+2. Kurulumu tamamlayın.
+3. Masaüstünden «Simteks Tekstil ERP» kısayolunu açın.
+
+ORTAK VERİ (önemli)
+-------------------
+Tüm kullanıcılar AYNI veritabanını görür (Supabase bulutu).
+Birinin girdiği sipariş, stok, numune vb. diğer bilgisayarlarda da görünür.
+İnternet bağlantısı gereklidir.
+
+GİRİŞ
+-----
+Size verilen kullanıcı adı ve şifre ile oturum açın.
+Her kullanıcı kendi hesabıyla girer; veriler ortaktır.
+
+GÜNCELLEME
+----------
+Yeni kurulum dosyası verildiğinde eski sürümün üzerine kurabilirsiniz.
+
+Destek: destek@simtekstekstil.com.tr

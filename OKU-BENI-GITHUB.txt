@@ -1,0 +1,32 @@
+SIMTEKS TEKSTİL ERP — GITHUB PAKETİ
+=====================================
+
+Bu klasörün İÇİNDEKİ dosyaları GitHub'a yükleyin.
+
+ÖNEMLİ — GitHub web sürükle-bırak:
+  • En fazla 100 dosya kabul eder
+  • Bu paket sadeleştirildi (~88 dosya)
+  • Hata alırsanız: GitHub Desktop ile klasörü ekleyin (önerilir)
+
+NASIL (web)
+  1) github.com → New repository
+  2) "uploading an existing file" / dosya yükle
+  3) github-at içindeki HER ŞEYİ seçip sürükleyin
+     (klasörün kendisini değil, İÇİNDEKİLERİ)
+
+NASIL (GitHub Desktop — daha sorunsuz)
+  1) GitHub Desktop → Add → Add existing repository
+     veya Create new repository, Local path = github-at
+  2) Publish repository
+
+İLK KURULUM (klonlayan)
+  erp-config.sample.js → erp-config.js kopyala, Supabase doldur
+  npm install && npm start
+
+BU PAKETTE YOK (bilerek)
+  erp-config.js / erp-update.config.js  → şifre
+  mobile-app/android|ios|www            → cap sync ile üretilir
+  _main_script.js / node_modules / dist
+  sunucuya-at* / releases/*.exe
+
+Boyut: ~8.4 MB  (88 dosya)

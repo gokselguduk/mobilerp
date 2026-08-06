@@ -1,0 +1,22 @@
+-- ============================================================
+-- Ticari / üretim güvenliği — okuma notları (zorunlu çalıştırma değil)
+-- ============================================================
+--
+-- 1) İstemci (tarayıcı) her zaman "anon" public key taşır; bu Supabase tasarımıdır.
+--    Asla service_role anahtarını HTML/JS içine koymayın.
+--
+-- 2) erp_users / erp_sessions ve erp_* RPC'leri SECURITY DEFINER ile oturumu yönetir.
+--    İş verisi tabloları (siparisler, iplik_stok, …) için Row Level Security (RLS)
+--    açıksa ve politika yoksa anon erişim KESİLİR veya tam tersi herkese açık kalır.
+--
+-- 3) Özel oturum token'ınız (erp_sessions) Postgres RLS içinde doğrudan okunamaz;
+--    tam korumalı RLS için tipik yollar:
+--    • Supabase Auth (JWT) + auth.uid() politikaları, veya
+--    • Edge Function / sunucu katmanında service_role ile erişim.
+--
+-- 4) Supabase Dashboard → Authentication → URL configuration:
+--    Site URL ve Redirect URL'leri canlı domain'inize göre ayarlayın.
+--
+-- 5) Düzenli yedek: Project Settings → Database → Backups.
+--
+-- ============================================================

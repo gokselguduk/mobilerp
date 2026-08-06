@@ -1,0 +1,6 @@
+{
+  "provider": "generic",
+  "url": "https://xzpmxdeteovwuqhjtasq.supabase.co/storage/v1/object/public/erp-desktop-updates/win",
+  "contentUrl": "https://xzpmxdeteovwuqhjtasq.supabase.co/storage/v1/object/public/erp-desktop-updates/content",
+  "channel": "latest"
+}
