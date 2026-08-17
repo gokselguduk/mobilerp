@@ -4749,19 +4749,16 @@
     }
     goster('Uygulama başlamadı. mobil-app.js eksik veya bozuk.', 'title=' + document.title + ' | setAppMode=' + (typeof setAppMode));
   }, 45000);
-  // Geç yükleme / yanlış alarm: uygulama veya giriş geldiyse hata kutusunu kapat
+  // Geç yükleme: hata kutusunu kapat
   var n = 0;
   var iv = setInterval(function () {
     n += 1;
-    var ok = (typeof setAppMode === 'function')
-      || document.getElementById('erp-login-overlay')
-      || document.querySelector('.erp-login, #erp-login-user, input[placeholder*="kullan"]');
-    if (ok) {
+    if (typeof setAppMode === 'function') {
       var el = document.getElementById('erp-yukleme-hatasi');
       if (el) el.style.display = 'none';
       clearInterval(iv);
-    } else if (n > 90) clearInterval(iv);
-  }, 500);
+    } else if (n > 60) clearInterval(iv);
+  }, 1000);
 })();
 </script>
 <script>
