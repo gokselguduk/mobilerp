@@ -16,13 +16,13 @@
     <link rel="apple-touch-icon" href="icon-192.png" id="erp-apple-touch-icon">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" id="erp-icon-192">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" id="erp-icon-512">
-    <title>Simteks ERP Mobil · FLAT-20260806</title>
+    <title>Simteks ERP Mobil · FLAT-20260820m</title>
     <script src="erp-config.js"></script>
     <script src="erp-build.js"></script>
     <script>
     /* Eski Service Worker / cache eski HTML tutmasın */
     (function () {
-      var V = 'erp-mobil-boot-20260806-flat';
+      var V = 'erp-mobil-boot-20260820m';
       try {
         if (localStorage.getItem('erp_mobil_boot_v') === V) return;
         localStorage.setItem('erp_mobil_boot_v', V);
@@ -2246,8 +2246,8 @@
         input, select, textarea { font-size: var(--fs-body) !important; }
 
         /* liste / kart içi genel yazı */
-        .record-item p, .kanban-card p { font-size: var(--fs-body) !important; }
-        .record-item span, .kanban-card span { font-size: var(--fs-label) !important; }
+        .record-item p { font-size: var(--fs-body) !important; }
+        .record-item span { font-size: var(--fs-label) !important; }
         .stat-card {
             background: var(--surface) !important;
             border: 1px solid var(--border) !important;
@@ -3328,23 +3328,6 @@
         .empty-pro-title { font-family: 'Instrument Serif', serif; font-size: 16px; color: var(--text2); }
         .empty-pro-sub { font-size: 11px; color: var(--text3); line-height: 1.5; }
 
-        /* ── KANBAN OVERRIDE ── */
-        .kanban-col {
-            background: var(--surface2) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 12px !important;
-        }
-        .kanban-card {
-            background: var(--surface) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 9px !important;
-            box-shadow: none !important;
-        }
-        .kanban-card:hover {
-            border-color: var(--border2) !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
-        }
-
         /* ── ACTION ICON ── */
         .action-icon {
             width: 30px; height: 30px;
@@ -3360,8 +3343,6 @@
         body.light-mode .text-slate-600, body.light-mode .text-slate-700 { color: var(--text2) !important; }
         body.light-mode .text-slate-400, body.light-mode .text-slate-500 { color: var(--text3) !important; }
         body.light-mode select option { background: var(--surface); color: var(--text); }
-        body.light-mode .kanban-col { background: var(--surface2) !important; }
-        body.light-mode .kanban-card { background: var(--surface) !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
         body.light-mode .record-item { box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
         body.light-mode .record-item:hover { box-shadow: 0 3px 10px rgba(90,94,240,0.08); }
         body.light-mode .stok-suggest { box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
@@ -3402,9 +3383,6 @@
         .border-t { border-color: var(--border) !important; }
         .border-b { border-color: var(--border) !important; }
         select option { background: var(--surface2); color: var(--text); }
-        /* Kanban */
-        .kanban-col { background: var(--surface2) !important; border-color: var(--border) !important; }
-        .kanban-card { background: var(--surface) !important; border-color: var(--border) !important; color: var(--text) !important; }
         /* Scrollbar */
         .content-scroll::-webkit-scrollbar { width: 4px; }
         .content-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -3482,7 +3460,7 @@
             bottom: 0;
             z-index: 100;
             transform: translateX(-102%) !important;
-            transition: transform 0.2s ease;
+            transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
             width: min(84vw, 304px) !important;
             max-width: 304px;
             flex: 0 0 0 !important;
@@ -3498,7 +3476,7 @@
             display: block;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.2s ease;
+            transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
         }
         body.erp-mobil-lite.mobile-sidebar-open .mobile-sidebar-overlay {
             opacity: 1;
@@ -3527,13 +3505,13 @@
                 bottom: 0;
                 z-index: 100;
                 transform: translateX(-102%) !important;
-                transition: transform 0.2s ease;
+                transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
                 width: min(84vw, 304px) !important;
                 max-width: 304px;
                 pointer-events: none;
             }
             body.mobile-sidebar-open .erp-sidebar { transform: translateX(0) !important; pointer-events: auto; }
-            .mobile-sidebar-overlay { display: block; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+            .mobile-sidebar-overlay { display: block; opacity: 0; pointer-events: none; transition: opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
             body.mobile-sidebar-open .mobile-sidebar-overlay { opacity: 1; pointer-events: auto; }
             main {
                 width: 100%;
@@ -4161,6 +4139,48 @@
             background: rgba(34, 211, 238, 0.1);
         }
         .erp-mobile-tabbar button.erp-nav-denied { display: none !important; }
+        .ms-ekran { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 24px; }
+        .ms-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .ms-kicker { font-size: 11px; font-weight: 650; color: var(--text3); margin-bottom: 2px; }
+        .ms-qty-hero { font-family: 'DM Mono', monospace; font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; letter-spacing: -0.03em; }
+        .ms-qty-hero span { font-size: 12px; font-weight: 600; color: var(--text3); margin-left: 6px; }
+        .ms-qty-hero.is-neg { color: var(--rose-c); }
+        .ms-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+        .ms-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ms-btn {
+            height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text); font-size: 12px; font-weight: 650;
+            cursor: pointer; font-family: 'DM Sans', sans-serif;
+        }
+        .ms-btn-primary { background: var(--text); color: var(--bg, #0b0f17); border-color: var(--text); }
+        .ms-btn-ghost { background: transparent; color: var(--text2); }
+        .ms-seg { display: inline-flex; align-self: flex-start; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 2px; }
+        .ms-seg-btn {
+            border: none; background: transparent; height: 30px; padding: 0 12px; border-radius: 7px;
+            font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; font-family: 'DM Sans', sans-serif;
+        }
+        .ms-seg-btn b { font-weight: 700; font-family: 'DM Mono', monospace; font-size: 11px; margin-left: 2px; }
+        .ms-seg-btn.is-on { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
+        .ms-list { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+        .ms-row {
+            display: grid; grid-template-columns: 1fr auto; grid-template-areas: "main qty" "acts acts";
+            gap: 6px 14px; padding: 13px 14px; border-bottom: 1px solid var(--border); align-items: center;
+        }
+        .ms-row:last-child { border-bottom: none; }
+        .ms-row-main { grid-area: main; text-align: left; border: none; background: none; padding: 0; cursor: pointer; min-width: 0; color: inherit; font: inherit; }
+        .ms-name { font-size: 14px; font-weight: 650; color: var(--text); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ms-meta { font-size: 11px; color: var(--text3); margin-top: 3px; font-family: 'DM Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ms-qty { grid-area: qty; font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 700; color: var(--text); text-align: right; white-space: nowrap; }
+        .ms-qty em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--text3); margin-left: 3px; }
+        .ms-qty.is-zero { color: var(--text3); }
+        .ms-qty.is-neg { color: var(--rose-c); }
+        .ms-acts { grid-area: acts; display: flex; gap: 6px; }
+        .ms-act {
+            flex: 1; height: 36px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface2); color: var(--text); font-size: 12px; font-weight: 650;
+            cursor: pointer; font-family: 'DM Sans', sans-serif;
+        }
+        .ms-empty { padding: 36px 16px; text-align: center; color: var(--text3); font-size: 13px; }
         @media (max-width: 1024px) {
             .erp-mobile-tabbar { display: grid; }
             .content-scroll { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important; }
@@ -4185,197 +4205,287 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             }
         }
-        /* —— Görev panosu —— */
-        .gorev-page { display: flex; flex-direction: column; gap: 14px; max-width: 1400px; }
-        .gorev-page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
-        .gorev-page-title { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--text); line-height: 1.2; margin: 0; }
-        .gorev-page-sub { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text3); margin-top: 4px; letter-spacing: 0.04em; }
-        .gorev-page-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-        .gorev-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-        @media (max-width: 900px) { .gorev-stats { grid-template-columns: repeat(2, 1fr); } }
-        .gorev-stat {
-            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-            padding: 12px 14px; position: relative; overflow: hidden;
-        }
-        .gorev-stat::before {
-            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-            background: var(--gorev-stat-accent, var(--text3));
-        }
-        .gorev-stat--bek { --gorev-stat-accent: var(--text3); }
-        .gorev-stat--dev { --gorev-stat-accent: var(--accent); }
-        .gorev-stat--tam { --gorev-stat-accent: var(--emerald-c); }
-        .gorev-stat--gec { --gorev-stat-accent: var(--rose-c); }
-        .gorev-stat-lbl { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); font-family: 'DM Mono', monospace; }
-        .gorev-stat-val { font-size: 22px; font-weight: 700; color: var(--text); margin-top: 4px; font-family: 'DM Mono', monospace; line-height: 1; }
-        .gorev-toolbar {
-            display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
-            padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-        }
-        .gorev-toolbar-grp { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .gorev-toolbar-lbl { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); font-family: 'DM Mono', monospace; margin-right: 4px; }
-        .gorev-seg { display: inline-flex; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
-        .gorev-seg-btn {
-            border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
-            font-size: 10px; font-weight: 600; color: var(--text2); cursor: pointer;
-            font-family: 'DM Sans', sans-serif; transition: background 0.12s, color 0.12s;
-        }
-        .gorev-seg-btn:hover { color: var(--text); background: var(--surface3); }
-        .gorev-seg-btn--on { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.08); font-weight: 700; }
-        .gorev-kanban { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
-        @media (max-width: 1024px) { .gorev-kanban { grid-template-columns: 1fr; } }
-        .gorev-col {
-            background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-            display: flex; flex-direction: column; max-height: calc(100vh - 280px); min-height: 320px;
-        }
-        .gorev-col-head {
-            display: flex; align-items: center; justify-content: space-between; gap: 8px;
-            padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-        }
-        .gorev-col-title { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text); }
-        .gorev-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-        .gorev-col-dot--bek { background: var(--text3); }
-        .gorev-col-dot--dev { background: var(--accent); }
-        .gorev-col-dot--tam { background: var(--emerald-c); }
-        .gorev-col-count {
-            font-size: 10px; font-weight: 700; font-family: 'DM Mono', monospace;
-            padding: 2px 8px; border-radius: 20px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
-        }
-        .gorev-col-body { padding: 10px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; }
-        .gorev-col-empty {
-            flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            padding: 28px 16px; color: var(--text3); text-align: center;
-        }
-        .gorev-col-empty-t { font-size: 10px; font-weight: 600; margin-top: 8px; }
-        .gorev-card {
-            background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-            padding: 11px 12px; transition: border-color 0.12s, box-shadow 0.12s;
-        }
-        .gorev-card:hover { border-color: var(--border2); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-        .gorev-card--done { opacity: 0.72; }
-        .gorev-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-        .gorev-card-title { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.4; flex: 1; min-width: 0; }
-        .gorev-card--done .gorev-card-title { text-decoration: line-through; color: var(--text3); }
-        .gorev-pri {
-            font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-            padding: 2px 6px; border-radius: 4px; flex-shrink: 0; font-family: 'DM Mono', monospace;
-        }
-        .gorev-pri--kritik { background: rgba(251, 113, 133, 0.15); color: var(--rose-c); border: 1px solid rgba(251, 113, 133, 0.3); }
-        .gorev-pri--acil { background: rgba(245, 158, 11, 0.12); color: var(--amber-c); border: 1px solid rgba(245, 158, 11, 0.28); }
-        .gorev-pri--normal { background: var(--surface3); color: var(--text3); border: 1px solid var(--border); }
-        .gorev-card-ozet { font-size: 9px; color: var(--text3); line-height: 1.45; margin-bottom: 8px; padding-left: 8px; border-left: 2px solid var(--border); }
-        .gorev-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-        .gorev-card-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
-        .gorev-card-meta-item { font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; }
-        .gorev-card-meta-item--late { color: var(--rose-c); font-weight: 600; }
-        .gorev-card-meta-item--today { color: var(--amber-c); font-weight: 600; }
-        .gorev-card-meta-item--soon { color: var(--accent2); }
-        .gorev-card-meta-item--muted { opacity: 0.7; }
-        .gorev-unit {
-            font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-            padding: 2px 5px; border-radius: 4px; font-family: 'DM Mono', monospace;
-        }
-        .gorev-unit--dokuma { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
-        .gorev-unit--boyahane { background: rgba(251, 113, 133, 0.12); color: var(--rose-c); }
-        .gorev-unit--konf { background: rgba(16, 185, 129, 0.12); color: var(--emerald-c); }
-        .gorev-unit--genel { background: var(--surface3); color: var(--text3); }
-        .gorev-card-act {
-            border: 1px solid var(--border); background: var(--surface); padding: 4px 10px; border-radius: 6px;
-            font-size: 9px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.12s;
-            font-family: 'DM Sans', sans-serif; color: var(--text2);
-        }
-        .gorev-card-act:hover { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
-        .gorev-card-act--done { color: var(--emerald-c); border-color: rgba(16, 185, 129, 0.35); }
-        .gorev-card-act--prog { color: var(--accent); border-color: rgba(99, 102, 241, 0.35); }
-        .gorev-badge-count {
-            display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
-            padding: 0 5px; border-radius: 9px; font-size: 9px; font-weight: 700; font-family: 'DM Mono', monospace;
-            background: var(--accent2); color: #fff; margin-left: 4px;
-        }
-        .gorev-modal-overlay {
-            position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 42, 0.55);
-            backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px;
-        }
-        .gorev-modal-overlay.is-open { display: flex; }
-        .dt-ih-modal-overlay {
-            position: fixed; inset: 0; z-index: 70; background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; padding: 12px;
-        }
-        .dt-ih-modal-overlay.is-open { display: flex; }
-        .dt-ih-modal {
-            width: 100%; max-width: min(980px, 96vw); max-height: min(94vh, 900px);
-            background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-            box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28); display: flex; flex-direction: column; overflow: hidden;
-        }
-        .dt-ih-modal-head {
-            display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-            padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface2); flex-shrink: 0;
-        }
-        .dt-ih-modal-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
-        .dt-ih-modal-sub { font-size: 10px; color: var(--text3); margin-top: 4px; line-height: 1.45; }
-        .dt-ih-modal-close {
-            width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
-            color: var(--text2); cursor: pointer; font-size: 14px; flex-shrink: 0;
-        }
-        .dt-ih-modal-close:hover { background: var(--surface3); color: var(--text); }
-        .dt-ih-modal-body { overflow: auto; padding: 12px 14px; flex: 1; min-height: 0; }
-        .gorev-modal {
-            width: 100%; max-width: 680px; max-height: min(92vh, 820px);
-            background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22); display: flex; flex-direction: column; overflow: hidden;
-        }
-        .gorev-modal-head {
-            display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-            padding: 16px 18px; border-bottom: 1px solid var(--border); background: var(--surface2);
-        }
-        .gorev-modal-title { font-size: 14px; font-weight: 700; color: var(--text); margin: 0; }
-        .gorev-modal-sub { font-size: 10px; color: var(--text3); margin-top: 4px; line-height: 1.45; }
-        .gorev-modal-close {
-            width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
-            color: var(--text2); cursor: pointer; font-size: 14px; flex-shrink: 0; transition: background 0.12s;
-        }
-        .gorev-modal-close:hover { background: var(--surface3); color: var(--text); }
-        .gorev-modal-toolbar {
-            display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border);
-        }
-        .gorev-modal-search {
-            flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
-            background: var(--surface2); font-size: 11px; color: var(--text); outline: none;
-        }
-        .gorev-modal-search:focus { border-color: var(--accent); }
-        .gorev-modal-select {
-            padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
-            background: var(--surface2); font-size: 10px; font-weight: 600; color: var(--text);
-        }
-        .gorev-modal-body { flex: 1; overflow-y: auto; padding: 12px 18px; min-height: 200px; }
-        .gorev-modal-foot {
-            padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface2);
-        }
-        .gorev-modal-foot-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-        .gorev-modal-sel { font-size: 10px; font-weight: 600; color: var(--text2); font-family: 'DM Mono', monospace; }
-        .gorev-modal-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-        .gorev-birlestir-row { margin-bottom: 12px; }
-        .gorev-birlestir-row label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 6px; }
-        .gorev-birlestir-row input {
-            width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
-            background: var(--surface); font-size: 11px; font-weight: 600; color: var(--text);
-        }
-        .gorev-atama-grup { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; background: var(--surface); }
-        .gorev-atama-grup-bas {
-            display: flex; align-items: center; gap: 10px; padding: 11px 14px;
-            background: var(--surface2); border-bottom: 1px solid var(--border);
-        }
-        .gorev-atama-grup-sno { font-size: 12px; font-weight: 700; font-family: 'DM Mono', monospace; color: var(--accent); }
-        .gorev-atama-grup-firma { font-size: 10px; color: var(--text3); margin-top: 2px; }
-        .gorev-atama-grup-adimlar { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 2px; }
-        .gorev-atama-adim {
-            display: flex; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: pointer;
-            transition: background 0.12s; align-items: flex-start;
-        }
-        .gorev-atama-adim:hover { background: var(--surface2); }
-        .gorev-atama-adim--secili { background: rgba(99, 102, 241, 0.08); box-shadow: inset 3px 0 0 var(--accent2); }
-        .gorev-atama-adim-t { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.35; }
-        .gorev-atama-adim-s { font-size: 9px; color: var(--text3); margin-top: 3px; }
-</style>
+
+/* Kumaş / mamül talimat kartı + foto lightbox (mobil) */
+.mamul-talimat-sheet { border-bottom: 1px solid var(--border); }
+.mamul-talimat-sheet__baslik { padding: 10px 14px 4px; text-align: center; font-size: 11px; font-weight: 800; color: var(--amber-c); text-transform: uppercase; letter-spacing: 0.08em; font-family: 'DM Mono', monospace; }
+.mamul-talimat-sheet--kumas .mamul-talimat-sheet__baslik { color: var(--emerald-c); }
+.mamul-talimat-sheet__alt-baslik { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; padding: 0 14px 10px; font-size: 9px; color: var(--text3); font-family: 'DM Mono', monospace; border-bottom: 1px solid var(--border); }
+.mamul-talimat-sheet__alt-baslik strong { color: var(--text); }
+.mamul-talimat-sheet__govde { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 180px); gap: 0; align-items: stretch; }
+.mamul-talimat-sheet__tablo-wrap { min-width: 0; overflow-x: auto; }
+.mamul-talimat-tablo { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 10px; }
+.mamul-talimat-tablo td { padding: 4px 8px; border: 1px solid var(--border); vertical-align: middle; line-height: 1.35; }
+.mamul-talimat-tablo__lbl { width: 11%; background: var(--surface2); font-size: 7px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; font-family: 'DM Mono', monospace; white-space: nowrap; }
+.mamul-talimat-tablo__lbl--bos { background: transparent; border-color: transparent; }
+.mamul-talimat-tablo__val { width: 22%; font-size: 10px; font-weight: 600; color: var(--text); font-family: 'DM Mono', monospace; }
+.mamul-talimat-tablo__val--bos { color: var(--text3); font-weight: 500; }
+.mamul-talimat-tablo__val--kirmizi { color: var(--rose-c); font-weight: 700; }
+.mamul-talimat-sheet__foto { border-left: 1px solid var(--border); padding: 10px; background: var(--surface2); display: flex; flex-direction: column; align-items: center; min-height: 160px; }
+.mamul-talimat-sheet__foto-baslik { font-size: 7px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-family: 'DM Mono', monospace; margin-bottom: 6px; }
+.mamul-talimat-sheet__foto img { width: 100%; max-height: 280px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); cursor: zoom-in; }
+.mamul-talimat-sheet__foto-btn { display: block; width: 100%; padding: 0; border: none; background: transparent; cursor: zoom-in; }
+.mamul-talimat-sheet__foto-btn + .mamul-talimat-sheet__foto-btn { margin-top: 8px; }
+.mamul-talimat-sheet__foto-ipucu { margin-top: 6px; font-size: 8px; color: var(--text3); font-family: 'DM Mono', monospace; text-align: center; }
+.mamul-talimat-sheet__foto-yok { font-size: 9px; color: var(--text3); text-align: center; padding: 20px 8px; font-family: 'DM Mono', monospace; }
+.mamul-talimat-sheet__notlar { padding: 8px 10px; font-size: 10px; color: var(--text); border-top: 1px dashed var(--border); line-height: 1.45; }
+.mamul-kart-aksiyon-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: rgba(52,211,153,0.05); }
+#kart-foto-lightbox { display: none; position: fixed; inset: 0; z-index: 2147483645; background: rgba(8,12,24,0.88); align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+#kart-foto-lightbox.is-open { display: flex; }
+#kart-foto-lightbox img { max-width: 96vw; max-height: 88vh; object-fit: contain; border-radius: 10px; background: #fff; }
+#kart-foto-lightbox-kapat { position: absolute; top: 12px; right: 14px; width: 40px; height: 40px; border: none; border-radius: 10px; background: rgba(255,255,255,0.12); color: #fff; font-size: 22px; cursor: pointer; }
+#detail-modal #modal-body.modal-body--mamul,
+#detail-modal #modal-body.modal-body--kumas { display: block; padding: 0; }
+.mamul-sheet--kumas { border-left-color: var(--emerald-c); }
+.mamul-sheet--kumas .mamul-sheet__toolbar { background: rgba(52,211,153,0.06); }
+.mamul-sheet--kumas .mamul-sheet__kod { color: var(--emerald-c); background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25); }
+.mamul-sheet--kumas .mamul-sheet__grid--kumas-kimlik { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mamul-sheet--kumas .mamul-sheet__grid--kumas-tek { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mamul-sheet--kumas .mamul-sheet__grid--kumas-analiz { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mamul-sheet--kumas .mamul-sheet__grid--kumas-terbiye { grid-template-columns: 1fr; }
+.mamul-sheet__save-btn { height: 26px; padding: 0 12px; border: none; border-radius: 6px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 600; cursor: pointer; }
+.ms-filtre-bar { padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ms-filtre-bar__row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.ms-filtre-bar__field { flex: 0 0 auto; min-width: 0; }
+.ms-filtre-bar__field--grow { flex: 1 1 160px; min-width: 120px; }
+.ms-filtre-bar__field--tip { flex: 0 0 110px; }
+.ms-filtre-bar__field--date { flex: 0 0 128px; }
+.ms-filtre-bar__reset { height: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface2); color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; }
+body[data-erp-mode="KUMAS_KART_GIRIS"] #inputs-grid.mamul-layout { display: block !important; width: 100% !important; }
+@media (max-width: 720px) {
+    .mamul-talimat-sheet__govde { grid-template-columns: 1fr; }
+    .mamul-talimat-sheet__foto { border-left: none; border-top: 1px solid var(--border); width: auto; min-width: 0; }
+    .mamul-sheet--kumas .mamul-sheet__grid--kumas-kimlik,
+    .mamul-sheet--kumas .mamul-sheet__grid--kumas-tek,
+    .mamul-sheet--kumas .mamul-sheet__grid--kumas-analiz,
+    .mamul-sheet--kumas .mamul-sheet__grid--kumas-terbiye { grid-template-columns: 1fr; }
+}
+
+body[data-erp-mode="STOK_SAYIM"] #list-section-head { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] .form-container { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] #form-container { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] section:has(#main-list) > div:first-child { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] .erp-mobile-tabbar { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] .top-header > div:last-child { display: none !important; }
+body[data-erp-mode="STOK_SAYIM"] .content-scroll { padding-bottom: 0 !important; }
+.sayim-shell { padding: 4px 0 16px; }
+.sayim-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.sayim-baslik { margin: 0; font-size: 16px; font-weight: 600; color: var(--text1, var(--text)); }
+.sayim-tip-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
+.sayim-tip-toggle--mobil { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sayim-tip-btn {
+    padding: 8px 12px; border: 1px solid var(--border1, var(--border)); border-radius: 10px;
+    background: var(--surface1, var(--surface2)); color: var(--text2); font-size: 13px; font-weight: 700;
+    cursor: pointer; min-height: 42px;
+}
+.sayim-tip-toggle--mobil .sayim-tip-btn { padding: 10px 4px; font-size: 12px; }
+.sayim-tip-btn.aktif { background: var(--accent); color: #fff; border-color: var(--accent); }
+.sayim-ara-bar { margin-bottom: 8px; }
+.sayim-ara-inp {
+    width: 100%; padding: 12px 14px; border: 1px solid var(--border1, var(--border));
+    border-radius: 12px; font-size: 16px; background: var(--surface1, var(--surface)); color: var(--text1, var(--text));
+}
+.sayim-chip-bar { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sayim-chip {
+    flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface2); color: var(--text2);
+    border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700; min-height: 36px; cursor: pointer;
+}
+.sayim-chip.aktif { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.sayim-chip-ozet { margin-left: auto; font-size: 11px; color: var(--text3); white-space: nowrap; }
+.sayim-grup-bas {
+    font-size: 11px; font-weight: 800; color: var(--text3); text-transform: uppercase; letter-spacing: .06em;
+    margin: 14px 2px 8px;
+}
+.sayim-kart {
+    display: block; margin-bottom: 10px; padding: 12px 12px 10px;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+}
+.sayim-kart--dolu { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.sayim-kart-ust { display: flex; align-items: flex-start; gap: 8px; }
+.sayim-kart-ad { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.25; }
+.sayim-kart-stok {
+    flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    border-radius: 10px; padding: 6px 10px; font-size: 14px; font-weight: 800; min-height: 40px; cursor: pointer;
+}
+.sayim-kart-stok em { display: block; font-style: normal; font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: .04em; }
+.sayim-kart-kod { margin-top: 4px; font-size: 12px; color: var(--text3); font-family: 'DM Mono', ui-monospace, monospace; }
+.sayim-kart-say { display: block; margin-top: 10px; }
+.sayim-kart-say > span { display: block; font-size: 11px; font-weight: 700; color: var(--text3); margin-bottom: 6px; }
+.sayim-kart .sayim-inp {
+    width: 100%; min-height: 56px; padding: 12px 14px; border: 2px solid var(--border); border-radius: 12px;
+    font-size: 28px; font-weight: 800; text-align: center; background: #fff; color: var(--text);
+    -webkit-appearance: none; appearance: none;
+}
+.sayim-kart .sayim-inp:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.sayim-kart-alt { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text3); }
+.sayim-kart-fark { font-weight: 800; }
+.fark-artis { color: #16a34a; }
+.fark-azalis { color: #dc2626; }
+.sayim-ozet { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+.sayim-tablo-wrap, .sayim-shell .ms-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sayim-tablo tbody tr { cursor: default; }
+.sayim-tablo .sayim-td-input { width: 120px; padding: 4px 8px; min-width: 110px; }
+.sayim-inp {
+    width: 100%; padding: 8px 10px; border: 2px solid var(--border1, var(--border)); border-radius: 6px;
+    font-size: 16px; text-align: right; background: #fff; color: var(--text1, var(--text)); font-weight: 500;
+}
+.sayim-tablo .sayim-td-fark { text-align: right; font-weight: 600; white-space: nowrap; padding: 0 10px; }
+.sayim-actions { margin-top: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sayim-shell--mobil .sayim-actions {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 130;
+    margin: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    border-top: 1px solid var(--border); backdrop-filter: blur(12px);
+    display: grid; grid-template-columns: 1fr; gap: 6px;
+}
+.sayim-shell--mobil { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+.sayim-kaydet-btn {
+    padding: 12px 24px; background: var(--accent); color: #fff; border: none;
+    border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; min-height: 50px; width: 100%;
+}
+.sayim-kaydet-btn:disabled { opacity: .5; cursor: not-allowed; }
+.sayim-info { font-size: 12px; color: var(--text2); text-align: center; }
+.sayim-rapor-arac { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.sayim-rapor-sec { width: 100%; padding: 12px; border: 1px solid var(--border1, var(--border)); border-radius: 12px; background: var(--surface1, var(--surface)); color: var(--text1, var(--text)); font-size: 15px; min-height: 46px; }
+.sayim-kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+.sayim-kpi { padding: 12px; border: 1px solid var(--border1, var(--border)); border-radius: 12px; background: var(--surface1, var(--surface)); }
+.sayim-kpi.is-plus { border-color: rgba(22,163,74,.35); }
+.sayim-kpi.is-minus { border-color: rgba(220,38,38,.35); }
+.sayim-kpi-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); font-weight: 700; }
+.sayim-kpi-val { font-size: 15px; font-weight: 700; margin-top: 4px; color: var(--text1, var(--text)); }
+.sayim-kpi-alt { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.sayim-bolum-baslik { margin: 16px 0 8px; font-size: 13px; font-weight: 700; color: var(--text1, var(--text)); }
+.sayim-grup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.sayim-grup-kart { padding: 12px; border: 1px solid var(--border1, var(--border)); border-radius: 12px; background: var(--surface1, var(--surface)); }
+.sayim-grup-kart--canli { background: color-mix(in srgb, var(--accent) 6%, var(--surface1, var(--surface))); }
+.sayim-grup-ad { font-size: 12px; font-weight: 600; color: var(--text2); }
+.sayim-grup-miktar { font-size: 18px; font-weight: 700; margin-top: 4px; color: var(--text1, var(--text)); }
+.sayim-grup-alt { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.sayim-bos, .sayim-bos-kutu { padding: 16px; border-radius: 12px; border: 1px dashed var(--border1, var(--border)); color: var(--text3); font-size: 13px; margin-bottom: 12px; line-height: 1.45; }
+.sayim-mini { font-size: 10px; color: var(--text3); }
+.sayim-tum-liste { margin-top: 16px; }
+.sayim-tum-liste summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 8px; min-height: 40px; display: flex; align-items: center; }
+
+/* ── Mobil dünya: yumuşak geçişler, çekmece, alt sayfa ── */
+body.erp-mobil-lite {
+    --erp-ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --erp-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+body.erp-mobil-lite .erp-sidebar,
+body.erp-mobil-lite aside.erp-sidebar {
+    transition: transform 0.4s var(--erp-ease) !important;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.28);
+}
+body.erp-mobil-lite .mobile-sidebar-overlay {
+    transition: opacity 0.35s var(--erp-ease-out) !important;
+    background: rgba(2, 6, 23, 0.55);
+    backdrop-filter: blur(8px);
+}
+body.erp-mobil-lite .top-header {
+    backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+body.erp-mobil-lite #current-title {
+    transition: opacity 0.28s var(--erp-ease-out), transform 0.28s var(--erp-ease-out);
+}
+body.erp-mobil-lite .content-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+}
+body.erp-mobil-lite .erp-view-in {
+    animation: erpMobilViewIn 0.42s var(--erp-ease-out) both;
+}
+@keyframes erpMobilViewIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+body.erp-mobil-lite .erp-mobile-tabbar {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.12);
+}
+body.erp-mobil-lite .erp-mobile-tabbar button {
+    transition: color 0.22s var(--erp-ease-out), background 0.22s var(--erp-ease-out), transform 0.18s var(--erp-ease);
+}
+body.erp-mobil-lite .erp-mobile-tabbar button .ico {
+    transition: transform 0.28s var(--erp-ease-out);
+}
+body.erp-mobil-lite .erp-mobile-tabbar button.active .ico { transform: scale(1.12); }
+body.erp-mobil-lite .erp-mobile-tabbar button:active { transform: scale(0.92); }
+body.erp-mobil-lite .sayim-tip-btn,
+body.erp-mobil-lite .sayim-chip,
+body.erp-mobil-lite .sayim-kaydet-btn,
+body.erp-mobil-lite .ms-btn,
+body.erp-mobil-lite .ms-act,
+body.erp-mobil-lite .nav-pro,
+body.erp-mobil-lite .nav-pro-sub {
+    transition: background 0.2s var(--erp-ease-out), color 0.2s var(--erp-ease-out), border-color 0.2s var(--erp-ease-out), transform 0.16s var(--erp-ease);
+}
+body.erp-mobil-lite .sayim-tip-btn:active,
+body.erp-mobil-lite .sayim-chip:active,
+body.erp-mobil-lite .sayim-kaydet-btn:active,
+body.erp-mobil-lite .ms-btn:active,
+body.erp-mobil-lite .ms-act:active {
+    transform: scale(0.97);
+}
+@media (max-width: 1024px) {
+    body.erp-mobil-lite #detail-modal {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        background: rgba(6, 8, 14, 0.45);
+        backdrop-filter: blur(8px);
+    }
+    body.erp-mobil-lite #detail-modal > .modal-box {
+        width: 100% !important;
+        max-width: 100vw !important;
+        max-height: min(92dvh, 920px) !important;
+        border-radius: 20px 20px 0 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+        animation: erpMobilSheetIn 0.42s var(--erp-ease) both;
+    }
+    body.erp-mobil-lite #detail-modal > .modal-box::before {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        border-radius: 99px;
+        background: color-mix(in srgb, var(--text3) 55%, transparent);
+        margin: 10px auto 2px;
+    }
+    body.erp-mobil-lite #detail-modal.erp-sheet-closing > .modal-box {
+        animation: erpMobilSheetOut 0.22s ease-in both;
+    }
+    body.erp-mobil-lite #detail-modal.erp-sheet-closing {
+        animation: erpMobilFadeOut 0.22s ease-in both;
+    }
+}
+@keyframes erpMobilSheetIn {
+    from { transform: translateY(18%); opacity: 0.55; }
+    to { transform: translateY(0); opacity: 1; }
+}
+@keyframes erpMobilSheetOut {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(12%); opacity: 0; }
+}
+@keyframes erpMobilFadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.erp-mobil-lite .erp-view-in,
+    body.erp-mobil-lite #detail-modal > .modal-box,
+    body.erp-mobil-lite .erp-sidebar,
+    body.erp-mobil-lite aside.erp-sidebar {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+        </style>
 </head>
 <body class="erp-mobil-lite">
 
@@ -4433,6 +4543,7 @@
       <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">Kumaş Stoğu</div>
       <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">Mamül Stoğu</div>
       <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
+      <div onclick="setAppMode('STOK_SAYIM')" class="nav-pro-sub" id="nav-STOK_SAYIM">Stok Sayım</div>
     </div>
 
     <div onclick="toggleChicSub('kart')" class="nav-pro" id="nav-kart-toggle">
@@ -4514,10 +4625,7 @@
       <span class="nav-pro-chevron" id="chev-yonetim">▾</span>
     </div>
     <div id="sub-yonetim" class="nav-pro-sub-area">
-      <div onclick="setAppMode('TODO_LISTE')" class="nav-pro-sub" id="nav-TODO_LISTE">Görevler</div>
       <div onclick="setAppMode('RAPORLAR')" class="nav-pro-sub" id="nav-RAPORLAR">Raporlar</div>
-      <div onclick="setAppMode('MALIYET_HESAP')" class="nav-pro-sub" id="nav-MALIYET_HESAP">Maliyet Hesaplama</div>
-      <div onclick="setAppMode('MALIYET_LISTE')" class="nav-pro-sub" id="nav-MALIYET_LISTE">Kayıtlı Maliyetler</div>
     </div>
 
   </nav>
@@ -4643,8 +4751,8 @@
     <button type="button" data-tab-mode="SIPARIS_LISTE" onclick="erpMobileTabGo('SIPARIS_LISTE')">
         <span class="ico">🧾</span><span class="lbl">Sipariş</span>
     </button>
-    <button type="button" data-tab-mode="DEPO_HAREKET" onclick="erpMobileTabGo('DEPO_HAREKET')">
-        <span class="ico">📦</span><span class="lbl">Depo</span>
+    <button type="button" data-tab-mode="MAMUL_DEPO" onclick="erpMobileTabGo('MAMUL_DEPO')">
+        <span class="ico">🧥</span><span class="lbl">Mamül Stok</span>
     </button>
     <button type="button" data-tab-mode="KART_LISTE" onclick="erpMobileTabGo('KART_LISTE')">
         <span class="ico">🗂️</span><span class="lbl">Kartlar</span>
@@ -4701,19 +4809,14 @@
     </div>
 </div>
 
-<!-- ERP-MOBIL-BUILD: FLAT-20260806 — scriptler HTML ile AYNI klasörde -->
-<script src="erp_auth_tablo_fix.embed.js"></script>
-<script src="stok-kart-desktop.js"></script>
-<script src="mamul-depo-toplu.js"></script>
-<script src="mobil-app.js"></script>
+<!-- ERP-MOBIL-BUILD: FLAT-20260820m — scriptler düz klasör VEYA assets/ altında -->
 <div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
     <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
-    <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">mobil-app.js yüklenemedi veya çalışmadı.</p>
+    <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">Uygulama scripti çalışmadı.</p>
     <pre id="erp-yukleme-hatasi-detay" style="display:none;margin:12px 0;padding:12px;background:#0b0f17;border:1px solid #334155;border-radius:8px;color:#fca5a5;font-size:12px;white-space:pre-wrap;word-break:break-word"></pre>
     <p style="margin:12px 0 0;line-height:1.5;color:#64748b;font-size:13px">
-      Bu sayfanın sekme başlığı <strong>FLAT-20260806</strong> olmalı.<br>
-      Değilse GitHub'daki eski dosya / önbellek açık — gizli pencere (Incognito) deneyin.<br>
-      Aynı klasörde olmalı: mobil-erp.html + mobil-app.js + erp-config.js
+      Sekme başlığı <strong>FLAT-20260820m</strong> olmalı.<br>
+      Yerel açılış: <code>http://127.0.0.1:8765/mobil-erp.html</code>
     </p>
 </div>
 <script>
@@ -4729,36 +4832,54 @@
     if (d && detay) { d.style.display = 'block'; d.textContent = detay; }
     if (el) el.style.display = 'block';
   }
-  window.addEventListener('error', function (e) {
-    var t = e && e.target;
-    if (t && t.tagName === 'SCRIPT') {
-      var src = String(t.src || '');
-      if (src.indexOf('mobil-app.js') >= 0) {
-        goster('mobil-app.js bulunamadı (404). HTML ile AYNI klasöre yükleyin.', src);
+  window.__erpMobilYuklemeHatasi = goster;
+
+  function loadScript(candidates) {
+    return new Promise(function (resolve, reject) {
+      var i = 0;
+      function tryNext() {
+        if (i >= candidates.length) {
+          reject(new Error(candidates.join(' | ')));
+          return;
+        }
+        var src = candidates[i++];
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = false;
+        s.onload = function () { resolve(src); };
+        s.onerror = function () { tryNext(); };
+        document.body.appendChild(s);
       }
-    }
+      tryNext();
+    });
+  }
+
+  var v = '20260820c';
+  var zincir = [
+    ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
+    ['stok-kart-desktop.js?v=' + v, 'assets/stok-kart-desktop.js?v=' + v, 'mobil/assets/stok-kart-desktop.js?v=' + v],
+    ['mamul-depo-toplu.js?v=' + v, 'assets/mamul-depo-toplu.js?v=' + v, 'mobil/assets/mamul-depo-toplu.js?v=' + v],
+    ['stok-sayim.js?v=' + v, 'assets/stok-sayim.js?v=' + v, 'mobil/assets/stok-sayim.js?v=' + v],
+    ['mobil-app.js?v=' + v, 'assets/mobil/mobil-app.js?v=' + v, 'mobil/assets/mobil/mobil-app.js?v=' + v]
+  ];
+
+  window.addEventListener('error', function (e) {
+    if (shown) return;
     if (e && e.filename && String(e.filename).indexOf('mobil-app') >= 0) {
       goster('mobil-app.js bulundu ama içinde hata var.', (e.message || '') + (e.lineno ? ('\nSatır ' + e.lineno) : ''));
     }
   }, true);
-  window.setTimeout(function () {
-    if (typeof setAppMode === 'function') {
-      var el = document.getElementById('erp-yukleme-hatasi');
-      if (el) el.style.display = 'none';
-      return;
-    }
-    goster('Uygulama başlamadı. mobil-app.js eksik veya bozuk.', 'title=' + document.title + ' | setAppMode=' + (typeof setAppMode));
-  }, 45000);
-  // Geç yükleme: hata kutusunu kapat
-  var n = 0;
-  var iv = setInterval(function () {
-    n += 1;
-    if (typeof setAppMode === 'function') {
-      var el = document.getElementById('erp-yukleme-hatasi');
-      if (el) el.style.display = 'none';
-      clearInterval(iv);
-    } else if (n > 60) clearInterval(iv);
-  }, 1000);
+
+  var p = Promise.resolve();
+  zincir.forEach(function (cands) {
+    p = p.then(function () { return loadScript(cands); });
+  });
+  p.then(function () {
+    if (typeof setAppMode === 'function') return;
+    goster('Scriptler yüklendi ama uygulama başlamadı (setAppMode yok).', document.title);
+  }).catch(function (err) {
+    goster('Gerekli JS dosyası bulunamadı.', String(err && err.message ? err.message : err));
+  });
 })();
 </script>
 <script>
