@@ -303,25 +303,29 @@ function sayimKartHtml(r) {
     const meta = sayimKartMeta(r);
     const kod = sayimEsc(r.stok_kodu);
     return `<article class="sayim-kart${dolu ? ' sayim-kart--dolu' : ''}${mevcut === 0 ? ' sayim-kart--sifir' : ''}" data-kod="${kod}">
-        <div class="sayim-kart-ust">
-            <div class="sayim-kart-ad">${sayimEsc(r.label || r.stok_kodu)}</div>
-            <button type="button" class="sayim-kart-stok" onclick="stokSayimStokKopyala(this)" title="Stoğu sayılana kopyala">${qtyYazi}<em>${birim}</em></button>
-        </div>
+        <div class="sayim-kart-ad">${sayimEsc(r.label || r.stok_kodu)}</div>
         <div class="sayim-kart-kod">${kod}${meta ? ` · ${sayimEsc(meta)}` : ''}</div>
-        <label class="sayim-kart-say">
-            <span>Sayılan ${birim}</span>
-            <input type="number" class="sayim-inp" inputmode="decimal" enterkeyhint="next"
-                   data-kod="${kod}"
-                   data-kayitkod="${sayimEsc(r.kayit_kodu)}"
-                   data-label="${sayimEsc(r.label)}"
-                   data-mevcut="${mevcut}"
-                   value="${dolu ? sayimEsc(girilen) : ''}"
-                   placeholder="0"
-                   step="any"
-                   oninput="stokSayimFarkGuncelle(this)">
-        </label>
+        <div class="sayim-kart-cift">
+            <button type="button" class="sayim-kart-stok" onclick="stokSayimStokKopyala(this)" title="Stoğu sayılana kopyala">
+                <em>Mevcut stok</em>
+                <strong>${qtyYazi}</strong>
+                <span>${birim}</span>
+            </button>
+            <label class="sayim-kart-say">
+                <span>Sayılan stok</span>
+                <input type="number" class="sayim-inp" inputmode="decimal" enterkeyhint="next"
+                       data-kod="${kod}"
+                       data-kayitkod="${sayimEsc(r.kayit_kodu)}"
+                       data-label="${sayimEsc(r.label)}"
+                       data-mevcut="${mevcut}"
+                       value="${dolu ? sayimEsc(girilen) : ''}"
+                       placeholder="0"
+                       step="any"
+                       oninput="stokSayimFarkGuncelle(this)">
+            </label>
+        </div>
         <div class="sayim-kart-alt">
-            <span>Kayıtlı stok ${qtyYazi} ${birim}</span>
+            <span>Mevcuda dokununca kopyalanır</span>
             <span class="sayim-kart-fark${farkCls}">${farkYazi === '—' ? 'fark yok' : 'fark ' + farkYazi}</span>
         </div>
     </article>`;

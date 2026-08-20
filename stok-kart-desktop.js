@@ -1338,7 +1338,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (!s) return true;
         const blob = [
             i.desen_kodu, i.stok_kodu, stokKartListeAdMetni(i), i.kumas_cinsi, i.ana_grup,
-            i.iplik_no, i.marka, i.firma, i.renk, i.cins, i.lot_no
+            i.iplik_no, i.marka, i.firma, i.renk, i.cins, i.lot_no,
+            ...(typeof iplikKartLotlariAl === 'function' ? iplikKartLotlariAl(i).map(l => l.lot_no) : [])
         ].join(' ').toLowerCase();
         return blob.includes(s);
     }
@@ -1360,9 +1361,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const _mamulBakTxt = _mamulBak ? ((parseInt(_mamulBak.adet, 10) || 0) + ' ad') : '0 ad';
         const _mamulAd = _mamulBak ? (parseInt(_mamulBak.adet, 10) || 0) : 0;
         const _mamulBakClr = _mamulAd > 0 ? 'var(--emerald-c)' : (_mamulAd < 0 ? 'var(--rose-c)' : 'var(--text3)');
-        const _kg = i.miktar_kg !== undefined ? Math.abs(i.miktar_kg || 0) : null;
-        const _neg = (i.miktar_kg || 0) < 0;
+        const _lots = _isIP && typeof iplikKartLotlariAl === 'function' ? iplikKartLotlariAl(i) : [];
+        const _lotKg = _isIP && typeof iplikKartLotToplamKg === 'function' ? iplikKartLotToplamKg(_lots) : null;
+        const _kg = _lotKg != null ? _lotKg : (i.miktar_kg !== undefined ? Math.abs(i.miktar_kg || 0) : null);
+        const _neg = _lotKg != null ? _lotKg <= 0 : (i.miktar_kg || 0) < 0;
         const _isArsiv = tbl === 'kumas_kutuphanesi';
+        const _lotEtiket = _isIP && _lots.length ? `${_lots.length} lot` : '';
         return `<div class="record-item record-item--liste-gecmis" style="border-left-color:${_bClr}">
             <div class="record-item-gecmis-hit" onclick="showDetail(${idx})">
             <div style="display:flex;align-items:center;gap:10px;min-width:0">
@@ -1374,9 +1378,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                         <span class="pill ${_pillCls}">${pdfEsc(i.desen_kodu || i.stok_kodu || 'KODSUZ')}</span>
                         ${_mamulKart && mamulVaryantNoBul(_mamulKod) ? `<span class="pill pill-cyan" style="font-size:8px">↗ ${pdfEsc(mamulAnaKodBul(_mamulKod))}</span>` : ''}
                         ${_mamulKart && i.renk ? `<span class="pill pill-gray" style="font-size:8px">${pdfEsc(i.renk)}</span>` : ''}
+                        ${_lotEtiket ? `<span class="pill pill-gray" style="font-size:8px">${pdfEsc(_lotEtiket)}</span>` : ''}
                         <span style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(stokKartListeAdMetni(i))}</span>
                     </div>
-                    <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(i.firma || i.marka || '—')} · ${pdfEsc(i.kumas_cinsi || i.cins || '—')}</div>
+                    <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(i.firma || i.marka || '—')} · ${pdfEsc(i.kumas_cinsi || i.cins || '—')}${_isIP && _lots.length ? ' · ' + pdfEsc(_lots.map(l => l.lot_no).filter(Boolean).join(', ')) : ''}</div>
                 </div>
             </div>
             <div style="text-align:right;flex-shrink:0;margin-left:12px">
@@ -1587,6 +1592,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 b.satirlar.forEach(i => {
                     merged.push(i);
                     html += kumasKartListeSatirHtml(i, globalIdx);
+                    globalIdx += 1;
+                });
+                html += mamulStokListeTabloKapatHtml();
+            } else if (b.id === 'IPLIK' && typeof iplikKartListeTabloBaslikHtml === 'function') {
+                html += iplikKartListeTabloBaslikHtml();
+                b.satirlar.forEach(i => {
+                    merged.push(i);
+                    html += iplikKartListeSatirHtml(i, globalIdx);
                     globalIdx += 1;
                 });
                 html += mamulStokListeTabloKapatHtml();
@@ -2933,6 +2946,271 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         </div>`;
     }
     window.mamulStokKartFormHtml = mamulStokKartFormHtml;
+
+    const IPLIK_LOTS_RE = /\[\[IPLIK_LOTS:([A-Za-z0-9+/=]+)\]\]/;
+    let _iplikKartLotSayac = 0;
+
+    function iplikLotsTemizle(txt) {
+        return String(txt || '').replace(IPLIK_LOTS_RE, '').trim();
+    }
+    function iplikLotsEncode(lots) {
+        try {
+            const arr = (Array.isArray(lots) ? lots : []).filter(l => String(l?.lot_no || '').trim());
+            if (!arr.length) return '';
+            return '[[IPLIK_LOTS:' + btoa(unescape(encodeURIComponent(JSON.stringify(arr)))) + ']]';
+        } catch (e) {
+            return '';
+        }
+    }
+    function iplikLotsDecode(txt) {
+        const m = String(txt || '').match(IPLIK_LOTS_RE);
+        if (!m) return null;
+        try {
+            const arr = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+            return Array.isArray(arr) ? arr : null;
+        } catch (e) {
+            return null;
+        }
+    }
+    function iplikNotlarOlustur(userNot, lots) {
+        const clean = iplikLotsTemizle(userNot);
+        const token = iplikLotsEncode(lots);
+        if (!token) return clean;
+        return clean ? (clean + '\n' + token) : token;
+    }
+    function iplikKartLotlariAl(rec) {
+        const fromMeta = iplikLotsDecode(rec?.notlar);
+        if (fromMeta && fromMeta.length) return fromMeta;
+        const lot = String(rec?.lot_no || '').trim();
+        if (!lot) return [];
+        return [{
+            lot_no: lot,
+            miktar_kg: 0,
+            renk: rec?.renk || '',
+            tedarikci: rec?.tedarikci || '',
+            depo_konum: rec?.depo_konum || '',
+            fiyat: rec?.fiyat ?? ''
+        }];
+    }
+    function iplikKartLotToplamKg(lots) {
+        return (lots || []).reduce((a, l) => a + (parseFloat(l.miktar_kg) || 0), 0);
+    }
+    function iplikKartLotlariOkuDom() {
+        const rows = [...document.querySelectorAll('#iplik-lot-container .iplik-kart-lot-row')];
+        return rows.map(row => {
+            const g = (sel) => row.querySelector(sel)?.value || '';
+            return {
+                lot_no: String(g('.iplik-lot-no')).trim(),
+                miktar_kg: parseFloat(g('.iplik-lot-miktar')) || 0,
+                renk: String(g('.iplik-lot-renk')).trim(),
+                tedarikci: String(g('.iplik-lot-tedarikci')).trim().toUpperCase(),
+                depo_konum: String(g('.iplik-lot-depo')).trim(),
+                fiyat: g('.iplik-lot-fiyat')
+            };
+        }).filter(l => l.lot_no || l.miktar_kg || l.renk || l.tedarikci);
+    }
+    function iplikKartLotToplamGuncelle() {
+        const lots = iplikKartLotlariOkuDom();
+        const dolu = lots.filter(l => l.lot_no);
+        const kg = iplikKartLotToplamKg(dolu);
+        const kod = document.getElementById('val-stok-kodu')?.value || '—';
+        const el = document.getElementById('iplik-kart-lot-toplam');
+        if (el) {
+            el.innerHTML = `<span style="font-family:'DM Mono',monospace;color:var(--text3)">Stok kodu</span> <b style="font-family:'DM Mono',monospace;color:var(--accent2)">${kod}</b>
+                <span style="margin:0 8px;color:var(--border2)">·</span>
+                <span>${dolu.length} lot</span>
+                <span style="margin:0 8px;color:var(--border2)">·</span>
+                <span style="font-family:'Instrument Serif',serif;font-size:16px;color:var(--emerald-c)">${kg.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} kg</span>
+                <span style="font-size:8px;color:var(--text3);margin-left:6px">toplam</span>`;
+        }
+        const prev = document.getElementById('prev-iplik-lot-ozet');
+        if (prev) prev.textContent = dolu.length ? (dolu.map(l => l.lot_no + ' (' + (parseFloat(l.miktar_kg) || 0) + ' kg)').join(' · ')) : '—';
+    }
+    function iplikKartLotSatirHtml(lot) {
+        lot = lot || {};
+        const n = ++_iplikKartLotSayac;
+        const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        return `<div class="iplik-kart-lot-row nu-atki-row" data-lot-idx="${n}" style="display:grid;grid-template-columns:1.1fr 90px 1fr 1fr 0.9fr 90px 32px;gap:8px;align-items:end;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--accent2);font-family:'DM Mono',monospace;margin-bottom:3px">LOT NO ★</div>
+                <input class="pro-input iplik-lot-no" value="${esc(lot.lot_no)}" placeholder="Lot / parti" style="font-family:'DM Mono',monospace;font-size:12px;border-color:rgba(139,92,246,0.25)" oninput="iplikKartLotToplamGuncelle()">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--emerald-c);font-family:'DM Mono',monospace;margin-bottom:3px">MİKTAR (kg)</div>
+                <input class="pro-input iplik-lot-miktar" type="number" step="0.01" value="${lot.miktar_kg != null && lot.miktar_kg !== '' ? esc(lot.miktar_kg) : ''}" placeholder="0" style="font-family:'DM Mono',monospace;font-size:12px;text-align:right" oninput="iplikKartLotToplamGuncelle()">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--cyan-c);font-family:'DM Mono',monospace;margin-bottom:3px">RENK</div>
+                <input class="pro-input iplik-lot-renk" value="${esc(lot.renk)}" placeholder="Renk / boya" style="font-size:11px">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">TEDARİKÇİ</div>
+                <input class="pro-input iplik-lot-tedarikci" value="${esc(lot.tedarikci)}" placeholder="Firma" style="font-size:11px;text-transform:uppercase">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">DEPO</div>
+                <input class="pro-input iplik-lot-depo" value="${esc(lot.depo_konum)}" placeholder="Konum" style="font-size:11px">
+            </div>
+            <div>
+                <div style="font-size:8px;font-weight:700;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:3px">FİYAT</div>
+                <input class="pro-input iplik-lot-fiyat" type="number" step="0.01" value="${esc(lot.fiyat)}" placeholder="0.00" style="font-family:'DM Mono',monospace;font-size:11px">
+            </div>
+            <button type="button" onclick="this.parentElement.remove();iplikKartLotToplamGuncelle()"
+                style="height:36px;width:32px;border-radius:6px;background:rgba(251,113,133,0.1);border:1px solid rgba(251,113,133,0.2);color:var(--rose-c);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;align-self:end">✕</button>
+        </div>`;
+    }
+    function iplikKartLotEkle(lot) {
+        const box = document.getElementById('iplik-lot-container');
+        if (!box) return;
+        box.insertAdjacentHTML('beforeend', iplikKartLotSatirHtml(lot));
+        iplikKartLotToplamGuncelle();
+    }
+    function iplikKartLotlariDoldur(rec) {
+        const box = document.getElementById('iplik-lot-container');
+        if (!box) return;
+        box.innerHTML = '';
+        _iplikKartLotSayac = 0;
+        const lots = iplikKartLotlariAl(rec);
+        if (lots.length) lots.forEach(l => iplikKartLotEkle(l));
+        else iplikKartLotEkle({});
+        iplikKartLotToplamGuncelle();
+    }
+    window.iplikKartLotEkle = iplikKartLotEkle;
+    window.iplikKartLotToplamGuncelle = iplikKartLotToplamGuncelle;
+    window.iplikKartLotlariOkuDom = iplikKartLotlariOkuDom;
+    window.iplikKartLotlariAl = iplikKartLotlariAl;
+    window.iplikKartLotToplamKg = iplikKartLotToplamKg;
+    window.iplikKartLotlariDoldur = iplikKartLotlariDoldur;
+    window.iplikNotlarOlustur = iplikNotlarOlustur;
+    window.iplikLotsTemizle = iplikLotsTemizle;
+
+    function iplikStokKartFormHtml() {
+        const f = (id, label, opts) => {
+            opts = opts || {};
+            const wrap = `mamul-field${opts.span ? ` mamul-field--span${opts.span}` : ''}`;
+            if (opts.type === 'textarea') {
+                return `<div class="${wrap}"><label class="pro-label">${label}</label><textarea id="${id}" rows="1" class="pro-input" placeholder="${opts.ph || ''}"></textarea></div>`;
+            }
+            if (opts.type === 'select') {
+                return `<div class="${wrap}"><label class="pro-label">${label}</label><select id="${id}" class="pro-input">${opts.options || ''}</select></div>`;
+            }
+            return `<div class="${wrap}"><label class="pro-label">${label}</label><input id="${id}" type="${opts.type || 'text'}" class="pro-input" ${opts.extra || ''} placeholder="${opts.ph || ''}"></div>`;
+        };
+        return `
+        <div class="mamul-sheet mamul-sheet--kumas">
+            <div class="mamul-sheet__toolbar">
+                <div class="mamul-sheet__toolbar-left">
+                    <div class="mamul-sheet__kod"><input id="val-stok-kodu" readonly title="IP stok kodu"></div>
+                    <span style="font-size:9px;color:var(--text3)">IP serisi · aynı kod tüm lotlarda</span>
+                </div>
+                <div class="mamul-sheet__toolbar-right">
+                    <select id="val-kalite-durum" class="pro-input" style="width:auto;padding:3px 8px;font-size:9px;height:26px">
+                        <option value="AKTİF">AKTİF</option>
+                        <option value="PASİF">PASİF</option>
+                        <option value="TÜKENDİ">TÜKENDİ</option>
+                    </select>
+                    <button type="button" class="mamul-sheet__save-btn" onclick="handleSave()">Kaydet</button>
+                </div>
+            </div>
+            <div class="mamul-sheet__section">Kimlik</div>
+            <div class="mamul-sheet__grid mamul-sheet__grid--kumas-kimlik">
+                ${f('val-iplik-no', 'İplik no / titre ★', { extra: 'style="font-family:\'DM Mono\',monospace"', ph: 'Ne 30/1, Nm 50/2' })}
+                ${f('val-marka', 'Marka / tedarikçi ★', { extra: 'style="text-transform:uppercase"', ph: 'KORTEKS, İPEK' })}
+                ${f('val-cins', 'İplik cinsi / fiber', { extra: 'style="text-transform:uppercase"', ph: 'Pamuk, PES, viskon' })}
+                ${f('val-renk', 'Renklendirme / boya kodu', { ph: 'Renk kodu veya adı' })}
+                ${f('val-kalite-kat', 'Kalite kategorisi', { type: 'select', options: '<option value="1. KALİTE">1. Kalite</option><option value="2. KALİTE">2. Kalite</option><option value="FIRE">Fire / Atık</option>' })}
+                ${f('val-kullanim', 'Kullanım alanı', { type: 'select', options: '<option value="DOKUMA">Dokuma</option><option value="ÖRME">Örme</option><option value="TRIKOTAJ">Trikotaj</option><option value="GENEL">Genel</option>' })}
+            </div>
+            <div class="mamul-sheet__section">Teknik özellikler</div>
+            <div class="mamul-sheet__grid mamul-sheet__grid--kumas-tek">
+                ${f('val-bukum', 'Büküm (T/M)', { type: 'number', ph: '0' })}
+                ${f('val-bukum-yonu', 'Büküm yönü', { type: 'select', options: '<option value="">— Seç —</option><option value="S">S — Sağ</option><option value="Z">Z — Sol</option>' })}
+                ${f('val-mukavemet', 'Mukavemet (cN/tex)', { type: 'number', ph: '0' })}
+                ${f('val-uzama', 'Uzama (%)', { type: 'number', ph: '0' })}
+                ${f('val-ip-kolu', 'İp kolu (gr)', { type: 'number', ph: '0' })}
+                ${f('val-bobin-uzunluk', 'Bobin uzunluğu (m)', { type: 'number', ph: '0' })}
+                ${f('val-nem', 'Nem oranı (%)', { type: 'number', extra: 'step="0.1"', ph: '0.0' })}
+            </div>
+            <div class="mamul-sheet__section">Depo &amp; tedarik (kart varsayılanı)</div>
+            <div class="mamul-sheet__grid mamul-sheet__grid--kumas-terbiye">
+                ${f('val-tedarikci', 'Tedarikçi firma', { extra: 'style="text-transform:uppercase"', ph: 'Firma adı' })}
+                ${f('val-depo-konum', 'Depo konumu', { type: 'select', options: '<option value="A">BÖLGE A</option><option value="B">BÖLGE B</option><option value="C">BÖLGE C</option><option value="RAF">RAF DEPO</option><option value="DIS">DIŞ DEPO</option>' })}
+                ${f('val-min-stok', 'Minimum stok (kg)', { type: 'number', ph: '0' })}
+                ${f('val-fiyat', 'Alım fiyatı (₺/kg)', { type: 'number', extra: 'step="0.01"', ph: '0.00' })}
+                ${f('val-para-birimi', 'Para birimi', { type: 'select', options: '<option value="TRY">TL</option><option value="USD">USD</option><option value="EUR">EUR</option>' })}
+            </div>
+            <div class="mamul-sheet__section">Lotlar <span style="font-size:8px;color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0">— aynı stok kodu, farklı lot, ayrı miktar</span> <button type="button" onclick="iplikKartLotEkle({})" class="btn-pro" style="margin-left:8px;padding:2px 8px;font-size:8px">+ Lot ekle</button></div>
+            <div id="iplik-lot-container"></div>
+            <div id="iplik-kart-lot-toplam" style="padding:8px 12px 10px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;border-top:1px solid var(--border);background:var(--surface2);font-size:11px;color:var(--text2)"></div>
+            <div class="mamul-sheet__grid mamul-sheet__grid--aciklama">
+                ${f('val-notlar', 'Teknik not', { type: 'textarea', ph: 'Özel talimatlar, sertifika, müşteri notları…' })}
+            </div>
+        </div>`;
+    }
+    window.iplikStokKartFormHtml = iplikStokKartFormHtml;
+
+    function iplikKartListeTabloBaslikHtml() {
+        return `<div class="mamul-stok-liste-wrap">
+            <div class="mamul-stok-liste-grid mamul-stok-liste-grid--head iplik-kart-liste-grid">
+                <span></span><span>Stok kodu</span><span>İplik no</span><span>Marka</span><span>Cins</span>
+                <span>Lotlar</span><span style="text-align:right">Toplam kg</span><span></span>
+            </div>`;
+    }
+    window.iplikKartListeTabloBaslikHtml = iplikKartListeTabloBaslikHtml;
+
+    function iplikKartListeToggle(idx, ev) {
+        if (ev) ev.stopPropagation();
+        window._iplikKartExpanded = window._iplikKartExpanded || new Set();
+        const s = window._iplikKartExpanded;
+        if (s.has(idx)) s.delete(idx); else s.add(idx);
+        if (typeof loadData === 'function') loadData();
+    }
+    window.iplikKartListeToggle = iplikKartListeToggle;
+
+    function iplikKartListeSatirHtml(i, idx) {
+        const esc = (x) => (typeof pdfEsc === 'function' ? pdfEsc(x) : String(x ?? ''));
+        const lots = iplikKartLotlariAl(i);
+        const tot = iplikKartLotToplamKg(lots);
+        const lotOzet = lots.length
+            ? lots.map(l => (l.lot_no || '—') + ' · ' + (parseFloat(l.miktar_kg) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' kg').join(' | ')
+            : '—';
+        window._iplikKartExpanded = window._iplikKartExpanded || new Set();
+        const expanded = window._iplikKartExpanded.has(idx);
+        const lotSay = lots.length;
+        const row = `<div class="mamul-stok-liste-grid mamul-stok-liste-grid--row iplik-kart-liste-grid" onclick="${lotSay ? `iplikKartListeToggle(${idx})` : `showDetail(${idx})`}" title="Kartı aç / lotları göster">
+            <span class="mamul-stok-liste-grid__cell"><button type="button" onclick="event.stopPropagation();iplikKartListeToggle(${idx})" style="border:none;background:transparent;cursor:${lotSay ? 'pointer' : 'default'};color:var(--text3);font-size:10px;padding:0;opacity:${lotSay ? 1 : 0.35}">${lotSay ? (expanded ? '▼' : '▶') : '·'}</button></span>
+            <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--kod">${esc(i.stok_kodu || '—')}</span>
+            <span class="mamul-stok-liste-grid__cell">${esc(i.iplik_no || '—')}</span>
+            <span class="mamul-stok-liste-grid__cell">${esc(i.marka || '—')}</span>
+            <span class="mamul-stok-liste-grid__cell">${esc(i.cins || '—')}</span>
+            <span class="mamul-stok-liste-grid__cell" style="color:var(--accent2);font-size:9px">${esc(lotSay ? (lotSay + ' lot') : '—')}</span>
+            <span class="mamul-stok-liste-grid__cell" style="text-align:right;font-family:'DM Mono',monospace;color:${tot > 0 ? 'var(--emerald-c)' : 'var(--text3)'}">${tot.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</span>
+            <span class="mamul-stok-liste-grid__cell">
+                <button type="button" class="liste-gecmis-btn" onclick="event.stopPropagation();showDetail(${idx})">Kart</button>
+            </span>
+        </div>`;
+        if (!lotSay || !expanded) return row;
+        const lotRows = lots.map(l => `<div class="iplik-kart-lot-liste-satir">
+            <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--kod">${esc(i.stok_kodu || '—')}</span>
+            <span>${esc(l.lot_no || '—')}</span>
+            <span>${esc(l.renk || i.renk || '—')}</span>
+            <span>${esc(l.tedarikci || i.tedarikci || '—')}</span>
+            <span>${esc(l.depo_konum || i.depo_konum || '—')}</span>
+            <span style="text-align:right;font-family:'DM Mono',monospace">${(parseFloat(l.miktar_kg) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} kg</span>
+        </div>`).join('');
+        return row + `<div class="iplik-kart-lot-panel" onclick="event.stopPropagation()">
+            <div class="iplik-kart-lot-liste-satir iplik-kart-lot-liste-satir--head">
+                <span>Stok kodu</span><span>Lot no</span><span>Renk</span><span>Tedarikçi</span><span>Depo</span><span style="text-align:right">Miktar</span>
+            </div>
+            ${lotRows}
+            <div class="iplik-kart-lot-liste-satir" style="font-weight:700;border-top:1px solid var(--border)">
+                <span>${esc(i.stok_kodu || '—')}</span><span>TOPLAM</span><span></span><span></span><span></span>
+                <span style="text-align:right;color:var(--emerald-c)">${tot.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} kg</span>
+            </div>
+            <div style="font-size:8px;color:var(--text3);padding:4px 2px 0">${esc(lotOzet)}</div>
+        </div>`;
+    }
+    window.iplikKartListeSatirHtml = iplikKartListeSatirHtml;
 
     function kumasStokKartFormHtml(img) {
         const f = (id, label, opts) => {

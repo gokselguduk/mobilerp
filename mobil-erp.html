@@ -16,13 +16,13 @@
     <link rel="apple-touch-icon" href="icon-192.png" id="erp-apple-touch-icon">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" id="erp-icon-192">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" id="erp-icon-512">
-    <title>Simteks ERP Mobil · FLAT-20260820m</title>
+    <title>Simteks ERP Mobil · FLAT-20260820h</title>
     <script src="erp-config.js"></script>
     <script src="erp-build.js"></script>
     <script>
     /* Eski Service Worker / cache eski HTML tutmasın */
     (function () {
-      var V = 'erp-mobil-boot-20260820m';
+      var V = 'erp-mobil-boot-20260820h';
       try {
         if (localStorage.getItem('erp_mobil_boot_v') === V) return;
         localStorage.setItem('erp_mobil_boot_v', V);
@@ -3554,144 +3554,6 @@
             }
         }
 
-        /* Numune formu — dar ekran (wizard + foto sütunu) */
-        @media (max-width: 900px) {
-            #inputs-grid.numune-layout {
-                display: flex !important;
-                flex-direction: column !important;
-                gap: 14px !important;
-                align-items: stretch !important;
-            }
-            #inputs-grid.numune-layout > div:last-child {
-                position: static !important;
-            }
-            #inputs-grid.numune-layout label[for="val-foto"] {
-                height: auto !important;
-                min-height: 180px;
-                max-height: 260px;
-                position: relative !important;
-            }
-            #inputs-grid.numune-layout label[for="val-foto"] #img-preview {
-                position: absolute;
-                inset: 0;
-                z-index: 2;
-                width: 100% !important;
-                height: 100% !important;
-                min-height: 180px;
-                object-fit: cover;
-            }
-            #inputs-grid.numune-layout label[for="val-foto"] #foto-placeholder {
-                position: relative;
-                z-index: 1;
-                min-height: 180px;
-                width: 100%;
-            }
-        }
-        .nu-mobile-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
-        .nu-mobile-konst { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-        .nu-mobile-ham { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-        .nu-atki-row { display: grid; grid-template-columns: 1fr 1fr 1fr 32px; gap: 8px; align-items: end; }
-        @media (max-width: 640px) {
-            .nu-mobile-2col { grid-template-columns: 1fr !important; }
-            .nu-mobile-konst { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-            .nu-mobile-ham { grid-template-columns: 1fr !important; }
-            .nu-atki-row { grid-template-columns: 1fr 1fr !important; }
-            #inputs-grid.numune-layout .wizard-step.panel-box { padding: 14px 12px !important; }
-            #inputs-grid.numune-layout .wizard-nav-btn { min-height: 44px; padding: 10px 16px !important; }
-            #inputs-grid.numune-layout #numune-step-2 .panel-head { flex-wrap: wrap; gap: 8px; }
-            .nu-nav-row { flex-direction: column !important; align-items: stretch !important; }
-            .nu-nav-row .wizard-nav-btn { width: 100%; justify-content: center; }
-            body[data-erp-mode="NUMUNE_URETIM"] #main-list .record-item { flex-wrap: wrap; align-items: flex-start; }
-            body[data-erp-mode="NUMUNE_URETIM"] #main-list .record-item > div:first-child { min-width: 0; flex: 1 1 100%; }
-        }
-        body[data-erp-mode="NUMUNE_URETIM"] #main-list .numune-liste-satir.record-item {
-            padding: 8px 10px;
-            gap: 6px;
-        }
-        body[data-erp-mode="NUMUNE_URETIM"] .numune-liste-toolbar .pill {
-            font-size: 9px;
-            padding: 4px 9px;
-        }
-        .numune-liste-wrap {
-            overflow-x: auto;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: var(--surface);
-            margin-bottom: 8px;
-        }
-        .numune-liste-grid {
-            display: grid;
-            grid-template-columns: 72px minmax(96px, 1.1fr) minmax(76px, 0.9fr) minmax(68px, 0.75fr) minmax(110px, 1.15fr) 72px 68px minmax(148px, auto);
-            gap: 8px 10px;
-            align-items: center;
-            padding: 9px 12px;
-            min-width: 980px;
-        }
-        .numune-liste-grid--kimlik {
-            grid-template-columns: 76px minmax(100px, 1.15fr) 84px minmax(80px, 0.9fr) minmax(72px, 0.8fr) minmax(130px, auto);
-            min-width: 820px;
-        }
-        .numune-liste-grid--arsiv {
-            grid-template-columns: 72px minmax(96px, 1fr) minmax(76px, 0.85fr) minmax(130px, 1.2fr) 96px 76px minmax(210px, auto);
-            min-width: 920px;
-        }
-        .numune-liste-grid--head {
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            background: var(--surface2);
-            border-bottom: 1px solid var(--border);
-            font-size: 7px;
-            font-weight: 700;
-            color: var(--text3);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            font-family: 'DM Mono', monospace;
-        }
-        .numune-liste-grid--row {
-            border-bottom: 1px solid var(--border);
-            cursor: pointer;
-            transition: background 0.12s;
-        }
-        .numune-liste-grid--row:last-child { border-bottom: none; }
-        .numune-liste-grid--row:hover { background: var(--surface2); }
-        .numune-liste-grid--row.numune-liste-grid--basarisiz { opacity: 0.65; }
-        .numune-liste-grid__cell {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text2);
-            font-family: 'DM Mono', monospace;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-width: 0;
-        }
-        .numune-liste-grid__cell--kod {
-            font-weight: 700;
-            color: var(--cyan-c);
-        }
-        .numune-liste-grid__cell--urun {
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 600;
-            color: var(--text);
-        }
-        .numune-liste-grid__cell--urun.numune-liste-grid__cell--iptal {
-            text-decoration: line-through;
-            color: var(--text3);
-        }
-        .numune-liste-grid__cell--teknik {
-            font-size: 9px;
-            color: var(--text3);
-        }
-        .numune-liste-grid__cell--aksiyon {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 4px;
-            flex-wrap: wrap;
-            overflow: visible;
-            white-space: normal;
-        }
         /* Yıkama takip — mobil telefon */
         .yk-page { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
         .yk-tabs {
@@ -3947,7 +3809,8 @@
                 position: static !important;
                 top: auto !important;
             }
-            body[data-erp-mode="MAMUL_KART_GIRIS"] #inputs-grid.mamul-layout {
+            body[data-erp-mode="MAMUL_KART_GIRIS"] #inputs-grid.mamul-layout,
+            body[data-erp-mode="IPLIK_KART_GIRIS"] #inputs-grid.mamul-layout {
                 display: block !important;
                 width: 100% !important;
             }
@@ -4251,7 +4114,17 @@
 .ms-filtre-bar__field--tip { flex: 0 0 110px; }
 .ms-filtre-bar__field--date { flex: 0 0 128px; }
 .ms-filtre-bar__reset { height: 32px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface2); color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; }
-body[data-erp-mode="KUMAS_KART_GIRIS"] #inputs-grid.mamul-layout { display: block !important; width: 100% !important; }
+body[data-erp-mode="KUMAS_KART_GIRIS"] #inputs-grid.mamul-layout,
+body[data-erp-mode="IPLIK_KART_GIRIS"] #inputs-grid.mamul-layout { display: block !important; width: 100% !important; }
+.mamul-sheet--kumas #iplik-lot-container { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; }
+body[data-erp-mode="IPLIK_KART_GIRIS"] .iplik-kart-lot-row {
+    grid-template-columns: 1fr 1fr !important;
+}
+body[data-erp-mode="IPLIK_KART_GIRIS"] .iplik-kart-lot-row > button {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    height: 36px !important;
+}
 @media (max-width: 720px) {
     .mamul-talimat-sheet__govde { grid-template-columns: 1fr; }
     .mamul-talimat-sheet__foto { border-left: none; border-top: 1px solid var(--border); width: auto; min-width: 0; }
@@ -4302,18 +4175,24 @@ body[data-erp-mode="STOK_SAYIM"] .content-scroll { padding-bottom: 0 !important;
 }
 .sayim-kart--dolu { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
 .sayim-kart-ust { display: flex; align-items: flex-start; gap: 8px; }
-.sayim-kart-ad { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.25; }
-.sayim-kart-stok {
-    flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface2); color: var(--text);
-    border-radius: 10px; padding: 6px 10px; font-size: 14px; font-weight: 800; min-height: 40px; cursor: pointer;
+.sayim-kart-ad { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.25; }
+.sayim-kart-cift {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; align-items: stretch;
 }
-.sayim-kart-stok em { display: block; font-style: normal; font-size: 9px; font-weight: 700; color: var(--text3); letter-spacing: .04em; }
+.sayim-kart-stok {
+    width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 76px; border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    border-radius: 12px; padding: 8px 6px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.sayim-kart-stok em { display: block; font-style: normal; font-size: 10px; font-weight: 800; color: var(--text3); letter-spacing: .04em; text-transform: uppercase; }
+.sayim-kart-stok strong { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.sayim-kart-stok span { font-size: 10px; font-weight: 700; color: var(--text3); }
 .sayim-kart-kod { margin-top: 4px; font-size: 12px; color: var(--text3); font-family: 'DM Mono', ui-monospace, monospace; }
-.sayim-kart-say { display: block; margin-top: 10px; }
-.sayim-kart-say > span { display: block; font-size: 11px; font-weight: 700; color: var(--text3); margin-bottom: 6px; }
+.sayim-kart-say { display: flex; flex-direction: column; margin: 0; min-width: 0; }
+.sayim-kart-say > span { display: block; font-size: 10px; font-weight: 800; color: var(--text3); margin-bottom: 4px; letter-spacing: .04em; text-transform: uppercase; text-align: center; }
 .sayim-kart .sayim-inp {
-    width: 100%; min-height: 56px; padding: 12px 14px; border: 2px solid var(--border); border-radius: 12px;
-    font-size: 28px; font-weight: 800; text-align: center; background: #fff; color: var(--text);
+    width: 100%; flex: 1; min-height: 56px; padding: 10px 8px; border: 2px solid var(--border); border-radius: 12px;
+    font-size: 22px; font-weight: 800; text-align: center; background: #fff; color: var(--text);
     -webkit-appearance: none; appearance: none;
 }
 .sayim-kart .sayim-inp:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
@@ -4558,9 +4437,6 @@ body.erp-mobil-lite .ms-act:active {
       <div onclick="openMamulKartGiris()" class="nav-pro-sub" id="nav-MAMUL_KART_GIRIS" data-erp-mode="MAMUL_KART_GIRIS">Yeni Mamül Kartı</div>
     </div>
 
-    <div onclick="setAppMode('NUMUNE_URETIM'); closeAllSubs();" class="nav-pro" id="nav-NUMUNE_URETIM">
-      <span class="nav-pro-icon">🧪</span> Numune
-    </div>
 
     <div class="nav-rail-divider" aria-hidden="true"></div>
 
@@ -4634,11 +4510,8 @@ body.erp-mobil-lite .ms-act:active {
 
   <!-- Bottom -->
   <div class="sidebar-footer">
-    <button onclick="syncAllData(true)" class="sync-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
+    <button onclick="syncAllData(true, { light: true, siparisLight: true })" class="sync-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
       ↻ Senkronize Et
-    </button>
-    <button type="button" onclick="setAppMode('DIAGNOSTICS')" class="sidebar-ghost-btn" data-erp-mode="DIAGNOSTICS">
-      ⚙ Sistem Testi
     </button>
   <button type="button" onclick="erpLogout()" class="sidebar-ghost-btn" style="color:var(--rose-c);border-color:rgba(251,113,133,0.3)">
       ⏻ Çıkış Yap
@@ -4677,7 +4550,7 @@ body.erp-mobil-lite .ms-act:active {
             <div onclick="toggleTheme()" id="theme-btn" title="Tema Değiştir"
                 style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:15px;transition:all 0.15s"
                 onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">🌙</div>
-            <div onclick="syncAllData(true)" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
+            <div onclick="syncAllData(true, { light: true, siparisLight: true })" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
         </div>
     </div>
     <input id="siparis-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importSiparisExcel(this)">
@@ -4809,13 +4682,13 @@ body.erp-mobil-lite .ms-act:active {
     </div>
 </div>
 
-<!-- ERP-MOBIL-BUILD: FLAT-20260820m — scriptler düz klasör VEYA assets/ altında -->
+<!-- ERP-MOBIL-BUILD: FLAT-20260820h — scriptler düz klasör VEYA assets/ altında -->
 <div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
     <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
     <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">Uygulama scripti çalışmadı.</p>
     <pre id="erp-yukleme-hatasi-detay" style="display:none;margin:12px 0;padding:12px;background:#0b0f17;border:1px solid #334155;border-radius:8px;color:#fca5a5;font-size:12px;white-space:pre-wrap;word-break:break-word"></pre>
     <p style="margin:12px 0 0;line-height:1.5;color:#64748b;font-size:13px">
-      Sekme başlığı <strong>FLAT-20260820m</strong> olmalı.<br>
+      Sekme başlığı <strong>FLAT-20260820h</strong> olmalı.<br>
       Yerel açılış: <code>http://127.0.0.1:8765/mobil-erp.html</code>
     </p>
 </div>
@@ -4854,7 +4727,7 @@ body.erp-mobil-lite .ms-act:active {
     });
   }
 
-  var v = '20260820c';
+  var v = '20260820h';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['stok-kart-desktop.js?v=' + v, 'assets/stok-kart-desktop.js?v=' + v, 'mobil/assets/stok-kart-desktop.js?v=' + v],

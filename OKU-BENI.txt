@@ -7,17 +7,24 @@ SIMTEKS MOBIL — YUKLEME
 
 KONTROL (cok onemli):
   Sayfa acilinca TARAYICI SEKME BASLIGI soyle olmali:
-    "Simteks ERP Mobil · FLAT-20260806"
+    "Simteks ERP Mobil · FLAT-20260820h"
 
   Hala "assets/mobil/... bulunamadi" yazisi goruyorsaniz
   ESKI dosya acik demektir → Gizli pencere (Incognito) ile acin.
+  Veya Ctrl+F5 ile zorla yenileyin.
+
+Bu surum:
+  Iplik stok karti, kumas karti gibi tek sayfa form + ayni stok kodu altinda lot satirlari.
 
 Dosyalar (hepsi ayni klasorde):
   mobil-erp.html
   mobil-app.js          (~2 MB)
-  erp-config.js
+  erp-config.js         (sunucuda varsa birakin; yoksa HTML yine calisir)
   erp-build.js
   stok-kart-desktop.js
   mamul-depo-toplu.js
+  stok-sayim.js
   erp_auth_tablo_fix.embed.js
   index.html
+  icon-192.png
+  icon-512.png
