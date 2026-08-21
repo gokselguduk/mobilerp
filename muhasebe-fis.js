@@ -565,7 +565,20 @@ async function muhasebeFisCekiGoster(fisId) {
         }
     }
 
-    // Kalem listesi
+    muhasebeFisOverlayAc(fisId);
+}
+
+async function muhasebeFisOverlayAc(fisId) {
+    _muhasebeFisCekiAktif = fisId;
+    if (!(_muhasebeFisCache||[]).length) await muhasebeFisleriYukle();
+    const fis = muhasebeFisBul(fisId);
+    if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return; }
+
+    const esc = muhasebeFisEsc;
+    const hIds = (fis.hareket_ids||[]).filter(Boolean).map(String);
+    const kumasStok = typeof dataCache !== 'undefined' ? (dataCache.kumas_stok||[]) : [];
+    const hareketler = kumasStok.filter(h => hIds.includes(String(h.id)));
+
     let kalemler = (fis.kalemler||[]).filter(muhasebeFisKalemDoluMu);
     if (fis.depo_grup === 'KUMAS' && hareketler.length) {
         const k2 = hareketler.map(h => muhasebeFisKalemFromPayload(h, 'KUMAS')).filter(muhasebeFisKalemDoluMu);
@@ -582,21 +595,21 @@ async function muhasebeFisCekiGoster(fisId) {
     });
 
     const html = `<div id="mf-ceki-overlay" style="position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.6);display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;overflow:hidden;backdrop-filter:blur(2px)">
-        <style>@media print{#mf-ceki-overlay{position:static;background:none;padding:0;inset:auto}.mf-ceki-head,.mf-ceki-acts,.mf-ov-kapat{display:none!important}#mf-ceki-overlay>div{box-shadow:none;border-radius:0;width:100%!important}}</style>
-        <button type="button" class="mf-ov-kapat" onclick="event.stopPropagation();muhasebeFisCekiKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto">Kapat</button>
-        <div class="mf-ceki-box" style="width:min(${fis.depo_grup==='KUMAS'?'1100px':'860px'},100%);background:#fff;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:auto;margin:0 auto 20px;flex:1;min-height:0">
-            <div class="mf-ceki-head" style="background:#0f172a;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <style>@media print{#mf-ceki-overlay{position:static;background:none;padding:0;inset:auto}.mf-ceki-head,.mf-ceki-toolbar{display:none!important}#mf-ceki-overlay>div{box-shadow:none;border-radius:0;width:100%!important}}</style>
+        <div class="mf-ceki-box kumas-ceki-box" style="width:min(${fis.depo_grup==='KUMAS'?'1100px':'860px'},100%);background:#fff;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:auto;margin:0 auto;flex:1;min-height:0">
+            <div class="kumas-ceki-head mf-ceki-head">
                 <div>
-                    <div style="font-size:13px;font-weight:800;margin-bottom:3px">${esc(fis.fis_no)} &nbsp;·&nbsp; ${esc(fis.musteri)}</div>
-                    <div style="font-size:11px;color:#94a3b8">${esc(tarih)} · ${esc(tipYazi)} · ${esc(durumYazi)}</div>
-                    ${fis.irsaliye_no ? `<div style="font-size:11px;color:#fbbf24;margin-top:2px">İrsaliye No: ${esc(fis.irsaliye_no)}</div>` : ''}
+                    <h3>MUHASEBE FİŞİ</h3>
+                    <div class="kumas-ceki-meta">${esc(fis.fis_no)} · ${esc(fis.musteri)}</div>
+                    <div class="kumas-ceki-musteri">${esc(tarih)} · ${esc(tipYazi)} · ${esc(durumYazi)}${fis.irsaliye_no ? ' · İrsaliye: ' + esc(fis.irsaliye_no) : ''}</div>
                 </div>
-                <div class="mf-ceki-acts" style="display:flex;gap:8px">
-                    <button type="button" onclick="event.stopPropagation();muhasebeFisPdfYaz('${esc(fis.id)}')" style="padding:7px 14px;background:#fff;color:#0f172a;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">🖨 Yazdır</button>
-                    <button type="button" onclick="muhasebeFisCekiKapat()" style="padding:7px 14px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">✕ Kapat</button>
+                <div class="kumas-ceki-toolbar mf-ceki-toolbar">
+                    <button type="button" onclick="event.stopPropagation();muhasebeFisPdfYaz('${esc(fis.id)}')">Yazdır</button>
+                    <button type="button" onclick="event.stopPropagation();muhasebeFisPdfIndir('${esc(fis.id)}')">PDF indir</button>
+                    <button type="button" class="is-kapat" onclick="muhasebeFisCekiKapat()">Kapat</button>
                 </div>
             </div>
-            <div style="padding:16px;overflow:auto;max-height:calc(100vh - 180px)">
+            <div style="padding:16px;overflow:auto;max-height:none">
                 ${kalemler.length ? kalemTablo : '<div style="padding:32px;text-align:center;color:#94a3b8;font-size:13px">Bu fişe ait kalem bulunamadı.</div>'}
             </div>
         </div>
@@ -820,7 +833,7 @@ function muhasebeFisListeGovdeYaz(list, ham) {
                 <button type="button" class="ms-filtre-btn" onclick="muhasebeFisBeklemeyeAl('${id}')" style="font-size:10px;padding:2px 8px">Geri al</button>
                </div>`;
         return `<div class="mf-fis-row" id="mf-row-${id}">
-            <div class="mf-fis-head" onclick="muhasebeFisSatirToggle('${id}')">
+            <div class="mf-fis-head" onclick="muhasebeFisOverlayAc('${id}')">
                 <span class="mf-fis-chev" id="mf-chev-${id}">${acik?'▾':'›'}</span>
                 <div class="mf-fis-main">
                     <div class="mf-fis-no">${esc(fis.fis_no)} · ${esc(tarih)} · ${esc(fis.depo_grup==='KUMAS'?'Kumaş':'Mamül')}</div>
@@ -831,7 +844,9 @@ function muhasebeFisListeGovdeYaz(list, ham) {
                 </div>
                 <div class="mf-fis-acts" onclick="event.stopPropagation()">
                     ${cekiBtn}
+                    <button type="button" class="ms-filtre-btn" onclick="muhasebeFisOverlayAc('${id}')">Fiş</button>
                     <button type="button" class="ms-filtre-btn" onclick="muhasebeFisPdfYaz('${id}')">Yazdır</button>
+                    <button type="button" class="ms-filtre-btn" onclick="muhasebeFisPdfIndir('${id}')">PDF</button>
                     ${durumBtn}
                 </div>
             </div>
@@ -898,8 +913,35 @@ function muhasebeFisYazdirHucreler(k, depoGrup) {
 }
 
 async function muhasebeFisPdfYaz(id) {
+    const html = muhasebeFisBelgeHtml(id);
+    if (!html) return;
     const fis = muhasebeFisBul(id);
-    if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return; }
+    if (typeof erpBelgeYazdir === 'function') erpBelgeYazdir(html, String((fis && fis.fis_no) || 'Fiş'));
+    else if (typeof erpPrintHtml === 'function') erpPrintHtml(html, { title: String((fis && fis.fis_no) || 'Fiş') });
+    else {
+        const win = window.open('', '_blank');
+        if (win) { win.document.write(html); win.document.close(); }
+        else if (typeof erpToast === 'function') erpToast('Popup engellendi — tarayıcıda popup iznini açın', 'warn');
+    }
+}
+
+async function muhasebeFisPdfIndir(id) {
+    const html = muhasebeFisBelgeHtml(id);
+    if (!html) return;
+    const fis = muhasebeFisBul(id);
+    const ad = (fis && fis.irsaliye_no)
+        ? ('irsaliye-' + fis.irsaliye_no)
+        : ('muhasebe-fis-' + ((fis && fis.fis_no) || id || 'belge'));
+    if (typeof erpBelgePdfIndir === 'function') {
+        await erpBelgePdfIndir(html, ad);
+        return;
+    }
+    muhasebeFisPdfYaz(id);
+}
+
+function muhasebeFisBelgeHtml(id) {
+    const fis = muhasebeFisBul(id);
+    if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return ''; }
     const esc = muhasebeFisEsc;
 
     let kalemler = (fis.kalemler||[]).filter(muhasebeFisKalemDoluMu);
@@ -999,13 +1041,7 @@ async function muhasebeFisPdfYaz(id) {
         <div class="dip">Bu belge Simteks Tekstil San. ve Tic. Ltd. Şti. muhasebe teslim fişidir.</div>
     </div>
     </body></html>`;
-    if (typeof erpPrintHtml === 'function') {
-        erpPrintHtml(html, { title: String(fis.fis_no || 'Fiş') });
-        return;
-    }
-    const win = window.open('', '_blank');
-    if (win) { win.document.write(html); win.document.close(); }
-    else if (typeof erpToast === 'function') erpToast('Popup engellendi — tarayıcıda popup iznini açın', 'warn');
+    return html;
 }
 
 /* ─── Window exports ─── */
@@ -1020,8 +1056,10 @@ window.muhasebeFisGecmisToggle       = muhasebeFisGecmisToggle;
 window.muhasebeFisFiltreYenile       = muhasebeFisFiltreYenile;
 window.muhasebeFisFiltreleriSifirla  = muhasebeFisFiltreleriSifirla;
 window.muhasebeFisCekiGoster         = muhasebeFisCekiGoster;
+window.muhasebeFisOverlayAc          = muhasebeFisOverlayAc;
 window.muhasebeFisCekiKapat          = muhasebeFisCekiKapat;
 window.muhasebeFisPdfYaz             = muhasebeFisPdfYaz;
+window.muhasebeFisPdfIndir           = muhasebeFisPdfIndir;
 window.renderMuhasebeFisListe        = renderMuhasebeFisListe;
 window.muhasebeFisBul                = muhasebeFisBul;
 window.muhasebeFisKalemFromPayload   = muhasebeFisKalemFromPayload;

@@ -3817,21 +3817,23 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         ov = document.createElement('div');
         ov.id = KUMAS_CEKI_OV_ID;
         ov.dataset.cekiMod = 'toplu';
-        ov.innerHTML = `<button type="button" class="kumas-ceki-kapat" onclick="kumasCekiTopluKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
-        <div class="kumas-ceki-box" onclick="event.stopPropagation()">
+        ov.innerHTML = `<div class="kumas-ceki-box" onclick="event.stopPropagation()">
             <div class="kumas-ceki-head">
                 <div>
                     <h3>ÇEKİ LİSTESİ</h3>
                     <div class="kumas-ceki-meta" id="kumas-ceki-urun">—</div>
                     <div class="kumas-ceki-musteri" id="kumas-ceki-musteri"></div>
                 </div>
+                <div class="kumas-ceki-toolbar">
+                    <button type="button" onclick="kumasCekiTopluYazdir()">Yazdır</button>
+                    <button type="button" onclick="kumasCekiTopluPdfIndir()">PDF indir</button>
+                    <button type="button" class="is-kapat" onclick="kumasCekiTopluKapat()">Kapat</button>
+                </div>
                 <div class="kumas-ceki-acts">
                     <button type="button" onclick="kumasCekiSatirEkle(25)">+25 top</button>
                     <button type="button" onclick="kumasCekiSatirEkle(100)">+100 top</button>
                     <button type="button" onclick="kumasCekiTopluTemizle()">Temizle</button>
-                    <button type="button" onclick="kumasCekiTopluYazdir()">Yazdır</button>
                     <button type="button" class="is-save" onclick="kumasCekiTopluKaydet()">Listeyi kaydet</button>
-                    <button type="button" onclick="kumasCekiTopluKapat()">Kapat</button>
                 </div>
             </div>
             <div class="kumas-ceki-ozet-bar" id="kumas-ceki-live-ozet"></div>
@@ -4052,6 +4054,26 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             return;
         }
         if (typeof erpToast === 'function') erpToast('Yazdırma modülü yüklenemedi.', 'error');
+    };
+    window.kumasCekiTopluPdfIndir = function () {
+        const draft = window._kumasCekiDraft;
+        if (!draft) return;
+        const row = (window._kumasTopluSatirlar || [])[draft.idx] || {};
+        const dolu = kumasCekiDoluListe(draft.slots).map((x, i) => ({ no: i + 1, mt: x.mt, kg: x.kg }));
+        if (!dolu.length) {
+            if (typeof erpToast === 'function') erpToast('Liste boş.', 'warn');
+            return;
+        }
+        const meta = {
+            stok_kodu: row.kod || '',
+            urun_adi: row.ad || '',
+            musteri: String(document.getElementById('val-afirma')?.value || '').trim()
+        };
+        if (typeof kumasCekiA4Html !== 'function' || typeof erpBelgePdfIndir !== 'function') {
+            window.kumasCekiTopluYazdir();
+            return;
+        }
+        erpBelgePdfIndir(kumasCekiA4Html(dolu, meta), 'ceki-listesi' + (row.kod ? '-' + row.kod : ''));
     };
     window.kumasCekiFormOzetGuncelle = kumasCekiFormOzetGuncelle;
 

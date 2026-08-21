@@ -16,13 +16,13 @@
     <link rel="apple-touch-icon" href="icon-192.png" id="erp-apple-touch-icon">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" id="erp-icon-192">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" id="erp-icon-512">
-    <title>Simteks ERP Mobil · FLAT-20260821q</title>
+    <title>Simteks ERP Mobil · FLAT-20260821s</title>
     <script src="erp-config.js"></script>
     <script src="erp-build.js"></script>
     <script>
     /* Eski Service Worker / cache eski HTML tutmasın */
     (function () {
-      var V = 'erp-mobil-boot-20260821q';
+      var V = 'erp-mobil-boot-20260821s';
       try {
         if (localStorage.getItem('erp_mobil_boot_v') === V) return;
         localStorage.setItem('erp_mobil_boot_v', V);
@@ -4292,12 +4292,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
     flex-direction: column; padding: 0; box-sizing: border-box; overflow: hidden;
 }
 #kumas-ceki-overlay.is-open, #kumas-ceki-toplu-overlay.is-open, #kumas-ceki-goruntule-overlay.is-open { display: flex; }
-.kumas-ceki-kapat, .mf-ov-kapat {
-    flex: 0 0 auto; width: 100%; min-height: 48px; border: none; border-radius: 0;
-    background: #111; color: #fff; font-size: 15px; font-weight: 800;
-    padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
-    cursor: pointer; z-index: 40; letter-spacing: .02em;
-}
 #mf-ceki-overlay {
     flex-direction: column !important; align-items: stretch !important;
     justify-content: flex-start !important; padding: 0 !important; overflow: hidden !important;
@@ -4305,15 +4299,27 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 #mf-ceki-overlay .mf-ceki-box {
     width: 100% !important; max-width: 100% !important; border-radius: 0 !important;
-    margin: 0 !important; flex: 1 1 auto; min-height: 0; overflow: auto;
-    box-shadow: none !important;
+    margin: 0 !important; flex: 1 1 auto; min-height: 0; overflow: auto; box-shadow: none !important;
 }
+.kumas-ceki-toolbar, .mf-ceki-toolbar {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; width: 100%;
+    margin-top: 10px;
+}
+.kumas-ceki-toolbar button, .mf-ceki-toolbar button {
+    min-height: 44px; border-radius: 10px; border: 1px solid #cfcfcf; background: #fff;
+    font-size: 13px; font-weight: 750; cursor: pointer; padding: 0 8px;
+}
+.kumas-ceki-toolbar .is-kapat, .mf-ceki-toolbar .is-kapat { background: #111; color: #fff; border-color: #111; }
 .kumas-ceki-box { width: 100% !important; max-width: 100% !important; flex: 1 1 auto; height: auto !important; max-height: none !important; min-height: 0; overflow: auto; background: #fff; color: #111; border-radius: 0; display: flex; flex-direction: column; }
-.kumas-ceki-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 14px; border-bottom: 1px solid #e5e5e5; background: #f7f7f7; position: sticky; top: 0; z-index: 2; }
+.kumas-ceki-head {
+    display: flex; flex-direction: column; align-items: stretch; gap: 0;
+    padding: calc(10px + var(--erp-sat, env(safe-area-inset-top, 0px))) 14px 12px;
+    border-bottom: 1px solid #e5e5e5; background: #f7f7f7; position: sticky; top: 0; z-index: 2;
+}
 .kumas-ceki-head h3 { margin: 0; font-size: 15px; font-weight: 800; }
 .kumas-ceki-meta { font-size: 13px; font-weight: 700; }
 .kumas-ceki-musteri { font-size: 12px; font-weight: 700; margin-top: 2px; }
-.kumas-ceki-acts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.kumas-ceki-acts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 8px; }
 .kumas-ceki-acts button { min-height: 40px; flex: 1 1 calc(50% - 6px); padding: 0 10px; border-radius: 8px; border: 1px solid #cfcfcf; background: #fff; font-size: 12px; font-weight: 650; cursor: pointer; }
 .kumas-ceki-acts .is-save { background: #111; color: #fff; border-color: #111; flex: 1 1 100%; }
 .kumas-ceki-ozet-bar { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid #e5e5e5; font-size: 13px; font-weight: 700; background: #fff; }
@@ -4972,13 +4978,13 @@ body.erp-mobil-lite .ms-act:active {
     </div>
 </div>
 
-<!-- ERP-MOBIL-BUILD: FLAT-20260821q — scriptler düz klasör VEYA assets/ altında -->
+<!-- ERP-MOBIL-BUILD: FLAT-20260821s — scriptler düz klasör VEYA assets/ altında -->
 <div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
     <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
     <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">Uygulama scripti çalışmadı.</p>
     <pre id="erp-yukleme-hatasi-detay" style="display:none;margin:12px 0;padding:12px;background:#0b0f17;border:1px solid #334155;border-radius:8px;color:#fca5a5;font-size:12px;white-space:pre-wrap;word-break:break-word"></pre>
     <p style="margin:12px 0 0;line-height:1.5;color:#64748b;font-size:13px">
-      Sekme başlığı <strong>FLAT-20260821q</strong> olmalı.<br>
+      Sekme başlığı <strong>FLAT-20260821s</strong> olmalı.<br>
       Yerel açılış: <code>http://127.0.0.1:8765/mobil-erp.html</code>
     </p>
 </div>
@@ -5017,7 +5023,7 @@ body.erp-mobil-lite .ms-act:active {
     });
   }
 
-  var v = '20260821q';
+  var v = '20260821s';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],

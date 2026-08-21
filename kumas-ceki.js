@@ -45,21 +45,23 @@ function kumasCekiAc() {
     div.id = 'kumas-ceki-overlay';
     div.dataset.cekiMod = 'form';
     div.innerHTML = `
-        <button type="button" class="kumas-ceki-kapat" onclick="kumasCekiKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
         <div class="kumas-ceki-box">
             <div class="kumas-ceki-head">
                 <div>
-                    <h3>📋 ÇEKİ LİSTESİ</h3>
+                    <h3>ÇEKİ LİSTESİ</h3>
                     <div class="kumas-ceki-meta" id="kumas-ceki-stok-meta">Ürün seçilmedi</div>
                     <div class="kumas-ceki-musteri" id="kumas-ceki-musteri-meta"></div>
+                </div>
+                <div class="kumas-ceki-toolbar">
+                    <button type="button" onclick="kumasCekiYazdir()">Yazdır</button>
+                    <button type="button" onclick="kumasCekiPdfIndir()">PDF indir</button>
+                    <button type="button" class="is-kapat" onclick="kumasCekiKapat()">Kapat</button>
                 </div>
                 <div class="kumas-ceki-acts">
                     <button type="button" onclick="kumasCekiEkle(${KUMAS_CEKI_SLOT})">+${KUMAS_CEKI_SLOT} top</button>
                     <button type="button" onclick="kumasCekiEkle(100)">+100 top</button>
                     <button type="button" onclick="kumasCekiTemizle()">Temizle</button>
-                    <button type="button" onclick="kumasCekiYazdir()">Yazdır</button>
                     <button type="button" class="is-save" onclick="kumasCekiKaydet()">Listeyi kaydet</button>
-                    <button type="button" onclick="kumasCekiKapat()">Kapat</button>
                 </div>
             </div>
             <div class="kumas-ceki-ozet-bar">
@@ -377,19 +379,19 @@ function kumasCekiGoster(notlar, baslikBilgi) {
     ov = document.createElement('div');
     ov.id = 'kumas-ceki-goruntule-overlay';
     ov.classList.add('is-open');
-    ov.style.cssText = 'position:fixed;inset:0;z-index:2147482600;background:rgba(8,12,24,0.6);display:flex;align-items:stretch;justify-content:center;padding:12px;box-sizing:border-box';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147482600;background:rgba(8,12,24,0.6);display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;box-sizing:border-box';
     ov.innerHTML = `
-        <button type="button" class="kumas-ceki-kapat" onclick="kumasCekiGoruntuleKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
         <div class="kumas-ceki-box">
             <div class="kumas-ceki-head">
                 <div>
-                    <h3>📋 ÇEKİ LİSTESİ</h3>
+                    <h3>ÇEKİ LİSTESİ</h3>
                     <div class="kumas-ceki-meta">${kumasCekiEsc(meta.urunSatir)}</div>
                     ${meta.musteri ? `<div class="kumas-ceki-musteri">Müşteri: ${kumasCekiEsc(meta.musteri)}</div>` : ''}
                 </div>
-                <div class="kumas-ceki-acts">
-                    <button type="button" onclick="kumasCekiGosteriYazdir('${encodeURIComponent(JSON.stringify(satirlar))}','${metaEnc}')">Yazdır / PDF</button>
-                    <button type="button" onclick="kumasCekiGoruntuleKapat()">Kapat</button>
+                <div class="kumas-ceki-toolbar">
+                    <button type="button" onclick="kumasCekiGosteriYazdir('${encodeURIComponent(JSON.stringify(satirlar))}','${metaEnc}')">Yazdır</button>
+                    <button type="button" onclick="kumasCekiGosteriPdfIndir('${encodeURIComponent(JSON.stringify(satirlar))}','${metaEnc}')">PDF indir</button>
+                    <button type="button" class="is-kapat" onclick="kumasCekiGoruntuleKapat()">Kapat</button>
                 </div>
             </div>
             <div class="kumas-ceki-ozet-bar">
@@ -526,18 +528,99 @@ function kumasCekiA4Html(satirlar, meta) {
     </body></html>`;
 }
 
-function kumasCekiA4Yazdir(satirlar, meta) {
-    const html = kumasCekiA4Html(satirlar, meta || {});
-    if (typeof erpPrintHtml === 'function') {
-        erpPrintHtml(html, { title: 'Çeki Listesi' });
-        return;
-    }
-    const win = window.open('', '_blank', 'width=900,height=1200');
-    if (win) { win.document.write(html); win.document.close(); }
-    else if (typeof erpToast === 'function') erpToast('Popup engellendi — tarayıcıda popup iznini açın.', 'warn');
+function erpBelgeDosyaAdi(ad) {
+    return String(ad || 'belge').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_').slice(0, 80);
 }
 
-function kumasCekiGosteriYazdir(satirlarEnc, metaEnc) {
+function erpBelgeHtmlGovde(html) {
+    const s = String(html || '');
+    const head = s.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+    const body = s.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    return (head ? head[1] : '') + (body ? body[1] : (head ? '' : s));
+}
+
+function erpBelgeYazdir(html, title) {
+    if (typeof erpPrintHtml === 'function') {
+        erpPrintHtml(html, { title: title || 'Yazdır' });
+        return true;
+    }
+    const w = window.open('', '_blank', 'width=900,height=1200');
+    if (w) {
+        try {
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+            setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 250);
+            return true;
+        } catch (e) {}
+    }
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:0';
+    document.body.appendChild(iframe);
+    try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+        setTimeout(() => {
+            try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) {}
+            setTimeout(() => { try { iframe.remove(); } catch (e) {} }, 1500);
+        }, 400);
+        return true;
+    } catch (e) {
+        try { iframe.remove(); } catch (e2) {}
+        if (typeof erpToast === 'function') erpToast('Yazdırma açılamadı.', 'error');
+        return false;
+    }
+}
+
+async function erpBelgePdfIndir(html, dosyaAdi) {
+    const ad = erpBelgeDosyaAdi(dosyaAdi).replace(/\.pdf$/i, '') + '.pdf';
+    if (typeof erpEnsureHtml2Pdf === 'function') {
+        try { await erpEnsureHtml2Pdf(); } catch (e) {}
+    }
+    if (typeof html2pdf !== 'function') {
+        if (typeof erpToast === 'function') erpToast('PDF için yazdırma ekranından “PDF olarak kaydet” seçin.', 'info');
+        erpBelgeYazdir(html, ad);
+        return;
+    }
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-12000px;top:0;width:210mm;background:#fff;z-index:-1;';
+    host.innerHTML = erpBelgeHtmlGovde(html);
+    document.body.appendChild(host);
+    try {
+        if (typeof erpToast === 'function') erpToast('PDF hazırlanıyor…', 'info');
+        await html2pdf().set({
+            margin: [8, 8, 8, 8],
+            filename: ad,
+            image: { type: 'jpeg', quality: 0.92 },
+            html2canvas: { scale: 1.8, useCORS: true, logging: false },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(host).save();
+    } catch (e) {
+        if (typeof erpToast === 'function') erpToast('PDF indirilemedi, yazdırma açılıyor.', 'warn');
+        erpBelgeYazdir(html, ad);
+    } finally {
+        try { host.remove(); } catch (e) {}
+    }
+}
+
+function kumasCekiA4Yazdir(satirlar, meta) {
+    const html = kumasCekiA4Html(satirlar, meta || {});
+    erpBelgeYazdir(html, 'Çeki Listesi');
+}
+
+function kumasCekiPdfIndir() {
+    const dolu = kumasCekiVeriJson();
+    if (!dolu.length) { if (typeof erpToast === 'function') erpToast('Liste boş.', 'warn'); return; }
+    const kod  = document.getElementById('val-stok-kodu')?.value || '';
+    const urun = document.getElementById('val-cins')?.value || document.getElementById('ksel-cins')?.textContent || '';
+    const musteri = String(document.getElementById('val-afirma')?.value || document.getElementById('val-firma-detay')?.value || '').trim();
+    const html = kumasCekiA4Html(dolu, { stok_kodu: kod, urun_adi: urun, musteri });
+    erpBelgePdfIndir(html, 'ceki-listesi' + (kod ? '-' + kod : ''));
+}
+
+function kumasCekiGosteriCoz(satirlarEnc, metaEnc) {
     let satirlar = [];
     try { satirlar = JSON.parse(decodeURIComponent(satirlarEnc)); } catch (e) { satirlar = []; }
     let raw = {};
@@ -547,7 +630,19 @@ function kumasCekiGosteriYazdir(satirlarEnc, metaEnc) {
     } catch (e) {
         try { raw = { baslik: decodeURIComponent(metaEnc || '') }; } catch (e2) { raw = {}; }
     }
-    kumasCekiA4Yazdir(satirlar, raw);
+    return { satirlar, raw };
+}
+
+function kumasCekiGosteriYazdir(satirlarEnc, metaEnc) {
+    const p = kumasCekiGosteriCoz(satirlarEnc, metaEnc);
+    kumasCekiA4Yazdir(p.satirlar, p.raw);
+}
+
+function kumasCekiGosteriPdfIndir(satirlarEnc, metaEnc) {
+    const p = kumasCekiGosteriCoz(satirlarEnc, metaEnc);
+    const html = kumasCekiA4Html(p.satirlar, p.raw);
+    const kod = (p.raw && (p.raw.stok_kodu || p.raw.baslik)) || '';
+    erpBelgePdfIndir(html, 'ceki-listesi' + (kod ? '-' + kod : ''));
 }
 
 // ─── Depo hareketinden çeki göster ──────────────────────────────────────────
@@ -583,7 +678,11 @@ window.kumasCekiTemizle         = kumasCekiTemizle;
 window.kumasCekiKaydet          = kumasCekiKaydet;
 window.kumasCekiGuncelle        = kumasCekiGuncelle;
 window.kumasCekiYazdir          = kumasCekiYazdir;
+window.kumasCekiPdfIndir        = kumasCekiPdfIndir;
 window.kumasCekiGosteriYazdir   = kumasCekiGosteriYazdir;
+window.kumasCekiGosteriPdfIndir = kumasCekiGosteriPdfIndir;
+window.erpBelgeYazdir           = erpBelgeYazdir;
+window.erpBelgePdfIndir         = erpBelgePdfIndir;
 window.kumasCekiA4Yazdir        = kumasCekiA4Yazdir;
 window.kumasCekiA4Html          = kumasCekiA4Html;
 window.kumasCekiGoster          = kumasCekiGoster;
