@@ -16,13 +16,13 @@
     <link rel="apple-touch-icon" href="icon-192.png" id="erp-apple-touch-icon">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" id="erp-icon-192">
     <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" id="erp-icon-512">
-    <title>Simteks ERP Mobil · FLAT-20260820h</title>
+    <title>Simteks ERP Mobil · FLAT-20260821e</title>
     <script src="erp-config.js"></script>
     <script src="erp-build.js"></script>
     <script>
     /* Eski Service Worker / cache eski HTML tutmasın */
     (function () {
-      var V = 'erp-mobil-boot-20260820h';
+      var V = 'erp-mobil-boot-20260821e';
       try {
         if (localStorage.getItem('erp_mobil_boot_v') === V) return;
         localStorage.setItem('erp_mobil_boot_v', V);
@@ -65,7 +65,7 @@
     </script>
     <style id="mobil-erp-inline-css">
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
-        /* Mobil lite: excel gizli — menü Anasayfa açık (masaüstü ile aynı) */
+        /* Mobil lite: excel gizli — anasayfa yok, açılış siparişler */
         body.erp-mobil-lite #modal-excel-btn,
         body.erp-mobil-lite #stok-excel-import-btn,
         body.erp-mobil-lite #stok-excel-template-btn {
@@ -2362,6 +2362,19 @@
             font-family: 'DM Sans', sans-serif;
         }
         .sync-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+        .erp-super-yenile {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            height: 40px; min-width: 88px; padding: 0 14px; flex-shrink: 0;
+            background: var(--accent); border: 1px solid var(--accent);
+            border-radius: 10px; cursor: pointer;
+            font-size: 13px !important; font-weight: 800; color: #fff;
+            font-family: 'DM Sans', sans-serif; letter-spacing: 0.02em;
+            touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+        }
+        .erp-super-yenile:hover { filter: brightness(1.08); }
+        .erp-super-yenile.is-busy { opacity: 0.7; pointer-events: none; }
+        .erp-super-yenile.is-busy span:first-child { display: inline-block; animation: erp-yenile-spin 0.8s linear infinite; }
+        @keyframes erp-yenile-spin { to { transform: rotate(360deg); } }
 
         /* ── FORM & MODAL STANDARDI ── */
         .pro-label { font-size: var(--fs-label) !important; }
@@ -2373,10 +2386,6 @@
         .chic-item  { font-size: 11px !important; }
         .chic-sub-item { font-size: 11px !important; }
         .chic-label { font-size: 9px  !important; }
-
-        /* Dashboard kart içleri */
-        #dashboard-root p   { font-size: var(--fs-body)  !important; }
-        #dashboard-root span { font-size: var(--fs-label) !important; }
 
         /* Sipariş & liste satırları */
         .divide-y p, .divide-y span { font-size: var(--fs-body) !important; }
@@ -3412,8 +3421,6 @@
         .border-blue-200 { border-color: rgba(59,130,246,0.2) !important; }
         .border-violet-200 { border-color: rgba(139,92,246,0.2) !important; }
         .border-cyan-200 { border-color: rgba(34,211,238,0.2) !important; }
-        /* Dashboard koyu */
-        #dashboard-root { background: var(--bg); }
         /* Font override */
         * { font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; }
         .font-mono, code, .chic-label, [style*="DM Mono"] { font-family: 'Consolas', 'Roboto Mono', monospace !important; }
@@ -3771,7 +3778,6 @@
         @media (max-width: 640px) {
             .top-header > div:last-child > div:first-child { display: none !important; }
             #current-title { max-width: 58vw; }
-            #main-list { padding-bottom: 96px !important; }
         }
 
         /* Sipariş girişi — mobil */
@@ -3954,7 +3960,7 @@
             }
             body[data-erp-mode="SIPARIS_GIRIS"].siparis-wizard-step-3 .siparis-wizard-actions {
                 position: sticky;
-                bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+                bottom: calc(8px + env(safe-area-inset-bottom, 0px));
                 z-index: 115;
                 background: linear-gradient(180deg, transparent 0%, var(--surface) 32%);
                 padding-top: 14px;
@@ -3963,45 +3969,6 @@
             }
         }
 
-        /* Mobil alt sekme çubuğu */
-        .erp-mobile-tabbar {
-            display: none;
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 120;
-            background: color-mix(in srgb, var(--surface) 94%, transparent);
-            border-top: 1px solid var(--border);
-            backdrop-filter: blur(12px);
-            padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
-            grid-template-columns: repeat(5, 1fr);
-            gap: 2px;
-        }
-        .erp-mobile-tabbar button {
-            appearance: none;
-            border: none;
-            background: transparent;
-            color: var(--text3);
-            min-height: 52px;
-            padding: 4px 2px;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
-            cursor: pointer;
-            font-family: 'DM Sans', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .erp-mobile-tabbar button .ico { font-size: 18px; line-height: 1; }
-        .erp-mobile-tabbar button .lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.02em; }
-        .erp-mobile-tabbar button.active {
-            color: var(--cyan-c);
-            background: rgba(34, 211, 238, 0.1);
-        }
-        .erp-mobile-tabbar button.erp-nav-denied { display: none !important; }
         .ms-ekran { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 24px; }
         .ms-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
         .ms-kicker { font-size: 11px; font-weight: 650; color: var(--text3); margin-bottom: 2px; }
@@ -4045,9 +4012,7 @@
         }
         .ms-empty { padding: 36px 16px; text-align: center; color: var(--text3); font-size: 13px; }
         @media (max-width: 1024px) {
-            .erp-mobile-tabbar { display: grid; }
-            .content-scroll { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important; }
-            body[data-erp-mode="DASHBOARD"] .top-header { display: flex !important; }
+            .content-scroll { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important; }
             .mobile-menu-btn {
                 display: inline-flex !important;
                 width: 40px;
@@ -4135,10 +4100,142 @@ body[data-erp-mode="IPLIK_KART_GIRIS"] .iplik-kart-lot-row > button {
 }
 
 body[data-erp-mode="STOK_SAYIM"] #list-section-head { display: none !important; }
+body[data-erp-mode="MUHASEBE_FIS"] #list-section-head { display: none !important; }
+body[data-erp-mode="MUHASEBE_FIS"] .form-container { display: none !important; }
+body[data-erp-mode="MUHASEBE_FIS"] #form-container { display: none !important; }
+body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { display: none !important; }
+.mdf { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.mdf-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; position: sticky; top: 0; z-index: 6; }
+.mdf--giris .mdf-bar { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.28); }
+.mdf--cikis .mdf-bar { background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.28); }
+.mdf-bar-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.mdf-badge { font-size: 12px; font-weight: 600; }
+.mdf--giris .mdf-badge { color: #059669; }
+.mdf--cikis .mdf-badge { color: #e11d48; }
+.mdf-ozet { font-size: 12px; font-weight: 500; color: var(--text2); }
+.mdf-save { height: 36px; padding: 0 16px; border: none; border-radius: 7px; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.mdf--giris .mdf-save { background: #10b981; }
+.mdf--cikis .mdf-save { background: #e11d48; }
+.mdf-teslim-card { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(244,63,94,0.22); background: rgba(244,63,94,0.04); }
+.mdf-teslim { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.mdf-ceki-btn { height: 36px; padding: 0 12px; border-radius: 7px; border: 1px solid rgba(244,63,94,0.35); background: #fff; color: #e11d48; font-size: 12px; font-weight: 650; cursor: pointer; }
+.mdf-hint { font-size: 10px; color: var(--text3); line-height: 1.4; }
+html, body { max-width: 100%; overflow-x: hidden; }
+.content-scroll, #form-container, #inputs-grid, #main-list, #list-section, .mamul-toplu-hareket-wrap {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+#inputs-grid .mdf, #inputs-grid .mdf * { max-width: 100%; box-sizing: border-box; }
+.kumas-toplu-hareket-head { display: none !important; }
+.kumas-toplu-hareket-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-areas:
+        "kod kod"
+        "urun urun"
+        "mt kg"
+        "not not"
+        "ceki sil";
+    gap: 8px 10px !important;
+    padding: 12px !important;
+    align-items: end;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin: 0 0 10px;
+    background: var(--surface);
+}
+.kumas-toplu-hareket-row.has-error { border-color: rgba(251,113,133,0.45); }
+.kt-kod { grid-area: kod; width: 100% !important; min-height: 44px !important; height: 44px !important; font-size: 16px !important; }
+.kumas-toplu-urun { grid-area: urun; min-width: 0; }
+.kumas-toplu-urun-ad { font-size: 13px; font-weight: 700; color: var(--text); white-space: normal; }
+.kumas-toplu-urun-meta { font-size: 11px; color: var(--text3); white-space: normal; line-height: 1.35; }
+.kt-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kt-field > span { font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: .04em; text-transform: uppercase; }
+.kt-field > .pro-input { width: 100% !important; min-height: 44px !important; height: 44px !important; font-size: 16px !important; }
+.kt-field--mt { grid-area: mt; }
+.kt-field--kg { grid-area: kg; }
+.kt-field--not { grid-area: not; }
+.kumas-ceki-row-btn {
+    grid-area: ceki; height: 44px !important; min-height: 44px; width: 100%;
+    border-radius: 10px; font-size: 13px !important; font-weight: 700;
+}
+.kumas-toplu-hareket-row .kt-sil {
+    grid-area: sil; height: 44px !important; min-height: 44px; width: 100%;
+    border-radius: 10px; font-size: 13px;
+}
+.kumas-ceki-form-ozet { display: none; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(16,185,129,0.28); background: rgba(16,185,129,0.08); font-size: 12px; color: var(--text); font-weight: 600; }
+.kumas-ceki-form-ozet.is-on { display: block; }
+#kumas-ceki-overlay, #kumas-ceki-toplu-overlay, #kumas-ceki-goruntule-overlay {
+    display: none; position: fixed; inset: 0; z-index: 2147482500;
+    background: rgba(8,12,24,0.55); align-items: stretch; justify-content: center;
+    padding: 0; box-sizing: border-box; overflow: hidden;
+}
+#kumas-ceki-overlay.is-open, #kumas-ceki-toplu-overlay.is-open { display: flex; }
+.kumas-ceki-box { width: 100% !important; max-width: 100% !important; height: 100%; max-height: 100%; overflow: auto; background: #fff; color: #111; border-radius: 0; display: flex; flex-direction: column; }
+.kumas-ceki-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 14px; border-bottom: 1px solid #e5e5e5; background: #f7f7f7; position: sticky; top: 0; z-index: 2; }
+.kumas-ceki-head h3 { margin: 0; font-size: 15px; font-weight: 800; }
+.kumas-ceki-meta { font-size: 13px; font-weight: 700; }
+.kumas-ceki-musteri { font-size: 12px; font-weight: 700; margin-top: 2px; }
+.kumas-ceki-acts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.kumas-ceki-acts button { min-height: 40px; flex: 1 1 calc(50% - 6px); padding: 0 10px; border-radius: 8px; border: 1px solid #cfcfcf; background: #fff; font-size: 12px; font-weight: 650; cursor: pointer; }
+.kumas-ceki-acts .is-save { background: #111; color: #fff; border-color: #111; flex: 1 1 100%; }
+.kumas-ceki-ozet-bar { display: flex; gap: 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid #e5e5e5; font-size: 13px; font-weight: 700; background: #fff; }
+.kumas-ceki-blocks { padding: 10px; display: flex !important; flex-direction: column !important; gap: 12px !important; grid-template-columns: none !important; }
+.kumas-ceki-block { display: flex !important; flex-direction: column !important; gap: 10px !important; grid-template-columns: none !important; }
+.kumas-ceki-col { border: 1px solid #111; width: 100%; }
+.kumas-ceki-col table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.kumas-ceki-col th, .kumas-ceki-col td { border: 1px solid #333; padding: 0; font-size: 13px; text-align: center; height: 40px; }
+.kumas-ceki-col thead th { background: #efefef; font-size: 11px; font-weight: 800; height: 36px; }
+.kumas-ceki-col input { width: 100%; border: 0; height: 40px; text-align: center; font-size: 16px; box-sizing: border-box; }
+.mf-fis-row { padding: 0; overflow: hidden; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.mf-fis-head {
+    display: grid !important;
+    grid-template-columns: 18px 1fr !important;
+    grid-template-areas:
+        "chev main"
+        "acts acts";
+    gap: 8px 10px;
+    padding: 12px;
+    cursor: pointer;
+}
+.mf-fis-chev { grid-area: chev; }
+.mf-fis-no { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text3); margin-bottom: 4px; word-break: break-word; }
+.mf-fis-main { grid-area: main; min-width: 0; }
+.mf-fis-musteri { font-weight: 700; font-size: 14px; word-break: break-word; }
+.mf-fis-miktar, .mf-fis-kalem-ozet, .mf-fis-teslim { font-size: 12px; color: var(--text3); margin-top: 2px; word-break: break-word; }
+.mf-fis-main::before { content: attr(data-no); }
+.mf-fis-body { display: none; padding: 8px 12px 12px; background: var(--surface2); border-top: 1px solid var(--border); overflow: hidden; }
+.mf-fis-row.is-open .mf-fis-body { display: block; }
+.mf-fis-acts { grid-area: acts; display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+.mf-fis-acts > * { width: 100%; min-height: 40px; }
+.mf-fis-acts button, .mf-fis-acts .ms-filtre-btn {
+    width: 100%; min-height: 40px; border-radius: 8px; font-size: 12px;
+}
+.mf-fis-section { margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.mf-fis-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; cursor: pointer; background: var(--surface2); }
+.mf-kalem-wrap { overflow: visible !important; }
+.mf-kalem-tablo { min-width: 0 !important; width: 100% !important; }
+.mf-kalem-tablo thead { display: none; }
+.mf-kalem-tablo, .mf-kalem-tablo tbody { display: block; width: 100%; }
+.mf-kalem-tablo tr { display: block; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--surface); }
+.mf-kalem-tablo td {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+    border: none !important; padding: 4px 0 !important; text-align: right !important;
+    font-size: 12px !important; min-width: 0;
+}
+.mf-kalem-tablo td::before { content: attr(data-th); color: var(--text3); font-size: 10px; font-weight: 700; text-align: left; flex: 0 0 42%; }
+.mf-kalem-tablo td:first-child { display: none; }
+.ms-filtre-bar__row { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.ms-filtre-bar__field, .ms-filtre-bar__field--grow, .ms-filtre-bar__field--tip, .ms-filtre-bar__field--date { flex: none !important; min-width: 0 !important; width: 100%; }
+.ms-filtre-bar__field--grow { grid-column: 1 / -1; }
+.ms-filtre-bar__reset { width: 100%; min-height: 40px; }
+.mamul-toplu-hareket-head { display: none !important; }
+.mamul-toplu-hareket-row { display: grid !important; grid-template-columns: 1fr !important; gap: 8px !important; padding: 12px !important; }
 body[data-erp-mode="STOK_SAYIM"] .form-container { display: none !important; }
 body[data-erp-mode="STOK_SAYIM"] #form-container { display: none !important; }
 body[data-erp-mode="STOK_SAYIM"] section:has(#main-list) > div:first-child { display: none !important; }
-body[data-erp-mode="STOK_SAYIM"] .erp-mobile-tabbar { display: none !important; }
 body[data-erp-mode="STOK_SAYIM"] .top-header > div:last-child { display: none !important; }
 body[data-erp-mode="STOK_SAYIM"] .content-scroll { padding-bottom: 0 !important; }
 .sayim-shell { padding: 4px 0 16px; }
@@ -4281,18 +4378,6 @@ body.erp-mobil-lite .erp-view-in {
     from { opacity: 0; transform: translateY(14px) scale(0.985); }
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
-body.erp-mobil-lite .erp-mobile-tabbar {
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.12);
-}
-body.erp-mobil-lite .erp-mobile-tabbar button {
-    transition: color 0.22s var(--erp-ease-out), background 0.22s var(--erp-ease-out), transform 0.18s var(--erp-ease);
-}
-body.erp-mobil-lite .erp-mobile-tabbar button .ico {
-    transition: transform 0.28s var(--erp-ease-out);
-}
-body.erp-mobil-lite .erp-mobile-tabbar button.active .ico { transform: scale(1.12); }
-body.erp-mobil-lite .erp-mobile-tabbar button:active { transform: scale(0.92); }
 body.erp-mobil-lite .sayim-tip-btn,
 body.erp-mobil-lite .sayim-chip,
 body.erp-mobil-lite .sayim-kaydet-btn,
@@ -4395,12 +4480,9 @@ body.erp-mobil-lite .ms-act:active {
     </div>
   </div>
 
-  <!-- Nav — masaüstü (stok.html) ile aynı yapı / sıra / etiketler -->
+  <!-- Nav — masaüstü ile aynı sıra; Anasayfa yok, açılış siparişler -->
   <nav class="sidebar-nav" id="main-nav">
 
-    <div onclick="setAppMode('DASHBOARD'); closeAllSubs();" class="nav-pro active" id="nav-DASHBOARD">
-      <span class="nav-pro-icon">🏠</span> Anasayfa
-    </div>
     <div onclick="toggleChicSub('siparis')" class="nav-pro" id="nav-siparis-toggle">
       <span class="nav-pro-icon">🧾</span> Sipariş
       <span class="nav-pro-chevron" id="chev-siparis">▾</span>
@@ -4422,6 +4504,7 @@ body.erp-mobil-lite .ms-act:active {
       <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">Kumaş Stoğu</div>
       <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">Mamül Stoğu</div>
       <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
+      <div onclick="setAppMode('MUHASEBE_FIS')" class="nav-pro-sub" id="nav-MUHASEBE_FIS">Muhasebe Fişleri</div>
       <div onclick="setAppMode('STOK_SAYIM')" class="nav-pro-sub" id="nav-STOK_SAYIM">Stok Sayım</div>
     </div>
 
@@ -4510,9 +4593,6 @@ body.erp-mobil-lite .ms-act:active {
 
   <!-- Bottom -->
   <div class="sidebar-footer">
-    <button onclick="syncAllData(true, { light: true, siparisLight: true })" class="sync-btn" style="display:flex;align-items:center;justify-content:center;gap:6px">
-      ↻ Senkronize Et
-    </button>
   <button type="button" onclick="erpLogout()" class="sidebar-ghost-btn" style="color:var(--rose-c);border-color:rgba(251,113,133,0.3)">
       ⏻ Çıkış Yap
     </button>
@@ -4526,7 +4606,7 @@ body.erp-mobil-lite .ms-act:active {
         <div style="display:flex;align-items:center;gap:10px">
             <button type="button" class="mobile-menu-btn" onclick="erpToggleMobileSidebar()" title="Menü">☰</button>
             <h2 id="current-title" style="font-family:'Instrument Serif',serif;font-size:20px;color:var(--text);font-weight:400;letter-spacing:0.01em">
-                Anasayfa
+                Siparişler
             </h2>
             <div id="loading-spinner" class="hidden animate-spin rounded-full h-3 w-3" style="border:2px solid var(--accent);border-top-color:transparent;border-radius:50%"></div>
             <div id="erp-live-indicator" title="Diğer bilgisayarlardan gelen veriler otomatik güncellenir"
@@ -4548,9 +4628,10 @@ body.erp-mobil-lite .ms-act:active {
                     placeholder-style="color:var(--text3)">
             </div>
             <div onclick="toggleTheme()" id="theme-btn" title="Tema Değiştir"
-                style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:15px;transition:all 0.15s"
-                onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">🌙</div>
-            <div onclick="syncAllData(true, { light: true, siparisLight: true })" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:14px;transition:all 0.15s" title="Senkronize Et" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">↻</div>
+                style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:16px">🌙</div>
+            <button type="button" id="erp-super-yenile-btn" class="erp-super-yenile" onclick="erpSuperYenile()" title="Sunucudan çek ve bu ekranı yenile">
+                <span>↻</span><span>Yenile</span>
+            </button>
         </div>
     </div>
     <input id="siparis-excel-input" type="file" accept=".xlsx,.xls" style="display:none" onchange="importSiparisExcel(this)">
@@ -4620,24 +4701,6 @@ body.erp-mobil-lite .ms-act:active {
     </div>
 </main>
 
-<nav class="erp-mobile-tabbar" id="erp-mobile-tabbar" aria-label="Mobil menü">
-    <button type="button" data-tab-mode="SIPARIS_LISTE" onclick="erpMobileTabGo('SIPARIS_LISTE')">
-        <span class="ico">🧾</span><span class="lbl">Sipariş</span>
-    </button>
-    <button type="button" data-tab-mode="MAMUL_DEPO" onclick="erpMobileTabGo('MAMUL_DEPO')">
-        <span class="ico">🧥</span><span class="lbl">Mamül Stok</span>
-    </button>
-    <button type="button" data-tab-mode="KART_LISTE" onclick="erpMobileTabGo('KART_LISTE')">
-        <span class="ico">🗂️</span><span class="lbl">Kartlar</span>
-    </button>
-    <button type="button" data-tab-mode="KONFEKSIYON" onclick="erpMobileTabGo('KONFEKSIYON')">
-        <span class="ico">🧵</span><span class="lbl">Konfeksiyon</span>
-    </button>
-    <button type="button" data-tab-mode="MENU" onclick="erpToggleMobileSidebar(true)">
-        <span class="ico">☰</span><span class="lbl">Menü</span>
-    </button>
-</nav>
-
 <div id="detail-modal" onclick="closeModal(event)" style="display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center">
     <div class="modal-box" onclick="event.stopPropagation()">
 
@@ -4682,13 +4745,13 @@ body.erp-mobil-lite .ms-act:active {
     </div>
 </div>
 
-<!-- ERP-MOBIL-BUILD: FLAT-20260820h — scriptler düz klasör VEYA assets/ altında -->
+<!-- ERP-MOBIL-BUILD: FLAT-20260821e — scriptler düz klasör VEYA assets/ altında -->
 <div id="erp-yukleme-hatasi" style="display:none;position:fixed;inset:0;z-index:99999;background:#12141a;color:#f8fafc;padding:24px;font-family:system-ui,sans-serif;overflow:auto">
     <h2 style="margin:0 0 12px;font-size:18px">Mobil uygulama yüklenemedi</h2>
     <p id="erp-yukleme-hatasi-msg" style="margin:0 0 8px;line-height:1.5;color:#94a3b8;font-size:14px">Uygulama scripti çalışmadı.</p>
     <pre id="erp-yukleme-hatasi-detay" style="display:none;margin:12px 0;padding:12px;background:#0b0f17;border:1px solid #334155;border-radius:8px;color:#fca5a5;font-size:12px;white-space:pre-wrap;word-break:break-word"></pre>
     <p style="margin:12px 0 0;line-height:1.5;color:#64748b;font-size:13px">
-      Sekme başlığı <strong>FLAT-20260820h</strong> olmalı.<br>
+      Sekme başlığı <strong>FLAT-20260821e</strong> olmalı.<br>
       Yerel açılış: <code>http://127.0.0.1:8765/mobil-erp.html</code>
     </p>
 </div>
@@ -4727,9 +4790,11 @@ body.erp-mobil-lite .ms-act:active {
     });
   }
 
-  var v = '20260820h';
+  var v = '20260821e';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
+    ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
+    ['muhasebe-fis.js?v=' + v, 'assets/muhasebe-fis.js?v=' + v, 'mobil/assets/muhasebe-fis.js?v=' + v],
     ['stok-kart-desktop.js?v=' + v, 'assets/stok-kart-desktop.js?v=' + v, 'mobil/assets/stok-kart-desktop.js?v=' + v],
     ['mamul-depo-toplu.js?v=' + v, 'assets/mamul-depo-toplu.js?v=' + v, 'mobil/assets/mamul-depo-toplu.js?v=' + v],
     ['stok-sayim.js?v=' + v, 'assets/stok-sayim.js?v=' + v, 'mobil/assets/stok-sayim.js?v=' + v],

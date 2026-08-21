@@ -13,7 +13,7 @@
     'use strict';
     w.ERP_MOBIL_LITE = true;
     w.ERP_MOBIL_NO_LIVE = false; // Realtime canlı senkron açık (masaüstü ile aynı)
-    w.ERP_MOBIL_NO_DASHBOARD = false; // Menü Anasayfa masaüstü ile aynı
+    w.ERP_MOBIL_NO_DASHBOARD = true; // Mobilde anasayfa yok; açılış siparişler
     w.ERP_MOBIL_NO_CHARTS = true;
     w.ERP_MOBIL_NO_EXCEL = true;
     w.ERP_MOBIL_BOOT_MODE = 'SIPARIS_LISTE';
@@ -245,6 +245,7 @@ const ERP_PERM_MODES = [
     ['MAMUL_DEPO', 'Mamül stoğu'],
     ['DEPO_HAREKET', 'Depo giriş çıkış'],
     ['DEPO_HAREKET_LISTE', 'Depo hareketleri'],
+    ['MUHASEBE_FIS', 'Muhasebe fişleri'],
     ['STOK_SAYIM', 'Stok sayım'],
     ['BOYAHANE_URETIM', 'Boyahane'],
     ['YIKAMA_TAKIP', 'Yıkama'],    ['DOKUMA_TAKIP', 'Dokuma takip'],
@@ -264,7 +265,7 @@ const ERP_PERM_MODES = [
 const ERP_PERM_GROUP_DEFS = [
     { id: 'genel', label: 'Genel', icon: '🏠', codes: ['DASHBOARD', 'PLANLAMA', 'RAPORLAR'] },
     { id: 'siparis', label: 'Sipariş', icon: '📋', codes: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN'] },
-    { id: 'stok', label: 'Stok & Depo', icon: '📦', codes: ['IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'STOK_SAYIM'] },
+    { id: 'stok', label: 'Stok & Depo', icon: '📦', codes: ['IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'MUHASEBE_FIS', 'STOK_SAYIM'] },
     { id: 'uretim', label: 'Üretim', icon: '⚙️', codes: ['BOYAHANE_URETIM', 'YIKAMA_TAKIP', 'DOKUMA_TAKIP'] },
     { id: 'konf', label: 'Konfeksiyon', icon: '🧵', codes: ['KONFEKSIYON', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI'] },
     { id: 'kart', label: 'Kart & Arşiv', icon: '🗂️', codes: ['KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS'] }
@@ -646,10 +647,9 @@ function erpUserCan(mode) {
     const isAdmin = erpIsAdmin();
     if (mode === 'KULLANICI_YONETIMI') return isAdmin;
     if (isAdmin) return true;
-    if (mode === 'DASHBOARD') return true;
     const modes = erpNormalizeAllowedModes(erpCurrentUser.allowed_modes);
-    if (mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE' || mode === 'STOK_SAYIM') {
-        return modes.includes('DEPO_HAREKET') || modes.includes('DEPO_HAREKET_LISTE') || modes.includes('STOK_SAYIM')
+    if (mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE' || mode === 'MUHASEBE_FIS' || mode === 'STOK_SAYIM') {
+        return modes.includes('DEPO_HAREKET') || modes.includes('DEPO_HAREKET_LISTE') || modes.includes('MUHASEBE_FIS') || modes.includes('STOK_SAYIM')
             || modes.includes('IPLIK') || modes.includes('KUMAS') || modes.includes('MAMUL_DEPO');
     }
     if (mode === 'KART_LISTE' || mode === 'IPLIK_KART_GIRIS' || mode === 'KUMAS_KART_GIRIS' || mode === 'MAMUL_KART_GIRIS') {
@@ -1147,7 +1147,7 @@ async function siparisFormSiparisiTamamla() {
 }
 
 let originalRecordSnapshot = null;
-let appMode = 'IPLIK', movementType = 'GİRİŞ', currentData = [], editingId = null, raporSubMode = 'IPLIK';
+let appMode = 'SIPARIS_LISTE', movementType = 'GİRİŞ', currentData = [], editingId = null, raporSubMode = 'IPLIK';
 let siparisListeHizliFiltre = 'HEPSI';
 let siparisListeKolonFiltre = { sno: '', firma: '', ozet: '', adet: '', termin: '', grup: '' };
 let siparisListeSiralama = { key: 'sno', dir: 'asc' };
@@ -1501,6 +1501,21 @@ function depoNotlarWithBirim(birim, notlar) {
     const raw = depoNotlarStripBirim(notlar);
     return `[BİRİM:${b}]\n` + raw;
 }
+function depoNotlarWithTeslimDetay(notlar, teslim) {
+    let out = String(notlar || '');
+    const t = teslim || (typeof muhasebeFisTeslimFormOku === 'function' ? muhasebeFisTeslimFormOku() : null);
+    if (!t) return out;
+    const add = (k, v) => {
+        const val = String(v || '').trim();
+        if (val) out += (out && !out.endsWith('\n') ? '\n' : '') + `[${k}:${val}]`;
+    };
+    add('TESLIM_ALAN', t.teslim_alan);
+    add('TESLIM_TEL', t.teslim_tel);
+    add('PLAKA', t.plaka);
+    add('SOFOR', t.sofor);
+    add('TESLIM_ADRES', t.teslim_adres);
+    return out;
+}
 /** Depo hareket defterinde gösterilecek satırlar */
 function stokKaydiDepoKomutaMerkeziMi(row) {
     const kb = String(row?.kaynak_birim || '').toUpperCase();
@@ -1698,7 +1713,11 @@ function depoHareketKayitSonrasiTemizle(kaydedilenKod) {
         applyDepoFormLayout();
         loadData();
         const lbl = kaydedilenKod ? ` (${kaydedilenKod})` : '';
-        erpToast(`Hareket kaydedildi${lbl}. Aynı kanaldan yeni giriş yapabilirsiniz.`, 'success', 4500);
+        const extra = (kumasFormGrubuMu(grup) && tip === 'ÇIKIŞ')
+            ? ' Muhasebe fişleri ve çeki listesi Depo Stok menüsünden açılır.'
+            : '';
+        erpToast(`Hareket kaydedildi${lbl}.${extra}`, 'success', 4500);
+        if (typeof kumasCekiFormSifirla === 'function') kumasCekiFormSifirla();
     }, 60);
 }
 function depoHizliStokKoduFormaUygula(grup) {
@@ -2677,6 +2696,7 @@ function syncDepoListOnlyBar() {
             ` : ''}
             <button type="button" onclick="setAppMode('DEPO_HAREKET')" style="${btnBase};background:var(--accent);color:#fff">📦 Depo giriş / çıkış</button>
             <button type="button" onclick="setAppMode('DEPO_HAREKET_LISTE')" style="${btnBase};background:var(--surface);color:var(--text2);border:1px solid var(--border)">📋 Tüm hareketler</button>
+            <button type="button" onclick="setAppMode('MUHASEBE_FIS')" style="${btnBase};background:var(--surface);color:var(--text2);border:1px solid var(--border)">🧾 Muhasebe fişleri</button>
         </div>`;
 }
 function syncMamulMobilFab() {
@@ -2780,7 +2800,7 @@ let kumasKartGirisTipi = 'HAM';
 let kumasKartListeFiltre = 'HAM';
 const UI_STATE_LS_KEY = 'erp_ui_state_v1';
 const APP_MODE_WHITELIST = [
-    'DASHBOARD','PLANLAMA','DEPO_HAREKET','DEPO_HAREKET_LISTE','IPLIK','KUMAS','SIPARIS_GIRIS','SIPARIS_LISTE','SIPARIS_KAPANAN','KART_LISTE','MAMUL_DEPO',
+    'DASHBOARD','PLANLAMA','DEPO_HAREKET','DEPO_HAREKET_LISTE','MUHASEBE_FIS','STOK_SAYIM','IPLIK','KUMAS','SIPARIS_GIRIS','SIPARIS_LISTE','SIPARIS_KAPANAN','KART_LISTE','MAMUL_DEPO',
     'KART_GIRIS','IPLIK_KART_GIRIS','KUMAS_KART_GIRIS',
     'MAMUL_KART_GIRIS','BOYAHANE_URETIM','YIKAMA_TAKIP',
     'RAPOR','KONFEKSIYON','FASON_TAKIP','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','RAPORLAR','DOKUMA_TAKIP','DOKUMA_DEPO','DOKUMA_SEVK_GECMIS',
@@ -5800,7 +5820,7 @@ async function erpRefreshCurrentScreen(opts = {}) {
     }
     try {
         if (mode === 'DASHBOARD') {
-            if (typeof renderDashboard === 'function') renderDashboard();
+            if (typeof setAppMode === 'function') setAppMode(window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE');
             return;
         }
         if (mode === 'PLANLAMA') {
@@ -5849,6 +5869,10 @@ async function erpRefreshCurrentScreen(opts = {}) {
         }
         if (mode === 'STOK_SAYIM') {
             if (typeof renderStokSayim === 'function') renderStokSayim();
+            return;
+        }
+        if (mode === 'MUHASEBE_FIS') {
+            if (typeof renderMuhasebeFisListe === 'function') renderMuhasebeFisListe({ quiet: true });
             return;
         }
         if (erpModeLoadDataGuvenliMi(mode) && typeof loadData === 'function') {
@@ -6259,7 +6283,7 @@ function erpCacheKayitGuncelle(table, kayit) {
 }
 
 function erpListePollModMu() {
-    return ['SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'DEPO_HAREKET_LISTE', 'DASHBOARD'].includes(appMode);
+    return ['SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'DEPO_HAREKET_LISTE'].includes(appMode);
 }
 
 function erpStartListeDataPoll() {
@@ -6400,8 +6424,10 @@ async function syncAllData(isManual = false, opts = {}) {
             console.warn('syncAllData kısmi hata:', hatalar.join(' | '));
             if (isManual) showToast(`Kısmi senkronizasyon: ${hatalar[0]}`, 'warn');
         } else if (isManual || (opts.tables || []).includes('siparisler')) {
-            try { erpRefreshCurrentScreen({ force: false }); } catch (e) {}
-            if (isManual && !silent) showToast('Senkron tamam', 'success');
+            if (!opts.skipScreenRefresh) {
+                try { erpRefreshCurrentScreen({ force: isManual }); } catch (e) {}
+            }
+            if (isManual && !silent && !opts.skipScreenRefresh) showToast('Senkron tamam', 'success');
         }
     } catch (err) {
         console.error("Veri çekme hatası:", err);
@@ -6426,6 +6452,30 @@ async function syncAllData(isManual = false, opts = {}) {
 }
 window.syncAllData = syncAllData;
 
+async function erpSuperYenile() {
+    const btn = document.getElementById('erp-super-yenile-btn');
+    if (_syncAllDataBusy && btn?.classList.contains('is-busy')) return;
+    if (btn) btn.classList.add('is-busy');
+    try {
+        try { if (typeof erpCloseMobileSidebar === 'function') erpCloseMobileSidebar(); } catch (e) {}
+        if (typeof syncAllData === 'function') {
+            await syncAllData(true, { skipScreenRefresh: true, siparisFirstPageOnly: false });
+        }
+        if (typeof erpRefreshCurrentScreen === 'function') {
+            await erpRefreshCurrentScreen({ force: true });
+        }
+        if (typeof erpToast === 'function') erpToast('Sunucudan yenilendi.', 'success', 2200);
+        else if (typeof showToast === 'function') showToast('Sunucudan yenilendi.', 'success');
+    } catch (e) {
+        const msg = e?.message || String(e);
+        if (typeof erpToast === 'function') erpToast('Yenileme hatası: ' + msg, 'error');
+        else if (typeof showToast === 'function') showToast('Yenileme hatası: ' + msg, 'error');
+    } finally {
+        if (btn) btn.classList.remove('is-busy');
+    }
+}
+window.erpSuperYenile = erpSuperYenile;
+
 function toggleNavGroup(groupId) {
     const body = document.getElementById(groupId);
     if (!body) return;
@@ -6435,37 +6485,6 @@ function toggleNavGroup(groupId) {
     if (chev) chev.style.transform = isOpen ? '' : 'rotate(180deg)';
 }
 window.toggleNavGroup = toggleNavGroup;
-
-// --- DASHBOARD --- (masaüstü menü Anasayfa; mobil uyumlu kısayol paneli)
-function renderDashboard() {
-    if (appMode !== 'DASHBOARD') return;
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const dashRootOld = document.getElementById('dashboard-root');
-    if (dashRootOld) dashRootOld.remove();
-    const kart = (title, sub, modeOrFn) => {
-        const click = typeof modeOrFn === 'string'
-            ? `setAppMode('${modeOrFn}')`
-            : `${modeOrFn}()`;
-        return `<button type="button" onclick="${click}" class="btn-pro btn-ghost-pro" style="width:100%;text-align:left;padding:14px 16px;border-radius:12px;min-height:56px;touch-action:manipulation;display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);background:var(--surface2)">
-            <span style="font-size:13px;font-weight:700;color:var(--text)">${title}</span>
-            <span style="font-size:10px;color:var(--text3)">${sub}</span>
-        </button>`;
-    };
-    list.innerHTML = `<div id="dashboard-root" style="display:flex;flex-direction:column;gap:10px;padding:4px 0 24px">
-        <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--text);padding:4px 2px 8px">Anasayfa</div>
-        <div style="display:grid;grid-template-columns:1fr;gap:8px">
-            ${kart('Mamül Stoğu', 'Bakiye listesi · hızlı giriş / sevkiyat', 'MAMUL_DEPO')}
-            ${kart('Siparişler', 'Liste ve yeni sipariş', 'SIPARIS_LISTE')}
-            ${kart('Depo Giriş / Çıkış', 'İplik · kumaş · mamül hareket', 'DEPO_HAREKET')}
-            ${kart('Stok Kartları', 'İplik · kumaş · mamül', 'KART_LISTE')}
-            ${kart('Dokuma Takip', 'Üretim hattı', 'DOKUMA_TAKIP')}
-            ${kart('Konfeksiyon', 'Kesim · kalite · sevk', 'KONFEKSIYON')}
-            ${kart('Planlama', 'Üretim planlama', 'PLANLAMA')}
-            ${kart('Raporlar', 'Analiz ekranları', 'RAPORLAR')}
-        </div>
-    </div>`;
-}
 
 /** Ürün (kalem) satırı için 0–100: yüksek = kapatmaya daha yakın (kolay → zor sıralama) */
 function planlamaKapatmaKolaylikSkoru(hedef, dok, kes, dik, kk, kol, sevk) {
@@ -21865,7 +21884,7 @@ function closeAllSubs() {
 }
 
 async function navNumuneOnayArsivAc() {
-    await setAppMode('DASHBOARD');
+    await setAppMode(window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE');
     closeAllSubs();
 }
 
@@ -21975,6 +21994,8 @@ function erpMobileTabbarSync(mode) {
         URUN_AGACI: 'SIPARIS_LISTE',
         DEPO_HAREKET: 'MAMUL_DEPO',
         DEPO_HAREKET_LISTE: 'MAMUL_DEPO',
+        MUHASEBE_FIS: 'MAMUL_DEPO',
+        STOK_SAYIM: 'MAMUL_DEPO',
         IPLIK: 'MAMUL_DEPO',
         KUMAS: 'MAMUL_DEPO',
         MAMUL_DEPO: 'MAMUL_DEPO',
@@ -22112,7 +22133,7 @@ window.onload = async () => {
     if (initialMode === 'HAM_KUMAS' || initialMode === 'MAMUL_KUMAS') initialMode = 'KUMAS';
     if (initialMode === 'SIPARIS_KAPAMA') initialMode = 'PLANLAMA';
     if (initialMode === 'RAPOR') initialMode = 'RAPORLAR';
-    // DASHBOARD / RAPORLAR / NUMUNE / BOYAHANE: masaüstü menü ile aynı — yönlendirme yok
+    if (initialMode === 'DASHBOARD') initialMode = window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE';
     const bootFallback = window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE';
     const safeMode = erpUserCan(initialMode) ? initialMode : bootFallback;
     const hadCache = erpDataCacheRestore();
@@ -22194,6 +22215,7 @@ async function setAppMode(mode, keepEditingId = false) {
     if (mode === 'SIPARIS_TERMIN_PLAN') mode = 'PLANLAMA';
     if (mode === 'HAM_KUMAS' || mode === 'MAMUL_KUMAS') mode = 'KUMAS';
     if (mode === 'NUMUNE_URETIM') mode = 'SIPARIS_LISTE';
+    if (mode === 'DASHBOARD') mode = window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE';
     if (mode === 'DIAGNOSTICS') mode = 'SIPARIS_LISTE';
     if (mode === 'KONFEKSIYON_KESIM') { konfeksiyonTab = 'KESİM'; try { saveUiState({ konfeksiyonTab }); } catch (e) {} mode = 'KONFEKSIYON'; }
     else if (mode === 'KONFEKSIYON_KALITE') { konfeksiyonTab = 'KALİTE'; try { saveUiState({ konfeksiyonTab }); } catch (e) {} mode = 'KONFEKSIYON'; }
@@ -22249,6 +22271,7 @@ async function setAppMode(mode, keepEditingId = false) {
         'PLANLAMA': 'Planlama',
         'DEPO_HAREKET': 'Depo Giriş Çıkış',
         'DEPO_HAREKET_LISTE': 'Depo Hareketleri',
+        'MUHASEBE_FIS': 'Muhasebe Fişleri',
         'IPLIK': 'İplik Stoğu',
         'HAM_KUMAS': 'Kumaş Stoğu',
         'MAMUL_KUMAS': 'Kumaş Stoğu',
@@ -22292,7 +22315,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
 
     if (toggleArea) {
-        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM'];
+        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM', 'MUHASEBE_FIS'];
         const depoListeModes = ['IPLIK', 'HAM_KUMAS', 'MAMUL_KUMAS', 'KUMAS', 'MAMUL_DEPO'];
         if (staticModes.includes(mode) || depoListeModes.includes(mode) || mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE') {
             toggleArea.style.display = 'none';
@@ -22349,12 +22372,12 @@ async function setAppMode(mode, keepEditingId = false) {
     const scrollArea = document.querySelector('.content-scroll');
     if (scrollArea) scrollArea.scrollTop = 0;
 
-    // Top-header: dashboard'da gizle, diğer modlarda göster
+    // Top-header her ekranda görünür
     const topHeader = document.querySelector('.top-header');
     const listSection = document.querySelector('#list-title')?.closest('div.flex.items-center');
     const scrollArea2 = document.querySelector('.content-scroll');
   if (mode === 'KULLANICI_YONETIMI') {
-    if (!erpCurrentUser || String(erpCurrentUser.role || '').toLowerCase() !== 'admin') { setAppMode('DASHBOARD'); return; }
+    if (!erpCurrentUser || String(erpCurrentUser.role || '').toLowerCase() !== 'admin') { setAppMode(window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE'); return; }
     if (formContainer) formContainer.style.display = 'none';
     if (listTitle) listTitle.innerText = 'KULLANICI YÖNETİMİ';
     if (ozetGrid) ozetGrid.style.display = 'none';
@@ -22364,33 +22387,16 @@ async function setAppMode(mode, keepEditingId = false) {
         mainList.style.display = 'block';
         mainList.innerHTML = ''; // önceki içeriği temizle
     }
-    // Dashboard'u DOM'dan kaldır
+    // Dashboard kalıntısını DOM'dan kaldır
     const dashRoot = document.getElementById('dashboard-root');
     if (dashRoot) dashRoot.remove();
     
-    // Top header göster (dashboard modunda gizli)
-    const topHeader = document.querySelector('.top-header');
     if (topHeader) topHeader.style.display = 'flex';
     
     await renderKullaniciYonetimi();
     return;
 }
 
-   if (mode === 'DASHBOARD') {
-    if (topHeader) topHeader.style.display = 'flex';
-    // Liste başlık satırını gizle; #main-list açık kalsın (dashboard buraya yazılır)
-    const listHdrDash = document.querySelector('#list-title')?.parentElement;
-    if (listHdrDash) listHdrDash.style.display = 'none';
-    if (mainList) mainList.style.display = 'block';
-    if (scrollArea2) scrollArea2.style.padding = '0.8rem 0.7rem';
-    if (formContainer) formContainer.style.display = 'none';
-    if (ozetGrid) { ozetGrid.style.display = 'none'; }
-    const dashRoot2 = document.getElementById('dashboard-root');
-    if (dashRoot2) dashRoot2.style.display = '';
-    try { erpMobileTabbarSync(mode); } catch (e) {}
-    renderDashboard();
-    return;
-} else {
     if (topHeader) topHeader.style.display = 'flex';
     if (listSection) listSection.style.display = 'flex';
     const listHdrTp = document.querySelector('#list-title')?.parentElement;
@@ -22398,8 +22404,7 @@ async function setAppMode(mode, keepEditingId = false) {
     if (mainList) mainList.style.display = 'block';
     if (scrollArea2) scrollArea2.style.padding = '0.8rem 0.7rem';
     const dashRoot2 = document.getElementById('dashboard-root');
-    if (dashRoot2) dashRoot2.style.display = 'none';
-}
+    if (dashRoot2) dashRoot2.remove();
 
     if (mode === 'PLANLAMA') {
         if (formContainer) formContainer.style.display = 'none';
@@ -22487,6 +22492,15 @@ async function setAppMode(mode, keepEditingId = false) {
             })();
         }
         konfStartLiveSync();
+        return;
+    }
+
+    if (mode === 'MUHASEBE_FIS') {
+        if (formContainer) formContainer.style.display = 'none';
+        if (listTitle) listTitle.innerText = 'MUHASEBE TESLİM FİŞLERİ';
+        if (toggleArea) toggleArea.style.display = 'none';
+        if (typeof renderMuhasebeFisListe === 'function') await renderMuhasebeFisListe({ force: true });
+        else if (mainList) mainList.innerHTML = '<div class="sayim-bos">Muhasebe fiş modülü yüklenemedi.</div>';
         return;
     }
 
@@ -22617,6 +22631,7 @@ function renderInputs() {
                         <span class="depo-komuta-btn__s">Stok düşer · çıkış / sevk</span>
                     </button>
                 </div>
+                <button type="button" onclick="setAppMode('MUHASEBE_FIS')" class="depo-komuta-back" style="width:100%;margin-top:10px;justify-content:center">🧾 Muhasebe fişleri</button>
             </div>`;
         }
         notesContainer.innerHTML = '';
@@ -23090,6 +23105,11 @@ function renderInputs() {
         const kumasGrup = depoHareketFormGrubu();
         const kumasGrupLbl = kumasStokBaslikEtiket(kumasGrup);
         const isGiris = movementType === 'GİRİŞ';
+        if (typeof kumasDepoKomutaFormMount === 'function' && !editingId) {
+            kumasDepoKomutaFormMount(grid, notesContainer, isGiris);
+            notesContainer.innerHTML = '';
+            return;
+        }
         const accentColor = isGiris ? 'var(--emerald-c)' : 'var(--rose-c)';
         const accentRgb   = isGiris ? '52,211,153' : '251,113,133';
 
@@ -23175,6 +23195,23 @@ function renderInputs() {
                         <input id="val-firma-detay" oninput="updateKumasPreview()" class="pro-input" placeholder="Firma veya kişi adı..."
                             style="text-transform:uppercase;border-color:rgba(251,113,133,0.3)">
                     </div>
+                    <div>
+                        <label class="pro-label" style="color:var(--rose-c)">MÜŞTERİ / ALICI <span class="req-star">★</span></label>
+                        <input id="val-afirma" oninput="updateKumasPreview()" class="pro-input" placeholder="Muhasebe fişine yazılır"
+                            style="text-transform:uppercase;border-color:rgba(251,113,133,0.3)">
+                    </div>
+                    <div>
+                        <label class="pro-label">TESLİM ALAN</label>
+                        <input id="val-teslim-alan" class="pro-input" placeholder="Kişi adı" style="text-transform:uppercase">
+                    </div>
+                    <div>
+                        <label class="pro-label">ARAÇ PLAKA</label>
+                        <input id="val-plaka" class="pro-input" placeholder="34 ABC 123" style="text-transform:uppercase">
+                    </div>
+                    <input type="hidden" id="val-teslim-tel">
+                    <input type="hidden" id="val-sofor">
+                    <input type="hidden" id="val-teslim-adres">
+                    <input type="hidden" id="val-notlar-toplu">
                 </div>
             </div>` : ''}
 
@@ -23290,6 +23327,16 @@ function renderInputs() {
                     <div style="padding:8px 12px;border-radius:8px;background:rgba(${accentRgb},0.1);border:1px solid rgba(${accentRgb},0.25);text-align:center;font-size:11px;font-weight:700;color:${accentColor};font-family:'DM Mono',monospace">
                         ${isGiris ? '📥 GİRİŞ HAREKETİ' : '📤 ÇIKIŞ HAREKETİ'}
                     </div>
+                    ${!isGiris ? `
+                    <div style="border-top:1px solid var(--border);padding-top:10px">
+                        <button type="button" id="btn-ceki-listesi" onclick="kumasCekiAc()"
+                            style="width:100%;padding:12px;border-radius:8px;border:1.5px dashed var(--rose-c);
+                            background:rgba(251,113,133,0.07);color:var(--rose-c);font-size:13px;font-weight:700;
+                            cursor:pointer;min-height:44px">
+                            📋 ÇEKİ LİSTESİ OLUŞTUR
+                        </button>
+                        <div id="kumas-ceki-form-ozet" class="kumas-ceki-form-ozet" style="margin-top:6px"></div>
+                    </div>` : ''}
                 </div>
             </div>
         </div>`;
@@ -23604,8 +23651,6 @@ function loadData(opts) {
     if (appMode === 'IPLIK' || (appMode === 'DEPO_HAREKET' && depoKomutaHedef === 'IPLIK')) {
         s = '';
     }
-
-    if (appMode === 'DASHBOARD') return;
 
     if (appMode === 'DEPO_HAREKET_LISTE') {
         renderDepoHareketDefteri();
@@ -25877,6 +25922,10 @@ async function handleSave() {
         await mamulTopluKaydet();
         return;
     }
+    if (kumasFormGrubuMu(depoHareketFormGrubu()) && !editingId && document.getElementById('kumas-toplu-hareket-body') && typeof kumasTopluKaydet === 'function') {
+        await kumasTopluKaydet();
+        return;
+    }
     isSaveInProgress = true;
     try {
         erpNormalizeAllDecimalInputsInForm();
@@ -26205,15 +26254,23 @@ async function handleSave() {
             const body = depoNotlarWithBirim(birim, kaliteRaw);
             const meta = editingId && originalRecordSnapshot ? kumasMetaAl(originalRecordSnapshot) : null;
             const hasMeta = meta && typeof meta === 'object' && Object.values(meta).some(v => String(v ?? '').trim() !== '');
-            const notlarVal = hasMeta ? kumasNotlarOlustur(body, meta) : body;
-            let firmaKayit = document.getElementById('val-firma-detay')?.value?.toUpperCase() || document.getElementById('val-firma-hidden')?.value?.toUpperCase() || '';
+            let notlarVal = hasMeta ? kumasNotlarOlustur(body, meta) : body;
+            let firmaKayit = document.getElementById('val-afirma')?.value?.toUpperCase()
+                || document.getElementById('val-firma-detay')?.value?.toUpperCase()
+                || document.getElementById('val-firma-hidden')?.value?.toUpperCase() || '';
             if (movementType === 'ÇIKIŞ') {
                 const cikisYer = (document.getElementById('val-cikis-yeri')?.value || 'SİMTEKS KONFEKSİYON').trim();
                 if (cikisYer !== 'SİMTEKS KONFEKSİYON') {
-                    const fd = (document.getElementById('val-firma-detay')?.value || '').trim();
+                    const fd = (document.getElementById('val-firma-detay')?.value || document.getElementById('val-afirma')?.value || '').trim();
                     if (!fd) { erpToast('Sevkiyat için firma / kişi adı zorunludur.', 'error'); return; }
                     firmaKayit = fd.toUpperCase();
-                } else firmaKayit = 'SİMTEKS KONFEKSİYON';
+                } else if (!firmaKayit) firmaKayit = 'SİMTEKS KONFEKSİYON';
+                if (typeof depoNotlarWithTeslimDetay === 'function') {
+                    notlarVal = depoNotlarWithTeslimDetay(notlarVal, typeof muhasebeFisTeslimFormOku === 'function' ? muhasebeFisTeslimFormOku() : null);
+                }
+                if (typeof kumasCekiPayloadNotlarEkle === 'function') {
+                    notlarVal = kumasCekiPayloadNotlarEkle(notlarVal);
+                }
             }
 
             Object.assign(p, {
@@ -26338,7 +26395,10 @@ async function handleSave() {
             const kart = (typeof mamulKartBul === 'function' ? mamulKartBul(sKodu) : null)
                 || (dataCache.kumas_kutuphanesi || []).find(x => x.desen_kodu === sKodu) || {};
             const notRaw = document.getElementById('val-notlar')?.value || '';
-            const notlarVal = depoNotlarWithBirim(birim, notRaw);
+            let notlarVal = depoNotlarWithBirim(birim, notRaw);
+            if (movementType === 'ÇIKIŞ' && typeof depoNotlarWithTeslimDetay === 'function') {
+                notlarVal = depoNotlarWithTeslimDetay(notlarVal, typeof muhasebeFisTeslimFormOku === 'function' ? muhasebeFisTeslimFormOku() : null);
+            }
 
             Object.assign(p, {
                 stok_kodu:   sKodu,
@@ -26513,6 +26573,18 @@ async function handleSave() {
                 : ((appMode === 'SIPARIS_GIRIS' && !wasEditing) ? 'SIPARIS_LISTE' : returnMode);
             const depoYeniKayit = !wasEditing && appMode === 'DEPO_HAREKET' && !depoDefterDonus;
             const kaydedilenStokKodu = String(p.stok_kodu || p.desen_kodu || '').trim();
+            if (!wasEditing && movementType === 'ÇIKIŞ' && savedId) {
+                try {
+                    if (kumasFormGrubuMu(depoHareketFormGrubu()) && typeof muhasebeFisKumasCikisKaydet === 'function') {
+                        await muhasebeFisKumasCikisKaydet({ payloads: [p], hareketIds: [savedId] });
+                    } else if (depoHareketFormGrubu() === 'MAMUL_DEPO' && typeof muhasebeFisMamulCikisKaydet === 'function') {
+                        await muhasebeFisMamulCikisKaydet({ payloads: [p], hareketIds: [savedId] });
+                    }
+                } catch (e) { console.warn('muhasebe fişi:', e?.message || e); }
+            }
+            if (kumasFormGrubuMu(depoHareketFormGrubu()) && movementType === 'ÇIKIŞ' && typeof kumasCekiFormSifirla === 'function') {
+                kumasCekiFormSifirla();
+            }
 
             // Toast önce — ağ doğrulaması UI'yi bekletmesin
             if (fotoSnap.length && fotoDropped) {
@@ -34191,7 +34263,7 @@ window.editMamulKartFromListe = editMamulKartFromListe;
 /* --- mobil overrides (menü masaüstü ile aynı; excel/chart kapalı) --- */
 /**
  * Simteks Mobil ERP — ana dosya yüklendikten sonra uygulanan sadeleştirmeler
- * - Menü yapısı masaüstü ile aynı (Anasayfa dahil)
+ * - Anasayfa yok; açılış siparişler
  * - Canlı senkron Realtime açık (satır bazlı)
  * - Grafik / Excel yolları kapalı
  */
@@ -34215,9 +34287,6 @@ window.editMamulKartFromListe = editMamulKartFromListe;
     w.safeChart = function () { return null; };
 
     // —— Canlı senkron: Realtime açık (satır bazlı); Excel/grafik kapalı kalır ——
-
-    // —— Dashboard: masaüstü ile aynı menü — yönlendirme yok ——
-    // (renderDashboard mobil uyumlu kısayol paneli)
 
     // —— PDF: html2pdf yalnızca ihtiyaç olunca ——
     const HTML2PDF_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
@@ -34271,18 +34340,14 @@ window.editMamulKartFromListe = editMamulKartFromListe;
             'siparis-excel-input',
             'stok-excel-input',
             'dt-excel-input',
-            'modal-excel-btn'
+            'modal-excel-btn',
+            'nav-DASHBOARD'
         ];
         hideIds.forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             el.style.display = 'none';
             el.classList.add('erp-nav-denied');
-        });
-        // Anasayfa menüde kalsın (masaüstü ile aynı) — nav-DASHBOARD gizlenmez
-        document.querySelectorAll('#erp-mobile-tabbar [data-tab-mode="DASHBOARD"]').forEach((btn) => {
-            btn.style.display = 'none';
-            btn.classList.add('erp-nav-denied');
         });
         document.body.classList.add('erp-mobil-lite');
     }
@@ -34296,5 +34361,5 @@ window.editMamulKartFromListe = editMamulKartFromListe;
     setTimeout(hideLiteUi, 800);
     setTimeout(hideLiteUi, 2500);
 
-    console.info('[mobil-lite] Menü masaüstü ile aynı; Chart / Excel kapalı; Realtime açık');
+    console.info('[mobil-lite] Anasayfa yok; açılış siparişler; Chart / Excel kapalı; Realtime açık');
 })(window);

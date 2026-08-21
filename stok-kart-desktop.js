@@ -3461,12 +3461,23 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function kumasTopluKaynakRows() {
         const map = {};
+        const kanal = (typeof depoHareketFormGrubu === 'function') ? depoHareketFormGrubu() : '';
+        const hamIstegi = kanal === 'HAM_KUMAS';
+        const mamulIstegi = kanal === 'MAMUL_KUMAS';
+        const kartTipUygun = (kart) => {
+            if (!hamIstegi && !mamulIstegi) return true;
+            const tip = typeof kumasKartTipiOku === 'function' ? String(kumasKartTipiOku(kart) || '').toUpperCase() : '';
+            if (hamIstegi) return tip !== 'MAMUL';
+            if (mamulIstegi) return tip === 'MAMUL';
+            return true;
+        };
         (dataCache.kumas_kutuphanesi || []).forEach(x => {
             const kod = String(x.stok_kodu || x.desen_kodu || '').trim().toUpperCase();
             const kumaşKodMu = kod.startsWith('SM-') || kod.startsWith('SM') || kod.startsWith('NU-') || kod.startsWith('NU');
             if (!kumaşKodMu) return;
             if (typeof kumasKutuphanesiKartiMamulMu === 'function' && kumasKutuphanesiKartiMamulMu(x)) return;
             if (typeof stokKartGrupEslesir === 'function' && !stokKartGrupEslesir(x, 'KUMAS', { ignoreTipFiltre: true })) return;
+            if (!kartTipUygun(x)) return;
             const kartKod = String(x.stok_kodu || x.desen_kodu || '').trim();
             if (!kartKod) return;
             if (!map[kartKod]) {
@@ -3486,6 +3497,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         });
         (dataCache.kumas_stok || []).forEach(x => {
             if (typeof kumasStokHareketiKumasDepoMu === 'function' && !kumasStokHareketiKumasDepoMu(x)) return;
+            if (hamIstegi && typeof kumasStokHareketiHamKumasMu === 'function' && !kumasStokHareketiHamKumasMu(x)) return;
+            if (mamulIstegi && typeof kumasStokHareketiMamulKumasMu === 'function' && !kumasStokHareketiMamulKumasMu(x)) return;
             const kod = String(x.stok_kodu || '').trim();
             if (!kod || !kumasDepoStokKoduMu(kod)) return;
             if (!map[kod]) {
@@ -3678,24 +3691,27 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             : (kumasCekiOzetHesapla(r.ceki).top ? `Çeki: ${kumasCekiOzetHesapla(r.ceki).top} top` : '—');
         const cekiOzBtn = kumasCekiOzetHesapla(r.ceki);
         return `<div class="kumas-toplu-hareket-row${r.hata ? ' has-error' : ''}">
-            <input id="kt-kod-${idx}" class="pro-input" value="${esc(r.query)}" placeholder="Kod veya ürün adı"
+            <input id="kt-kod-${idx}" class="pro-input kt-kod" value="${esc(r.query)}" placeholder="Stok kodu veya ürün adı"
                 oninput="kumasTopluSatirGuncelle(${idx},'query',this.value);kumasTopluAra(${idx},this)"
                 onfocus="kumasTopluAra(${idx},this)"
                 onblur="setTimeout(function(){kumasTopluDropKapat();kumasTopluKodUygula(${idx});},120)"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();kumasTopluKodUygula(${idx});}">
             <div class="kumas-toplu-urun">
-                <span class="kumas-toplu-urun-ad">${esc(r.ad || '—')}</span>
+                <span class="kumas-toplu-urun-ad">${esc(r.ad || 'Ürün seçilmedi')}</span>
                 <span class="kumas-toplu-urun-meta">${esc(r.hata || meta)}</span>
             </div>
-            <input id="kt-mt-${idx}" type="number" min="0" step="0.01" class="pro-input is-ana-input" value="${esc(r.mt)}" placeholder="mt"
+            <label class="kt-field kt-field--mt"><span>Metre ★</span>
+            <input id="kt-mt-${idx}" type="number" min="0" step="0.01" class="pro-input is-ana-input kt-mt" value="${esc(r.mt)}" placeholder="0"
                 oninput="kumasTopluSatirGuncelle(${idx},'mt',this.value)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('kt-kg-${idx}')?.focus();}">
-            <input id="kt-kg-${idx}" type="number" min="0" step="0.01" class="pro-input" value="${esc(r.kg)}" placeholder="kg"
-                oninput="kumasTopluSatirGuncelle(${idx},'kg',this.value)">
-            <input id="kt-not-${idx}" class="pro-input" value="${esc(r.not)}" placeholder="Not..."
-                oninput="kumasTopluSatirGuncelle(${idx},'not',this.value)">
-            <button type="button" class="kumas-ceki-row-btn${cekiOzBtn.top ? ' has-ceki' : ''}" onclick="kumasCekiListeAc(${idx})" title="Çeki listesi">${cekiOzBtn.top ? cekiOzBtn.top + ' top' : 'Çeki'}</button>
-            <button type="button" class="ms-act" onclick="kumasTopluSatirSil(${idx})" title="Satırı sil">×</button>
+                onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('kt-kg-${idx}')?.focus();}"></label>
+            <label class="kt-field kt-field--kg"><span>Kg</span>
+            <input id="kt-kg-${idx}" type="number" min="0" step="0.01" class="pro-input kt-kg" value="${esc(r.kg)}" placeholder="0"
+                oninput="kumasTopluSatirGuncelle(${idx},'kg',this.value)"></label>
+            <label class="kt-field kt-field--not"><span>Not</span>
+            <input id="kt-not-${idx}" class="pro-input kt-not" value="${esc(r.not)}" placeholder="İsteğe bağlı"
+                oninput="kumasTopluSatirGuncelle(${idx},'not',this.value)"></label>
+            <button type="button" class="kumas-ceki-row-btn${cekiOzBtn.top ? ' has-ceki' : ''}" onclick="kumasCekiListeAc(${idx})" title="Çeki listesi">${cekiOzBtn.top ? cekiOzBtn.top + ' top' : 'Çeki listesi'}</button>
+            <button type="button" class="ms-act kt-sil" onclick="kumasTopluSatirSil(${idx})" title="Satırı sil">Sil</button>
         </div>`;
     }
 
@@ -4188,7 +4204,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 notlar: notlarVal,
                 _ceki: cekiOz.top ? kumasCekiDoluListe(r.ceki) : [],
                 islem_turu: typeof movementType !== 'undefined' ? movementType : (isCikis ? 'ÇIKIŞ' : 'GİRİŞ'),
-                kaynak_birim: 'DEPO_HAREKET_KUMAS',
+                kaynak_birim: (typeof depoKaynakBirimImportBelirle === 'function'
+                    ? depoKaynakBirimImportBelirle((typeof depoHareketFormGrubu === 'function' ? depoHareketFormGrubu() : 'KUMAS'), kod)
+                    : null) || (typeof depoKumasKaynakBirimBelirle === 'function' ? depoKumasKaynakBirimBelirle(kod) : '') || 'DEPO_HAREKET_KUMAS',
                 updated_by: String(erpCurrentUser?.display_name || erpCurrentUser?.username || 'Sistem').trim() || 'Sistem',
                 islem_gecmisi: `✨ ${new Date().toLocaleString('tr-TR')} — Toplu kumaş ${isCikis ? 'çıkış' : 'giriş'} (${mt} mt${kg ? ' / ' + kg + ' kg' : ''}${cekiOz.top ? ' / ' + cekiOz.top + ' top' : ''})`
             });
