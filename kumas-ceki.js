@@ -45,6 +45,7 @@ function kumasCekiAc() {
     div.id = 'kumas-ceki-overlay';
     div.dataset.cekiMod = 'form';
     div.innerHTML = `
+        <button type="button" class="kumas-ceki-kapat" onclick="kumasCekiKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
         <div class="kumas-ceki-box">
             <div class="kumas-ceki-head">
                 <div>
@@ -375,8 +376,10 @@ function kumasCekiGoster(notlar, baslikBilgi) {
     if (ov) ov.remove();
     ov = document.createElement('div');
     ov.id = 'kumas-ceki-goruntule-overlay';
+    ov.classList.add('is-open');
     ov.style.cssText = 'position:fixed;inset:0;z-index:2147482600;background:rgba(8,12,24,0.6);display:flex;align-items:stretch;justify-content:center;padding:12px;box-sizing:border-box';
     ov.innerHTML = `
+        <button type="button" class="kumas-ceki-kapat" onclick="kumasCekiGoruntuleKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
         <div class="kumas-ceki-box">
             <div class="kumas-ceki-head">
                 <div>
@@ -386,7 +389,7 @@ function kumasCekiGoster(notlar, baslikBilgi) {
                 </div>
                 <div class="kumas-ceki-acts">
                     <button type="button" onclick="kumasCekiGosteriYazdir('${encodeURIComponent(JSON.stringify(satirlar))}','${metaEnc}')">Yazdır / PDF</button>
-                    <button type="button" onclick="document.getElementById('kumas-ceki-goruntule-overlay').remove()">Kapat</button>
+                    <button type="button" onclick="kumasCekiGoruntuleKapat()">Kapat</button>
                 </div>
             </div>
             <div class="kumas-ceki-ozet-bar">
@@ -399,7 +402,12 @@ function kumasCekiGoster(notlar, baslikBilgi) {
             </div>
         </div>`;
     document.body.appendChild(ov);
-    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    ov.addEventListener('click', function(e) { if (e.target === ov) kumasCekiGoruntuleKapat(); });
+}
+
+function kumasCekiGoruntuleKapat() {
+    const ov = document.getElementById('kumas-ceki-goruntule-overlay');
+    if (ov) ov.remove();
 }
 
 // ─── Yazdır ─────────────────────────────────────────────────────────────────
@@ -579,6 +587,7 @@ window.kumasCekiGosteriYazdir   = kumasCekiGosteriYazdir;
 window.kumasCekiA4Yazdir        = kumasCekiA4Yazdir;
 window.kumasCekiA4Html          = kumasCekiA4Html;
 window.kumasCekiGoster          = kumasCekiGoster;
+window.kumasCekiGoruntuleKapat  = kumasCekiGoruntuleKapat;
 window.kumasCekiHarekettenGoster= kumasCekiHarekettenGoster;
 window.kumasCekiFormSifirla     = kumasCekiFormSifirla;
 window.kumasCekiPayloadNotlarEkle = kumasCekiPayloadNotlarEkle;

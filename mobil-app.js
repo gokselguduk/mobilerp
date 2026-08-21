@@ -1398,6 +1398,7 @@ const ERP_TABLE_HEAVY_COLS = {
 const ERP_SYNC_SIPARIS_CORE_COLS = 'id,created_at,notlar,sno,firma,miktar,kaynak_birim,durum,cins,starih,ttarih';
 const ERP_SYNC_SIPARIS_LIGHT_COLS = `${ERP_SYNC_SIPARIS_CORE_COLS},siparis_grubu,uretim_yeri`;
 const ERP_SIPARIS_DROPPED_LS_KEY = 'erp_siparis_sync_dropped_v1';
+const ERP_SYNC_DROPPED_LS_KEY = 'erp_sync_dropped_cols_v1';
 
 function erpSiparisSyncDroppedCols() {
     try {
@@ -1414,11 +1415,51 @@ function erpSiparisSyncDropCol(col) {
     try { localStorage.setItem(ERP_SIPARIS_DROPPED_LS_KEY, JSON.stringify([...s])); } catch (e) {}
 }
 
+function erpSyncDroppedCols(table) {
+    const t = String(table || '').trim();
+    if (!t) return new Set();
+    try {
+        const all = JSON.parse(localStorage.getItem(ERP_SYNC_DROPPED_LS_KEY) || '{}') || {};
+        return new Set(Array.isArray(all[t]) ? all[t] : []);
+    } catch (e) { return new Set(); }
+}
+
+function erpSyncDropCol(table, col) {
+    const t = String(table || '').trim();
+    const c = String(col || '').trim();
+    if (!t || !c) return;
+    if (t === 'siparisler') {
+        erpSiparisSyncDropCol(c);
+        return;
+    }
+    const s = erpSyncDroppedCols(t);
+    if (s.has(c)) return;
+    s.add(c);
+    try {
+        const all = JSON.parse(localStorage.getItem(ERP_SYNC_DROPPED_LS_KEY) || '{}') || {};
+        all[t] = [...s];
+        localStorage.setItem(ERP_SYNC_DROPPED_LS_KEY, JSON.stringify(all));
+    } catch (e) {}
+}
+
+function erpSyncLightCols(table, override) {
+    if (override) return override;
+    let cols = ERP_SYNC_LIGHT_COLS[table] || '*';
+    if (!cols || cols === '*') return cols;
+    const dropped = erpSyncDroppedCols(table);
+    if (!dropped.size) return cols;
+    return cols.split(',').map(c => c.trim()).filter(c => c && !dropped.has(c)).join(',') || '*';
+}
+
 function erpSyncParseMissingColumn(msg) {
     const s = String(msg || '');
-    let m = s.match(/column\s+(?:[\w.]+\.)?(\w+)\s+does not exist/i);
+    let m = s.match(/column\s+\w+\.(\w+)\s+does not exist/i);
+    if (m) return m[1];
+    m = s.match(/column\s+(?:[\w.]+\.)?["']?(\w+)["']?\s+does not exist/i);
     if (m) return m[1];
     m = s.match(/could not find the '(\w+)' column/i);
+    if (m) return m[1];
+    m = s.match(/column ["'](\w+)["'] of relation/i);
     return m ? m[1] : null;
 }
 
@@ -1445,10 +1486,10 @@ function erpSyncNextSiparisColLevel(level) {
 /** Otomatik senkron — büyük blob alanları hariç (foto / işlem geçmişi) */
 const ERP_SYNC_LIGHT_COLS = {
     siparisler: ERP_SYNC_SIPARIS_LIGHT_COLS,
-    iplik_stok: 'id,created_at,updated_at,stok_kodu,iplik_no,marka,cins,lot_no,renk,kalite,miktar_kg,miktar_mt,cuval_sayisi,firma,tedarikci,depo,hareket_tipi,kaynak_birim,notlar,cuval_rengi,kalite_durum',
-    kumas_stok: 'id,created_at,updated_at,stok_kodu,desen_kodu,urun_adi,kumas_cinsi,firma,marka,renk,lot_no,miktar_kg,miktar_mt,cuval_sayisi,depo,depo_konum,hareket_tipi,islem_turu,kaynak_birim,notlar,ana_grup,uretim_yeri,ebat,olcu,mamul_en,mamul_boy,araci_firma',
+    iplik_stok: 'id,created_at,stok_kodu,iplik_no,marka,cins,lot_no,renk,kalite,miktar_kg,miktar_mt,cuval_sayisi,firma,tedarikci,depo,hareket_tipi,kaynak_birim,notlar,cuval_rengi,kalite_durum',
+    kumas_stok: 'id,created_at,stok_kodu,desen_kodu,desen_adi,urun_adi,kumas_cinsi,firma,marka,renk,lot_no,parti_no,kumas_rengi,miktar_kg,miktar_mt,cuval_sayisi,top_sayisi,depo,depo_konum,hareket_tipi,islem_turu,kaynak_birim,notlar,ana_grup,uretim_yeri,ebat,olcu,mamul_en,mamul_boy,araci_firma,cuval_rengi,updated_by,irsaliye_no,kalite',
     kumas_kutuphanesi: 'id,created_at,updated_at,stok_no,stok_kodu,desen_kodu,desen_no,desen_adi,urun_adi,kumas_cinsi,firma,kalite,notlar,atki_renkleri,atki_detayi,atki_siklik,atki_sikligi,toplam_atki,cozgu_ipi,cozgu_no,cozgu_cinsi,tarak_no,tarak_eni,tezgah_tipi,ham_en,ham_boy,ham_gramaj,ham_gsm,mamul_en,mamul_boy,mamul_gramaj,mamul_gsm,gramaj,gsm,urun_agirlik,miktar_mt,resim_url,fotograf_url,updated_by,kaynak_birim,terbiye,ana_grup,boya_not,cekme,cozgu_sikligi',
-    tezgahlar: 'id,created_at,updated_at,tezgah_no,tezgah_tipi,tezgah_eni,tarak_eni,tarak_no,cozgu_no,cozgu_marka,dizim_sikligi,giris_tarihi,dokuma_termini,siparis_no,urun_adi,musteri,notlar,durum'
+    tezgahlar: 'id,created_at,tezgah_no,tezgah_tipi,tezgah_eni,tarak_eni,tarak_no,cozgu_no,cozgu_marka,dizim_sikligi,giris_tarihi,dokuma_termini,siparis_no,urun_adi,musteri,notlar,durum'
 };
 const ERP_SYNC_TABLES = ['iplik_stok', 'kumas_stok', 'kumas_kutuphanesi', 'siparisler', 'tezgahlar'];
 let _erpFotoMergeScheduled = false;
@@ -1681,11 +1722,25 @@ function depoIplikStokKartiDogrula(stokKodu) {
 function depoMamulStokKartiDogrula(stokKodu) {
     const kod = String(stokKodu || '').trim();
     if (!kod || kod === 'KODSUZ') return 'Stok kodu zorunludur — mamül kartından seçim yapın.';
-    let kart = (dataCache.kumas_kutuphanesi || []).find(k => String(k.desen_kodu || '').trim() === kod);
+    const ku = kod.toUpperCase();
+    let kart = (dataCache.kumas_kutuphanesi || []).find(k =>
+        String(k.desen_kodu || '').trim().toUpperCase() === ku
+        || String(k.stok_kodu || '').trim().toUpperCase() === ku
+    );
     if (!kart && typeof mamulKartBul === 'function') kart = mamulKartBul(kod);
     if (!kart) return `"${kod}" için mamül stok kartı yok. Önce mamül kartı oluşturun.`;
     if (!kumasKutuphanesiKartiMamulMu(kart)) return `"${kod}" mamül kartı değil — doğru kart türünü kullanın.`;
     return null;
+}
+function mamulHareketTipi(h) {
+    const tip = String(h?.islem_turu || '').toUpperCase();
+    if (tip === 'ÇIKIŞ' || tip === 'CIKIS') return 'ÇIKIŞ';
+    if (tip === 'GİRİŞ' || tip === 'GIRIS') return 'GİRİŞ';
+    const kg = parseFloat(h?.miktar_kg) || 0;
+    const mt = parseFloat(h?.miktar_mt) || 0;
+    const ad = parseInt(h?.cuval_sayisi || 0, 10) || 0;
+    if (kg < 0 || mt < 0 || ad < 0) return 'ÇIKIŞ';
+    return 'GİRİŞ';
 }
 function depoKaynakBirimImportBelirle(ig, stokKodu) {
     if (ig === 'IPLIK') return 'DEPO_HAREKET_IPLIK';
@@ -1771,7 +1826,9 @@ function mamulSelectByKod(kod) {
         if (mamulTopluKodSatiraYaz(k, 0)) return;
     }
     const kartlar = (dataCache.kumas_kutuphanesi || []).filter(kumasKutuphanesiKartiMamulMu);
-    const idx = kartlar.findIndex(x => String(x.desen_kodu || '').trim() === k);
+    const idx = kartlar.findIndex(x =>
+        String(x.desen_kodu || '').trim() === k || String(x.stok_kodu || '').trim() === k
+    );
     if (idx >= 0) {
         window._mamulSearchData = kartlar;
         mamulSelectItem({ getAttribute: () => String(idx) });
@@ -5541,7 +5598,21 @@ function erpDataCachePersist(immediate = false) {
                 ts: Date.now(),
                 data: erpDataCacheStripForLs(dataCache)
             }));
-        } catch (e) { /* kota aşımı — sessiz */ }
+        } catch (e) {
+            try {
+                const slim = erpDataCacheStripForLs(dataCache);
+                localStorage.setItem(ERP_DATA_CACHE_LS_KEY, JSON.stringify({
+                    ts: Date.now(),
+                    data: {
+                        kumas_stok: slim.kumas_stok || [],
+                        kumas_kutuphanesi: slim.kumas_kutuphanesi || [],
+                        iplik_stok: slim.iplik_stok || [],
+                        tezgahlar: slim.tezgahlar || [],
+                        siparisler: (slim.siparisler || []).slice(0, 400)
+                    }
+                }));
+            } catch (e2) { /* kota — senkron bellekten devam eder */ }
+        }
     };
     if (immediate) {
         if (_erpPersistTimer) { clearTimeout(_erpPersistTimer); _erpPersistTimer = null; }
@@ -5603,6 +5674,21 @@ function erpDataCacheRestore() {
     }
 }
 
+function erpSyncUnionById(incoming, onceki) {
+    const inc = incoming || [];
+    const prev = onceki || [];
+    if (!prev.length) return inc;
+    if (!inc.length) return prev;
+    const map = new Map();
+    prev.forEach(r => { if (r?.id != null) map.set(String(r.id), r); });
+    inc.forEach(r => {
+        if (r?.id == null) return;
+        const key = String(r.id);
+        map.set(key, map.has(key) ? { ...map.get(key), ...r } : r);
+    });
+    return Array.from(map.values());
+}
+
 function erpDataCacheMergeTable(table, incoming, onceki) {
     const rows = incoming || [];
     const heavy = ERP_TABLE_HEAVY_COLS[table];
@@ -5643,7 +5729,7 @@ function erpSyncQuery(table, light) {
     if (table === 'siparisler') {
         cols = erpSyncSiparisCols('light');
     } else if (light) {
-        cols = ERP_SYNC_LIGHT_COLS[table] || '*';
+        cols = erpSyncLightCols(table);
     }
     if (table === 'tezgahlar') {
         return sb.from(table).select(cols).order('tezgah_no', { ascending: true });
@@ -5657,10 +5743,10 @@ async function erpSyncFetchTablePaged(table, light, fetchOpts) {
     if (table === 'siparisler') {
         cols = erpSyncSiparisCols(fetchOpts._siparisColLevel || 'light', fetchOpts);
     } else if (light) {
-        cols = ERP_SYNC_LIGHT_COLS[table] || '*';
+        cols = erpSyncLightCols(table, fetchOpts._lightColsOverride);
     }
     const pageSize = 1000;
-    const maxRows = table === 'siparisler' ? 50000 : 15000;
+    const maxRows = (table === 'siparisler' || table === 'kumas_stok' || table === 'iplik_stok') ? 50000 : 15000;
     const maxPages = fetchOpts.maxPages || Math.ceil(maxRows / pageSize);
     let all = [];
     let page = 0;
@@ -5681,33 +5767,45 @@ async function erpSyncFetchTablePaged(table, light, fetchOpts) {
                 if (attempt === 0) await new Promise(r => setTimeout(r, 900));
             }
         }
-        const retrySiparisCols = (errMsg) => {
-            if (table !== 'siparisler') return null;
-            const level = fetchOpts._siparisColLevel || 'light';
-            const missing = erpSyncParseMissingColumn(errMsg);
-            if (missing) {
-                erpSiparisSyncDropCol(missing);
-                const cur = erpSyncSiparisCols(level, fetchOpts);
+        const retryMissingCols = (errMsg) => {
+            if (table === 'siparisler') {
+                const level = fetchOpts._siparisColLevel || 'light';
+                const missing = erpSyncParseMissingColumn(errMsg);
+                if (missing) {
+                    erpSiparisSyncDropCol(missing);
+                    const cur = erpSyncSiparisCols(level, fetchOpts);
+                    const newCols = cur.split(',').map(c => c.trim()).filter(c => c && c !== missing).join(',');
+                    if (newCols && newCols !== cur) {
+                        return erpSyncFetchTablePaged(table, light, { ...fetchOpts, _siparisColLevel: level, _siparisColsOverride: newCols });
+                    }
+                }
+                if (!erpSyncIsMissingColumnError(errMsg)) return null;
+                const next = erpSyncNextSiparisColLevel(level);
+                if (!next) return null;
+                return erpSyncFetchTablePaged(table, light, { ...fetchOpts, _siparisColLevel: next, _siparisColsOverride: null });
+            }
+            if (light && cols && cols !== '*') {
+                const missing = erpSyncParseMissingColumn(errMsg);
+                if (!missing) return null;
+                erpSyncDropCol(table, missing);
+                const cur = String(fetchOpts._lightColsOverride || cols);
                 const newCols = cur.split(',').map(c => c.trim()).filter(c => c && c !== missing).join(',');
                 if (newCols && newCols !== cur) {
-                    return erpSyncFetchTablePaged(table, light, { ...fetchOpts, _siparisColLevel: level, _siparisColsOverride: newCols });
+                    return erpSyncFetchTablePaged(table, light, { ...fetchOpts, _lightColsOverride: newCols });
                 }
             }
-            if (!erpSyncIsMissingColumnError(errMsg)) return null;
-            const next = erpSyncNextSiparisColLevel(level);
-            if (!next) return null;
-            return erpSyncFetchTablePaged(table, light, { ...fetchOpts, _siparisColLevel: next, _siparisColsOverride: null });
+            return null;
         };
         if (lastErr) {
             const msg = lastErr?.message || String(lastErr);
-            const retry = retrySiparisCols(msg);
+            const retry = retryMissingCols(msg);
             if (retry) return retry;
             return { data: null, error: { message: msg }, partial: all.length ? all : null };
         }
         const { data, error } = batchResult || {};
         if (error) {
             const msg = error.message || String(error);
-            const retry = retrySiparisCols(msg);
+            const retry = retryMissingCols(msg);
             if (retry) return retry;
             return { data: null, error, partial: all.length ? all : null };
         }
@@ -5715,7 +5813,8 @@ async function erpSyncFetchTablePaged(table, light, fetchOpts) {
         all = all.concat(batch);
         if (batch.length < pageSize) break;
     }
-    return { data: all, error: null, recovered: !!fetchOpts._siparisColsOverride || (fetchOpts._siparisColLevel && fetchOpts._siparisColLevel !== 'light') };
+    const truncated = all.length > 0 && all.length % pageSize === 0 && page >= maxPages;
+    return { data: all, error: null, truncated, recovered: !!fetchOpts._siparisColsOverride || (fetchOpts._siparisColLevel && fetchOpts._siparisColLevel !== 'light') };
 }
 
 async function erpSyncFetchTable(table, light, fetchOpts) {
@@ -5725,7 +5824,9 @@ async function erpSyncFetchTable(table, light, fetchOpts) {
     if (paged) {
         const useLight = table === 'siparisler' ? true : !!light;
         const pageOpts = { ...fetchOpts };
-        if (table !== 'siparisler' && !pageOpts.maxPages) pageOpts.maxPages = 10;
+        if (table !== 'siparisler' && table !== 'kumas_stok' && table !== 'iplik_stok' && table !== 'kumas_kutuphanesi' && !pageOpts.maxPages) {
+            pageOpts.maxPages = 10;
+        }
         let out = await erpSyncFetchTablePaged(table, useLight, pageOpts);
         if (out?.error && !pageOpts._retried) {
             await new Promise(r => setTimeout(r, 1200));
@@ -6398,6 +6499,8 @@ async function syncAllData(isManual = false, opts = {}) {
             if (key === 'siparisler') {
                 const useUnion = light || opts.siparisFirstPageOnly || out?.truncated;
                 if (useUnion) rows = erpSyncUnionSiparisler(rows, onceki[key]);
+            } else if (out?.truncated) {
+                rows = erpSyncUnionById(rows, onceki[key]);
             }
             if (light) rows = erpDataCacheMergeTable(key, rows, onceki[key]);
             if (key === 'siparisler') {
@@ -10287,7 +10390,7 @@ async function renderDokumaHareketListesi() {
             }
 
             const [iplikRes, kutuphaneRes, siparisRes, tezgahRes] = await Promise.all([
-                sb.from('iplik_stok').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,stok_kodu,iplik_no,kaynak_birim,islem_turu,miktar_kg,miktar_mt,marka,cins').order('created_at', { ascending: false }).limit(2000),
+                sb.from('iplik_stok').select('id,created_at,notlar,stok_kodu,iplik_no,kaynak_birim,islem_turu,miktar_kg,miktar_mt,marka,cins').order('created_at', { ascending: false }).limit(2000),
                 sb.from('kumas_kutuphanesi').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,desen_kodu,desen_adi,urun_adi,kaynak_birim,firma').order('created_at', { ascending: false }).limit(1500),
                 sb.from('siparisler').select('id,created_at,islem_gecmisi,notlar,sno,firma,miktar,kaynak_birim,durum').order('created_at', { ascending: false }).limit(1500),
                 // Hareket kayitlari icin tezgah degisiklikleri "guncelleme" uzerinden izlenir.
@@ -22545,6 +22648,12 @@ async function setAppMode(mode, keepEditingId = false) {
             })
             .catch(e => console.warn('Sipariş listesi yenileme:', e?.message || e));
     }
+    if (['MAMUL_DEPO', 'KUMAS', 'HAM_KUMAS', 'MAMUL_KUMAS', 'IPLIK', 'DEPO_HAREKET_LISTE'].includes(mode)) {
+        const tables = mode === 'IPLIK' ? ['iplik_stok'] : ['kumas_stok', 'kumas_kutuphanesi'];
+        syncAllData(false, { silent: true, tables, light: true, skipScreenRefresh: true, skipSummary: true })
+            .then(() => { if (appMode === mode && typeof loadData === 'function') loadData(); })
+            .catch(e => console.warn('Stok listesi yenileme:', e?.message || e));
+    }
     if (depoHizliHareketBekleyen) setTimeout(() => depoHizliHareketBekleyenUygula(), 50);
     if (erpListePollModMu()) erpStartListeDataPoll();
     else erpStopListeDataPoll();
@@ -29121,6 +29230,12 @@ window.addEventListener('scroll', (e) => {
     try {
         if (dropdownScrollIcerisindeMi(e)) return;
         repositionOpenDropdowns();
+        const idx = window._mamulTopluDropIdx;
+        const drop = document.getElementById('mamul-toplu-kod-drop');
+        if (idx >= 0 && drop && drop.classList.contains('is-open') && typeof mamulTopluKodDropKonumla === 'function') {
+            const inp = document.getElementById('mt-kod-' + idx);
+            if (inp) mamulTopluKodDropKonumla(inp, drop);
+        }
     } catch (err) {}
 }, true);
 window.addEventListener('resize', () => { try { repositionOpenDropdowns(); } catch (e) {} });
@@ -29656,6 +29771,35 @@ function stokListeFiltreOku(prefix, fallback) {
     };
 }
 window.stokListeFiltreOku = stokListeFiltreOku;
+function stokGrupSonHareketTarih(g) {
+    const ts = Math.max(g?.son_giris_at || 0, g?.son_cikis_at || 0);
+    if (!ts) return '';
+    const d = new Date(ts);
+    return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : '';
+}
+function stokGrupSonHareketTip(g) {
+    const giris = g?.son_giris_at || 0;
+    const cikis = g?.son_cikis_at || 0;
+    if (cikis > giris) return 'ÇIKIŞ';
+    if (giris > cikis) return 'GİRİŞ';
+    if (cikis) return 'ÇIKIŞ';
+    if (giris) return 'GİRİŞ';
+    return '';
+}
+function stokGrupFiltreEslesir(g, f) {
+    f = f || { q: '', tip: 'HEPSİ', bas: '', bit: '' };
+    if (f.tip === 'GİRİŞ' || f.tip === 'ÇIKIŞ') {
+        if (stokGrupSonHareketTip(g) !== f.tip) return false;
+    }
+    if (f.bas || f.bit) {
+        const ds = stokGrupSonHareketTarih(g);
+        if (!ds) return false;
+        if (f.bas && ds < f.bas) return false;
+        if (f.bit && ds > f.bit) return false;
+    }
+    return true;
+}
+window.stokGrupFiltreEslesir = stokGrupFiltreEslesir;
 function stokListeFiltreBarHtml(opts) {
     opts = opts || {};
     const p = opts.prefix || 'stok-f';
@@ -29788,10 +29932,13 @@ function kumasAlan(rec, key, fallback = '') {
 /** Mamül deposu hareketleri — kumaş (SM-/KUMAS) ile karışmaz */
 function kumasStokHareketiMamulDepoMu(x) {
     const kb = String(x?.kaynak_birim || '').toUpperCase();
-    if (kb === 'DEPO_HAREKET_KUMAS' || kb === 'DEPO_HAREKET_HAM_KUMAS' || kb === 'DEPO_HAREKET_MAMUL_KUMAS' || kb === 'KUMAS' || kb === 'HAM_KUMAS' || kb === 'MAMUL_KUMAS') return false;
+    if (kb === 'DEPO_HAREKET_KUMAS' || kb === 'DEPO_HAREKET_KUMAS_TOPLU' || kb.startsWith('DEPO_HAREKET_KUMAS')
+        || kb === 'DEPO_HAREKET_HAM_KUMAS' || kb === 'DEPO_HAREKET_MAMUL_KUMAS' || kb === 'KUMAS' || kb === 'HAM_KUMAS' || kb === 'MAMUL_KUMAS') return false;
     if (kb === 'MAMUL_DEPO' || kb === 'DEPO_HAREKET_MAMUL_DEPO') return true;
     const kod = String(x?.stok_kodu ?? '').trim().toUpperCase();
     if (!kod || kod === 'KODSUZ') return false;
+    if (/^\d{4}-\d{1,4}(-\d+)?$/i.test(kod)) return true;
+    if (typeof mamulStokKoduFormatMi === 'function' && mamulStokKoduFormatMi(kod)) return true;
     const pref = kod.split(/[-\s]/)[0];
     if (pref === 'MA' || pref === 'MM') return true;
     if (String(x?.ana_grup || '').toUpperCase() === 'MAMUL') return true;
@@ -30503,7 +30650,10 @@ function kumasKartTipiFormGuncelle() {
 function kumasKutuphanesiKartiMamulMu(k) {
     if (!k) return false;
     if (String(k.ana_grup || '').toUpperCase() === 'MAMUL') return true;
-    return mamulStokKoduFormatMi(k.desen_kodu);
+    if (typeof mamulStokKoduFormatMi === 'function') {
+        if (mamulStokKoduFormatMi(k.desen_kodu) || mamulStokKoduFormatMi(k.stok_kodu)) return true;
+    }
+    return false;
 }
 
 /** kumas_kutuphanesi kartı kumaş depo aramasında listelensin mi (mamül / numune hariç) */

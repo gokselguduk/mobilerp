@@ -60,24 +60,42 @@ function muhasebeFisBul(id) {
 async function muhasebeFisKumasStokTazele() {
     if (typeof sb === 'undefined' || !sb) return;
     try {
-        // Kolon listesi merkezî tanımdan gelir; elle yazılan liste şemayla
-        // uyuşmazsa sorgu 400 döner ve irsaliye durumu hiç tazelenmez.
-        const cols = (typeof ERP_SYNC_LIGHT_COLS !== 'undefined' && ERP_SYNC_LIGHT_COLS.kumas_stok) || '*';
-        const { data, error } = await sb.from('kumas_stok')
-            .select(cols)
-            .order('created_at', { ascending: false });
-        if (error) { console.warn('[MF] kumas_stok yükleme hatası:', error.message); return; }
-        if (!Array.isArray(data) || !data.length) return;
-        if (typeof dataCache === 'undefined') return;
-        // Supabase verisi her zaman kazanır — notlar içindeki [IRS:] tag durum kaynağıdır
+        if (typeof erpSyncFetchTable === 'function') {
+            const out = await erpSyncFetchTable('kumas_stok', true, {});
+            if (out?.error) console.warn('[MF] kumas_stok yükleme hatası:', out.error.message || out.error);
+            const gelen = out?.data;
+            if (!Array.isArray(gelen) || !gelen.length || typeof dataCache === 'undefined') return;
+            if (out?.truncated && typeof erpSyncUnionById === 'function') {
+                dataCache.kumas_stok = erpSyncUnionById(gelen, dataCache.kumas_stok);
+            } else if (typeof erpDataCacheMergeTable === 'function') {
+                dataCache.kumas_stok = erpDataCacheMergeTable('kumas_stok', gelen, dataCache.kumas_stok);
+            } else {
+                dataCache.kumas_stok = gelen;
+            }
+            return;
+        }
+        const cols = (typeof erpSyncLightCols === 'function')
+            ? erpSyncLightCols('kumas_stok')
+            : ((typeof ERP_SYNC_LIGHT_COLS !== 'undefined' && ERP_SYNC_LIGHT_COLS.kumas_stok) || '*');
+        const pageSize = 1000;
+        let all = [];
+        for (let from = 0; from < 50000; from += pageSize) {
+            const { data, error } = await sb.from('kumas_stok')
+                .select(cols)
+                .order('created_at', { ascending: false })
+                .range(from, from + pageSize - 1);
+            if (error) { console.warn('[MF] kumas_stok yükleme hatası:', error.message); break; }
+            const batch = Array.isArray(data) ? data : [];
+            all = all.concat(batch);
+            if (batch.length < pageSize) break;
+        }
+        if (!all.length || typeof dataCache === 'undefined') return;
         const prevMap = new Map((dataCache.kumas_stok || []).map(r => [String(r.id), r]));
-        // Taze gelen kayıtları güncelle, geri kalanları koru
-        const tazeler = new Map(data.map(r => [String(r.id), r]));
+        const tazeler = new Map(all.map(r => [String(r.id), r]));
         dataCache.kumas_stok = (dataCache.kumas_stok || []).map(r =>
             tazeler.has(String(r.id)) ? { ...r, ...tazeler.get(String(r.id)) } : r
         );
-        // Yeni kayıtları (cache'de olmayan) başa ekle
-        data.forEach(r => {
+        all.forEach(r => {
             if (!prevMap.has(String(r.id))) dataCache.kumas_stok.unshift(r);
         });
     } catch (e) {
@@ -186,7 +204,10 @@ function muhasebeFisKumasCikisHareketiMi(h) {
     if (!h) return false;
     if (typeof kumasStokHareketiMamulDepoMu === 'function' && kumasStokHareketiMamulDepoMu(h)) return false;
     const kb = String(h.kaynak_birim || '').toUpperCase();
-    if (kb !== 'DEPO_HAREKET_KUMAS' && !kb.startsWith('DEPO_HAREKET_KUMAS') && kb !== 'DEPO_HAREKET_HAM_KUMAS') return false;
+    const kumasKb = kb === 'DEPO_HAREKET_KUMAS' || kb.startsWith('DEPO_HAREKET_KUMAS')
+        || kb === 'DEPO_HAREKET_HAM_KUMAS' || kb === 'DEPO_HAREKET_MAMUL_KUMAS'
+        || kb === 'HAM_KUMAS' || kb === 'MAMUL_KUMAS' || kb === 'KUMAS';
+    if (!kumasKb) return false;
     const notlar = String(h.notlar || '').toUpperCase();
     if (notlar.includes('DOKUMA_SEVKE_HAZIR') || notlar.includes('DOKUMA_DEPO')) return false;
     if (!String(h.firma || '').trim()) return false;
@@ -560,9 +581,10 @@ async function muhasebeFisCekiGoster(fisId) {
         darkHead: false
     });
 
-    const html = `<div id="mf-ceki-overlay" style="position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.6);display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow:auto;backdrop-filter:blur(2px)">
-        <style>@media print{#mf-ceki-overlay{position:static;background:none;padding:0;inset:auto}.mf-ceki-head,.mf-ceki-acts{display:none!important}#mf-ceki-overlay>div{box-shadow:none;border-radius:0;width:100%!important}}</style>
-        <div style="width:min(${fis.depo_grup==='KUMAS'?'1100px':'860px'},100%);background:#fff;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden;margin-bottom:20px">
+    const html = `<div id="mf-ceki-overlay" style="position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.6);display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;overflow:hidden;backdrop-filter:blur(2px)">
+        <style>@media print{#mf-ceki-overlay{position:static;background:none;padding:0;inset:auto}.mf-ceki-head,.mf-ceki-acts,.mf-ov-kapat{display:none!important}#mf-ceki-overlay>div{box-shadow:none;border-radius:0;width:100%!important}}</style>
+        <button type="button" class="mf-ov-kapat" onclick="event.stopPropagation();muhasebeFisCekiKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer;flex:0 0 auto">Kapat</button>
+        <div class="mf-ceki-box" style="width:min(${fis.depo_grup==='KUMAS'?'1100px':'860px'},100%);background:#fff;border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:auto;margin:0 auto 20px;flex:1;min-height:0">
             <div class="mf-ceki-head" style="background:#0f172a;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
                 <div>
                     <div style="font-size:13px;font-weight:800;margin-bottom:3px">${esc(fis.fis_no)} &nbsp;·&nbsp; ${esc(fis.musteri)}</div>

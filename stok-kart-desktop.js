@@ -2536,6 +2536,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (!k) return null;
         const exact = (dataCache.kumas_kutuphanesi || []).find(x =>
             String(x.desen_kodu || '').trim().toUpperCase() === k
+            || String(x.stok_kodu || '').trim().toUpperCase() === k
         );
         if (exact) return exact;
         const vNo = mamulVaryantNoBul(k);
@@ -3335,13 +3336,19 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function kumasKartTeknikDetay(x) {
         const rec = x || {};
+        const txt = (...vals) => vals.map(v => String(v == null ? '' : v).trim()).find(Boolean) || '';
+        const dok = typeof kumasDokumaAlanlariOku === 'function' ? kumasDokumaAlanlariOku(rec) : null;
         const meta = (typeof kumasMetaAl === 'function' ? (kumasMetaAl(rec) || {}) : {}) || {};
-        const txt = (...vals) => vals.map(v => String(v || '').trim()).find(Boolean) || '';
-        const tarakEni = txt(rec.tarak_eni, meta.tarak_eni);
-        const atkiSik = txt(rec.atki_sikligi, meta.atki_sikligi);
-        const cozguSik = txt(rec.cozgu_sikligi, meta.cozgu_sikligi, rec.dizim_sikligi);
-        const cozguIpi = [txt(rec.cozgu_no, meta.cozgu_no), txt(rec.cozgu_cinsi, meta.cozgu_cinsi)].filter(Boolean).join(' ').trim();
-        let atkiIpi = txt(rec.atki_renkleri, rec.atki_ipi, meta.atki_ipi);
+        const tarakEni = txt(dok?.tarak_eni, rec.tarak_eni, meta.tarak_eni);
+        const atkiSik = txt(dok?.atki_sikligi, rec.atki_sikligi, rec.atki_siklik, meta.atki_sikligi, meta.atki_siklik);
+        const cozguSik = txt(dok?.cozgu_sikligi, rec.cozgu_sikligi, rec.dizim_sikligi, meta.cozgu_sikligi);
+        const cozguIpi = txt(
+            dok ? [dok.cozgu_no, dok.cozgu_cinsi].filter(Boolean).join(' ').trim() : '',
+            rec.cozgu_ipi,
+            meta.cozgu_ipi,
+            [txt(rec.cozgu_no, meta.cozgu_no), txt(rec.cozgu_cinsi, meta.cozgu_cinsi)].filter(Boolean).join(' ').trim()
+        );
+        let atkiIpi = txt(dok?.atki_recete, rec.atki_renkleri, rec.atki_ipi, rec.atki_detayi, meta.atki_ipi);
         if (!atkiIpi && Array.isArray(meta.atki)) {
             atkiIpi = meta.atki.map(a => [a.iplik_no, a.cinsi || a.cins, a.renk].filter(Boolean).join(' ')).filter(Boolean).join(' | ');
         }
@@ -3810,7 +3817,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         ov = document.createElement('div');
         ov.id = KUMAS_CEKI_OV_ID;
         ov.dataset.cekiMod = 'toplu';
-        ov.innerHTML = `<div class="kumas-ceki-box" onclick="event.stopPropagation()">
+        ov.innerHTML = `<button type="button" class="kumas-ceki-kapat" onclick="kumasCekiTopluKapat()" style="width:100%;min-height:48px;border:0;background:#111;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Kapat</button>
+        <div class="kumas-ceki-box" onclick="event.stopPropagation()">
             <div class="kumas-ceki-head">
                 <div>
                     <h3>ÇEKİ LİSTESİ</h3>
@@ -4524,13 +4532,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <thead><tr>
                     <th>Ana grup</th><th>Stok kodu</th><th>Ürün</th><th>Kumaş cinsi</th><th>Terbiye türü</th>
                     <th>Tarak eni</th><th>Atkı sıklığı</th><th>Çözgü sıklığı</th><th>Atkı ipi</th><th>Çözgü ipi</th>
-                    <th class="num">Stok</th><th></th>
+                    <th class="num">Stok</th>
                 </tr></thead><tbody>`;
             html += grps.map((g, idx) => {
                 const kod = String(g.stok_kodu || '').trim();
                 const mt = Number(g.net_mt || 0);
                 const qtyCls = mt < 0 ? ' is-neg' : (mt === 0 ? ' is-zero' : '');
-                const kodJs = attr(kod);
                 const terbiye = kumasStokListeTerbiyeTur(g);
                 const tek = {
                     tarak_eni: g.tarak_eni,
@@ -4548,7 +4555,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 return `<tr onclick="${rowFn}(${idx})">
                     <td class="ms-grup">${esc(kumasStokListeAnaGrup(g))}</td>
                     <td class="ms-kod">${esc(kod)}</td>
-                    <td><div class="ms-name">${esc(g.urun_adi || g.kumas_cinsi || '—')}</div></td>
+                    <td><div class="ms-name">${esc((typeof stokKartListeAdMetni === 'function' ? stokKartListeAdMetni(kumasKutuphanesiKartBul(kod) || g, g.kumas_cinsi || '—') : (g.urun_adi || g.kumas_cinsi || '—')))}</div></td>
                     <td class="ms-ozellik">${esc(g.kumas_cinsi || '—')}</td>
                     <td class="ms-ozellik">${esc(terbiye || '—')}</td>
                     <td class="ms-teknik">${esc(tek.tarak_eni || '—')}</td>
@@ -4557,12 +4564,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                     <td class="ms-teknik">${esc(tek.atki_ipi || '—')}</td>
                     <td class="ms-teknik">${esc(tek.cozgu_ipi || '—')}</td>
                     <td class="num"><span class="ms-qty${qtyCls}">${mt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}<em>mt</em></span></td>
-                    <td onclick="event.stopPropagation()">
-                        <div class="ms-acts">
-                            <button type="button" class="ms-act" onclick="kumasStokHizliIslem('GİRİŞ','${kodJs}')">Giriş</button>
-                            <button type="button" class="ms-act" onclick="kumasStokHizliIslem('ÇIKIŞ','${kodJs}')">Sevk</button>
-                        </div>
-                    </td>
                 </tr>`;
             }).join('');
             html += `</tbody></table></div></div>`;
@@ -4571,21 +4572,41 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         html += grps.map((g, idx) => {
             const kod = String(g.stok_kodu || '').trim();
             const mt = Number(g.net_mt || 0);
-            const terbiye = kumasStokListeTerbiyeTur(g);
-            const tek = kumasKartTeknikDetay(kumasKutuphanesiKartBul(kod) || g);
-            const meta = [kumasStokListeAnaGrup(g), kod, g.kumas_cinsi, terbiye, kumasKartTeknikSatir(tek)].filter(Boolean).join(' · ');
+            const kart = kumasKutuphanesiKartBul(kod) || g;
+            const dok = typeof kumasDokumaAlanlariOku === 'function' ? kumasDokumaAlanlariOku(kart) : {};
+            const tek = kumasKartTeknikDetay(kart);
+            const desenAdi = String(dok.desen_adi || kart.desen_adi || g.desen_adi || '').trim();
+            const urunAdi = String(dok.urun_adi || kart.urun_adi || g.urun_adi || '').trim();
+            const cins = String(dok.kumas_cinsi || g.kumas_cinsi || '').trim();
+            const adKaynak = { ...kart, desen_adi: desenAdi, urun_adi: urunAdi };
+            let baslik = typeof stokKartListeAdMetni === 'function'
+                ? String(stokKartListeAdMetni(adKaynak, '') || '').trim()
+                : '';
+            if (!baslik || baslik === 'ADSİZ') {
+                const parca = [];
+                [desenAdi, urunAdi || cins].forEach(p => {
+                    const t = String(p || '').trim();
+                    if (!t) return;
+                    if (!parca.some(x => x.toLocaleLowerCase('tr-TR') === t.toLocaleLowerCase('tr-TR'))) parca.push(t);
+                });
+                baslik = parca.join(' · ') || cins || kod || '—';
+            }
+            const grup = kumasStokListeAnaGrup(g);
+            const metaParca = [];
+            if (cins && !baslik.toLocaleLowerCase('tr-TR').includes(cins.toLocaleLowerCase('tr-TR'))) metaParca.push(cins);
+            metaParca.push(kumasKartTeknikSatir(tek));
+            const meta = metaParca.filter(Boolean).join(' · ');
             const qtyCls = mt < 0 ? ' is-neg' : (mt === 0 ? ' is-zero' : '');
-            const kodJs = attr(kod);
             return `<article class="ms-row">
                 <button type="button" class="ms-row-main" onclick="${rowFn}(${idx})">
-                    <div class="ms-name">${esc(g.urun_adi || g.kumas_cinsi || '—')}</div>
-                    <div class="ms-meta">${esc(meta)}</div>
+                    <div class="ms-row-top">
+                        ${grup ? `<span class="ms-chip">${esc(grup)}</span>` : ''}
+                        ${kod ? `<span class="ms-kod-pill">${esc(kod)}</span>` : ''}
+                    </div>
+                    <div class="ms-name">${esc(baslik)}</div>
+                    ${meta ? `<div class="ms-meta">${esc(meta)}</div>` : ''}
                 </button>
                 <div class="ms-qty${qtyCls}">${mt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}<em>mt</em></div>
-                <div class="ms-acts">
-                    <button type="button" class="ms-act" onclick="kumasStokHizliIslem('GİRİŞ','${kodJs}')">Giriş</button>
-                    <button type="button" class="ms-act" onclick="kumasStokHizliIslem('ÇIKIŞ','${kodJs}')">Sevk</button>
-                </div>
             </article>`;
         }).join('');
         html += `</div>`;
@@ -4617,7 +4638,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             : '';
         const seg = (id, label, n) =>
             `<button type="button" class="ms-seg-btn${filtre === id ? ' is-on' : ''}" onclick="kumasStokHizliFiltreSet('${id}')">${label}${n != null ? ` <b>${n}</b>` : ''}</button>`;
-        return `<div id="kumas-stok-shell" class="ms-ekran${desk ? ' ms-ekran--desk' : ''}">
+        return `<div id="kumas-stok-shell" class="ms-ekran ms-ekran--kumas${desk ? ' ms-ekran--desk' : ''}">
             <div class="ms-head">
                 <div class="ms-head-meta">
                     <div class="ms-qty-hero${netMt < 0 ? ' is-neg' : ''}" id="kumas-stok-hero-mt">${netMt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}<span>mt</span></div>

@@ -34,30 +34,32 @@ function mamulDepoStoktaKartlar(q, limit) {
     const kartlar = [];
     const seen = new Set();
 
-    const kartEkle = (kart) => {
-        const kod = String(kart?.desen_kodu || '').trim();
+    const kartEkle = (kart, kodHint) => {
+        const kod = String(kart?.desen_kodu || kart?.stok_kodu || kodHint || '').trim();
         if (!kod || seen.has(kod)) return;
-        if (typeof depoMamulStokKartiDogrula === 'function' && depoMamulStokKartiDogrula(kod) !== null) return;
-        if ((bakMap[kod] || 0) <= 0) return;
+        if ((bakMap[kod] || bakMap[String(kart?.desen_kodu || '').trim()] || 0) <= 0) return;
         seen.add(kod);
+        if (!kart.desen_kodu) kart = { ...kart, desen_kodu: kod };
         kartlar.push(kart);
     };
 
     if (qLower && typeof mamulDepoAramaSonuclari === 'function') {
-        mamulDepoAramaSonuclari(q, 80).forEach(kartEkle);
-    } else {
+        mamulDepoAramaSonuclari(q, 80).forEach(k => kartEkle(k));
+    }
+    if (!kartlar.length) {
         stokluKodlar.forEach(kod => {
             const kart = mamulTopluKartBul(kod)
-                || (dataCache.kumas_kutuphanesi || []).find(x => String(x.desen_kodu || '').trim() === kod);
-            if (kart) kartEkle(kart);
+                || (dataCache.kumas_kutuphanesi || []).find(x =>
+                    String(x.desen_kodu || '').trim() === kod || String(x.stok_kodu || '').trim() === kod);
+            kartEkle(kart || { desen_kodu: kod, urun_adi: kod }, kod);
         });
         if (qLower) {
             const filtered = kartlar.filter(k => {
-                const blob = [k.desen_kodu, k.urun_adi, k.desen_adi, k.firma, k.kumas_cinsi, k.renk]
+                const blob = [k.desen_kodu, k.stok_kodu, k.urun_adi, k.desen_adi, k.firma, k.kumas_cinsi, k.renk]
                     .map(v => String(v || '').toLowerCase()).join(' ');
                 return blob.includes(qLower);
             });
-            filtered.sort((a, b) => (bakMap[b.desen_kodu] || 0) - (bakMap[a.desen_kodu] || 0));
+            filtered.sort((a, b) => (bakMap[String(b.desen_kodu || '').trim()] || 0) - (bakMap[String(a.desen_kodu || '').trim()] || 0));
             return filtered.slice(0, lim);
         }
     }
@@ -181,7 +183,11 @@ function mamulTopluKartBul(kod) {
         const bul = mamulKartBul(k);
         if (bul) return bul;
     }
-    return (dataCache.kumas_kutuphanesi || []).find(x => String(x.desen_kodu || '').trim() === k) || null;
+    const ku = k.toUpperCase();
+    return (dataCache.kumas_kutuphanesi || []).find(x =>
+        String(x.desen_kodu || '').trim().toUpperCase() === ku
+        || String(x.stok_kodu || '').trim().toUpperCase() === ku
+    ) || null;
 }
 
 function mamulTopluKodAra(q, limit = 12) {
@@ -246,16 +252,40 @@ function mamulTopluKodDropKapat() {
     window._mamulTopluDropIdx = -1;
 }
 
+function mamulTopluKodDropPortalaAl(drop) {
+    if (!drop) drop = document.getElementById('mamul-toplu-kod-drop');
+    if (!drop) return null;
+    if (drop.parentElement !== document.body) document.body.appendChild(drop);
+    return drop;
+}
+
+function mamulTopluKodDropKonumla(inp, drop) {
+    if (!inp || !drop) return;
+    const rect = inp.getBoundingClientRect();
+    const maxH = Math.min(280, Math.max(160, window.innerHeight * 0.42));
+    drop.style.maxHeight = maxH + 'px';
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const top = (spaceBelow < 140 && rect.top > spaceBelow)
+        ? Math.max(8, rect.top - maxH - 4)
+        : (rect.bottom + 4);
+    drop.style.position = 'fixed';
+    drop.style.zIndex = '100000';
+    drop.style.top = top + 'px';
+    drop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 16 - Math.max(rect.width, 260))) + 'px';
+    drop.style.width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16) + 'px';
+}
+
 function mamulTopluKodDropGoster(idx, adaylar) {
     const inp = document.getElementById('mt-kod-' + idx);
-    const drop = document.getElementById('mamul-toplu-kod-drop');
+    const drop = mamulTopluKodDropPortalaAl();
     if (!inp || !drop || !adaylar?.length) return;
     window._mamulTopluDropIdx = idx;
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     drop.innerHTML = adaylar.map(k => {
+        const kod = String(k.desen_kodu || k.stok_kodu || '').trim();
         const et = mamulTopluKodEtiket(k);
-        const kodEsc = esc(k.desen_kodu);
-        const bak = mamulDepoAdetBakiye(k.desen_kodu);
+        const kodEsc = esc(kod);
+        const bak = mamulDepoAdetBakiye(kod);
         const metaParca = [et.ebat, et.renk, et.musteri].filter(Boolean);
         if (mamulDepoCikisSecimModu()) metaParca.push(bak + ' ad stok');
         return `<div class="mamul-toplu-kod-drop-item" onmousedown="event.preventDefault();mamulTopluKodSec(${idx},'${kodEsc.replace(/'/g, "\\'")}')">
@@ -264,16 +294,12 @@ function mamulTopluKodDropGoster(idx, adaylar) {
             ${metaParca.length ? `<span class="mamul-toplu-kod-drop-item__meta">${metaParca.map(x => esc(x)).join(' · ')}</span>` : ''}
         </div>`;
     }).join('');
-    const rect = inp.getBoundingClientRect();
-    drop.style.position = 'fixed';
     drop.style.display = 'block';
     drop.style.pointerEvents = 'auto';
     drop.classList.add('is-open');
-    drop.style.top = (rect.bottom + 4) + 'px';
-    drop.style.left = Math.max(8, rect.left) + 'px';
-    drop.style.width = Math.max(rect.width, 300) + 'px';
-    if (drop.parentElement !== document.body) document.body.appendChild(drop);
+    mamulTopluKodDropKonumla(inp, drop);
 }
+window.mamulTopluKodDropKonumla = mamulTopluKodDropKonumla;
 
 function mamulTopluKodSec(idx, kod) {
     window._mamulTopluDropSeciliyor = true;
@@ -405,7 +431,7 @@ function mamulTopluListeRender() {
         <div class="mamul-toplu-hareket-row${r.hata ? ' has-error' : ''}">
             <div class="mamul-toplu-kod-cell">
             <input id="mt-kod-${idx}" class="pro-input" placeholder="Kod veya ürün adı" value="${esc(r.kod)}"
-                oninput="mamulTopluKodInput(${idx})" onblur="mamulTopluKodBlur(${idx})"
+                oninput="mamulTopluKodInput(${idx})" onfocus="mamulTopluKodInput(${idx})" onblur="mamulTopluKodBlur(${idx})"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();mamulTopluKodUygula(${idx});document.getElementById('mt-adet-${idx}')?.focus();}"
                 style="font-family:'DM Mono',monospace;font-weight:700;color:var(--amber-c);width:100%">
             </div>
@@ -681,6 +707,7 @@ function mamulDepoKomutaFormMount(grid, notesContainer, isGiris, opts) {
     if (grid) {
         grid.style.cssText = 'display:flex;flex-direction:column;gap:10px;overflow:visible;width:100%';
         grid.innerHTML = mamulDepoKomutaFormHtml(isGiris, accentColor, accentRgb);
+        mamulTopluKodDropPortalaAl();
     }
     if (notesContainer) notesContainer.innerHTML = '';
     setTimeout(function () {
@@ -898,7 +925,7 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
         html += `<div class="ms-table-wrap"><table class="ms-table">
             <thead><tr>
                 <th>Ürün grubu</th><th>Stok kodu</th><th>Ürün</th><th>Ürün renk</th><th>Ürün ebat</th>
-                <th class="num">Stok</th><th>Son hareket</th><th></th>
+                <th class="num">Stok</th><th>Son hareket</th>
             </tr></thead><tbody>`;
         html += grps.map((g, idx) => {
             const kod = String(g.stok_kodu || '').trim();
@@ -909,7 +936,6 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
             const renk = detay?.renk || '—';
             const ebat = detay?.ebat || '—';
             const qtyCls = adet < 0 ? ' is-neg' : (adet === 0 ? ' is-zero' : '');
-            const kodJs = attr(kod);
             const sonTs = Math.max(g.son_giris_at || 0, g.son_cikis_at || 0);
             const sonTxt = sonTs
                 ? `${fmtTs(sonTs)}${g.son_cikis_at === sonTs && g.son_cikis_firma ? ' · ' + g.son_cikis_firma : ''}`
@@ -922,12 +948,6 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
                 <td class="ms-ozellik">${esc(ebat)}</td>
                 <td class="num"><span class="ms-qty${qtyCls}">${adet.toLocaleString('tr-TR')}<em>ad</em></span></td>
                 <td class="ms-son">${esc(sonTxt)}</td>
-                <td onclick="event.stopPropagation()">
-                    <div class="ms-acts">
-                        <button type="button" class="ms-act" onclick="mamulStokHizliIslem('GİRİŞ','${kodJs}')">Giriş</button>
-                        <button type="button" class="ms-act" onclick="mamulStokHizliIslem('ÇIKIŞ','${kodJs}')">Sevk</button>
-                    </div>
-                </td>
             </tr>`;
         }).join('');
         html += `</tbody></table></div></div>`;
@@ -939,19 +959,18 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
         const detay = g._detay || null;
         const ad = detay?.ad || g.urun_adi || g.kumas_cinsi || '—';
         const grup = detay?.grup || '';
-        const meta = [grup, kod, detay?.ebat, detay?.renk, detay?.musteri].filter(Boolean).join(' · ');
+        const meta = [detay?.ebat, detay?.renk, detay?.musteri].filter(Boolean).join(' · ');
         const qtyCls = adet < 0 ? ' is-neg' : (adet === 0 ? ' is-zero' : '');
-        const kodJs = attr(kod);
         return `<article class="ms-row">
             <button type="button" class="ms-row-main" onclick="${rowFn}(${idx})">
+                <div class="ms-row-top">
+                    ${grup ? `<span class="ms-chip">${esc(grup)}</span>` : ''}
+                    ${kod ? `<span class="ms-kod-pill">${esc(kod)}</span>` : ''}
+                </div>
                 <div class="ms-name">${esc(ad)}</div>
-                <div class="ms-meta">${esc(meta)}</div>
+                ${meta ? `<div class="ms-meta">${esc(meta)}</div>` : ''}
             </button>
             <div class="ms-qty${qtyCls}">${adet.toLocaleString('tr-TR')}<em>ad</em></div>
-            <div class="ms-acts">
-                <button type="button" class="ms-act" onclick="mamulStokHizliIslem('GİRİŞ','${kodJs}')">Giriş</button>
-                <button type="button" class="ms-act" onclick="mamulStokHizliIslem('ÇIKIŞ','${kodJs}')">Sevk</button>
-            </div>
         </article>`;
     }).join('');
     html += `</div>`;
@@ -983,7 +1002,7 @@ function mamulStokListeEkranHtml(grps, ozet, opts) {
         : '';
     const seg = (id, label, n) =>
         `<button type="button" class="ms-seg-btn${filtre === id ? ' is-on' : ''}" onclick="mamulStokHizliFiltreSet('${id}')">${label}${n != null ? ` <b>${n}</b>` : ''}</button>`;
-    return `<div id="mamul-stok-shell" class="ms-ekran${desk ? ' ms-ekran--desk' : ''}">
+    return `<div id="mamul-stok-shell" class="ms-ekran ms-ekran--mamul${desk ? ' ms-ekran--desk' : ''}">
         <div class="ms-head">
             <div class="ms-head-meta">
                 <div class="ms-qty-hero${net < 0 ? ' is-neg' : ''}" id="mamul-stok-hero-ad">${Number(net).toLocaleString('tr-TR')}<span>adet</span></div>
