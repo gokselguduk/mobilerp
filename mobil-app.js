@@ -33166,17 +33166,23 @@ function erpLooksLikeEbatOlcu(raw) {
     if (/^\d{2,4}\s*[-–]\s*\d{2,4}$/.test(s)) return true;
     return false;
 }
+try { window.erpLooksLikeEbatOlcu = erpLooksLikeEbatOlcu; } catch (e) {}
 
 /** TR/EN ondalık: 12,5 / 12.5 / 1.234,56 / 1,234.56 ve Excel toplama (a+b) */
 function erpParseDecimal(raw) {
     const s = String(raw ?? '').trim();
     if (!s) return null;
-    if (erpInputHasTextChars(s)) return null;
+    if (typeof erpInputHasTextChars === 'function' && erpInputHasTextChars(s)) return null;
     if (/\d+\s*\/\s*\d+/.test(s)) return null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-    if (erpLooksLikeEbatOlcu(s)) return null;
+    // Ayrı fonksiyon yoksa bile ebatı sayı sanma
+    if ((typeof erpLooksLikeEbatOlcu === 'function' && erpLooksLikeEbatOlcu(s))
+        || /\d+(?:[.,]\d+)?\s*[xX*×]\s*\d+(?:[.,]\d+)?/.test(s)) return null;
     if (/^SP\d+$/i.test(s.replace(/\s/g, ''))) return null;
-    if (s.includes('+')) return erpParseExcelNumberExpr(s);
+    if (s.includes('+')) {
+        if (typeof erpParseExcelNumberExpr === 'function') return erpParseExcelNumberExpr(s);
+        return null;
+    }
     let t = s.replace(/\s/g, '');
     const lastComma = t.lastIndexOf(',');
     const lastDot = t.lastIndexOf('.');
@@ -33288,6 +33294,9 @@ function erpSkipExcelNormalizeInput(el) {
     if (id === 'ih-nm-numara' || id === 'ih-tarak-no' || id === 'ih-cozgu-numara') return true;
     if (id.startsWith('val-atki-no-')) return true;
     if (String(el?.dataset?.ih || '') === 'numara') return true;
+    // Stok sayım / mobil kart girişleri — blur'da sayı normalize etme
+    if (el.classList?.contains('sayim-inp') || el.classList?.contains('sayim-ekle-inp') || el.classList?.contains('sayim-ara-inp')) return true;
+    if (id === 'sayim-ara') return true;
     return false;
 }
 
