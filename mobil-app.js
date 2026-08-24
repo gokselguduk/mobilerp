@@ -33156,6 +33156,17 @@ function siparisFotoUploadFiles(files) {
     });
 }
 
+/** Ebat/ölçü metinleri (50x70, 50*70, 40×60) sayı sanılmasın */
+function erpLooksLikeEbatOlcu(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return false;
+    // 50x70 / 50 x 70 / 50*70 / 50×70
+    if (/\d+(?:[.,]\d+)?\s*[xX*×]\s*\d+(?:[.,]\d+)?/.test(s)) return true;
+    // 50-70 / 100–120 (iki ölçü)
+    if (/^\d{2,4}\s*[-–]\s*\d{2,4}$/.test(s)) return true;
+    return false;
+}
+
 /** TR/EN ondalık: 12,5 / 12.5 / 1.234,56 / 1,234.56 ve Excel toplama (a+b) */
 function erpParseDecimal(raw) {
     const s = String(raw ?? '').trim();

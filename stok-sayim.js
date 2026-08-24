@@ -736,7 +736,8 @@ function sayimListeYenile() {
 
 function stokSayimAraDegisti(val) {
     _sayimAra = val;
-    debounce('sayimAra', sayimListeYenile, 250);
+    if (typeof debounce === 'function') debounce('sayimAra', sayimListeYenile, 250);
+    else sayimListeYenile();
 }
 window.stokSayimAraDegisti = stokSayimAraDegisti;
 
