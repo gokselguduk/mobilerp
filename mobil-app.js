@@ -5969,6 +5969,14 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return;
         }
         if (mode === 'STOK_SAYIM') {
+            if (!force && erpShouldDeferUiRefresh()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
+            // Aktif sayımda tam yeniden çizim yazılan adetleri silmesin
+            if (!force && typeof sayimOturumAktifMi === 'function' && sayimOturumAktifMi()) {
+                return;
+            }
             if (typeof renderStokSayim === 'function') renderStokSayim();
             return;
         }

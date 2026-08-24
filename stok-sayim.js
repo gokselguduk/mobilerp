@@ -1,5 +1,5 @@
 /* ============================================================
-   Stok Sayım Modülü  v20260821sayim10
+   Stok Sayım Modülü  v20260821sayim11
    Sayılan adet = yeni stok. Fark hareket olarak yazılır,
    sayım raporu arşivlenir. Kayıt toplu + zaman aşımı ile gider.
    Telefonda kart düzeni; masaüstünde tablo.
@@ -316,6 +316,21 @@ function sayimYuvarla(n, mamul) {
     return mamul ? Math.round(x) : Math.round(x * 100) / 100;
 }
 
+/** Mobil klavyede virgül / boşluk gelebilir */
+function sayimParseSayi(raw) {
+    let s = String(raw == null ? '' : raw).trim();
+    if (!s) return NaN;
+    s = s.replace(/\s+/g, '').replace(/−/g, '-');
+    if (s.includes(',') && s.includes('.')) {
+        // 1.234,5 → 1234.5
+        s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.includes(',')) {
+        s = s.replace(',', '.');
+    }
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : NaN;
+}
+
 function sayimKayitliMi(kod) {
     return !!_sayimKayitli[String(kod || '').trim()];
 }
@@ -401,8 +416,8 @@ function sayimKartHtml(r) {
                 <span class="sayim-kart-fark${farkCls}">${farkYazi}</span>
             </div>
             ${ekstraGoster ? `<div class="sayim-ekle-panel" hidden>
-                <input type="number" class="sayim-ekle-inp" inputmode="decimal" enterkeyhint="done"
-                       placeholder="Ekstra" step="any" aria-label="Ekstra adet"
+                <input type="text" class="sayim-ekle-inp" inputmode="decimal" enterkeyhint="done"
+                       placeholder="Ekstra" autocomplete="off" aria-label="Ekstra adet"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();stokSayimEkleUygula(this)}">
                 <button type="button" class="sayim-kart-btn sayim-kart-btn--ekle" onclick="stokSayimEkleUygula(this)">Ekle</button>
             </div>
@@ -410,7 +425,17 @@ function sayimKartHtml(r) {
         </article>`;
     }
     const kilitli = !sayimOturumAktifMi();
-    return `<article class="sayim-kart${mevcut === 0 ? ' sayim-kart--sifir' : ''}${kilitli ? ' sayim-kart--kilit' : ''}" data-kod="${kod}">
+    const taslak = _sayimGirisler[r.stok_kodu];
+    const taslakVal = (taslak != null && String(taslak).trim() !== '') ? String(taslak) : '';
+    const taslakN = taslakVal !== '' ? sayimParseSayi(taslakVal) : NaN;
+    let taslakFarkYazi = '';
+    let taslakFarkCls = '';
+    if (Number.isFinite(taslakN)) {
+        const fark = sayimYuvarla(taslakN - mevcut, mamul);
+        taslakFarkYazi = fark === 0 ? '0' : (fark > 0 ? '+' + fark : String(fark));
+        taslakFarkCls = fark > 0 ? ' fark-artis' : fark < 0 ? ' fark-azalis' : '';
+    }
+    return `<article class="sayim-kart${mevcut === 0 ? ' sayim-kart--sifir' : ''}${kilitli ? ' sayim-kart--kilit' : ''}${Number.isFinite(taslakN) ? ' sayim-kart--dolu' : ''}" data-kod="${kod}">
         <div class="sayim-kart-ust">
             <div class="sayim-kart-bilgi">
                 <div class="sayim-kart-ad">${sayimEsc(r.label || r.stok_kodu)}</div>
@@ -421,14 +446,14 @@ function sayimKartHtml(r) {
             </div>
             <div class="sayim-kart-giris">
                 <label class="sayim-kart-say">
-                    <input type="number" class="sayim-inp" inputmode="decimal" enterkeyhint="done"
+                    <input type="text" class="sayim-inp" inputmode="decimal" enterkeyhint="done"
                            data-kod="${kod}"
                            data-kayitkod="${sayimEsc(r.kayit_kodu)}"
                            data-label="${sayimEsc(r.label)}"
                            data-mevcut="${mevcut}"
-                           value=""
+                           value="${sayimEsc(taslakVal)}"
                            placeholder="0"
-                           step="any"
+                           autocomplete="off"
                            aria-label="Sayılan"
                            ${kilitli ? 'disabled' : ''}
                            oninput="stokSayimFarkGuncelle(this)"
@@ -441,7 +466,7 @@ function sayimKartHtml(r) {
             <button type="button" class="sayim-kart-stok" onclick="stokSayimStokKopyala(this)" title="Stoğu sayılana kopyala" ${kilitli ? 'disabled' : ''}>
                 ${qtyYazi}<em>${birim}</em>
             </button>
-            <span class="sayim-kart-fark"></span>
+            <span class="sayim-kart-fark${taslakFarkCls}">${taslakFarkYazi}</span>
         </div>
     </article>`;
 }
@@ -757,32 +782,40 @@ function sayimSatirToplamYaz(kod) {
     _sayimGirisler[key] = String(sayimParcaToplam(key));
 }
 
-function stokSayimSatirKaydet(btn) {
-    if (!sayimOturumAktifMi()) {
-        if (typeof erpToast === 'function') erpToast(_sayimDurum === 'DURAKLATILDI' ? 'Sayım duraklatıldı. Devam için Sayım başlasın.' : 'Önce sayımı başlatın.', 'info');
-        return;
+function stokSayimSatirKaydet(el) {
+    try {
+        if (!sayimOturumAktifMi()) {
+            if (typeof erpToast === 'function') erpToast(_sayimDurum === 'DURAKLATILDI' ? 'Sayım duraklatıldı. Devam için Sayım başlasın.' : 'Önce sayımı başlatın.', 'info');
+            return;
+        }
+        const node = el && el.nodeType === 1 ? el : (el && el.target) || null;
+        if (!node || typeof node.closest !== 'function') return;
+        const kart = node.closest('.sayim-kart');
+        const inp = (kart && kart.querySelector('.sayim-inp')) || (node.classList && node.classList.contains('sayim-inp') ? node : null);
+        const kod = String((kart && kart.dataset.kod) || (inp && inp.dataset.kod) || '').trim();
+        if (!kod || !inp) return;
+        const raw = String(inp.value || '').trim();
+        if (raw === '') {
+            if (typeof erpToast === 'function') erpToast('Sayılan adeti girin.', 'info');
+            try { inp.focus(); } catch (e) {}
+            return;
+        }
+        const n = sayimParseSayi(raw);
+        if (!Number.isFinite(n) || n < 0) {
+            if (typeof erpToast === 'function') erpToast('Geçerli bir adet girin.', 'info');
+            try { inp.focus(); } catch (e) {}
+            return;
+        }
+        const yuvar = sayimYuvarla(n, _sayimTip === 'MAMUL');
+        _sayimParcalar[kod] = [yuvar];
+        sayimSatirToplamYaz(kod);
+        sayimOturumKaydet();
+        if (typeof erpToast === 'function') erpToast('Ürün sayıma eklendi. Rapor henüz oluşmadı.', 'success');
+        sayimListeYenile();
+    } catch (e) {
+        console.error('stokSayimSatirKaydet', e);
+        if (typeof erpToast === 'function') erpToast('Kayıt sırasında hata: ' + (e && e.message ? e.message : e), 'error');
     }
-    const kart = btn.closest('.sayim-kart');
-    const inp = kart && kart.querySelector('.sayim-inp');
-    const kod = kart && kart.dataset.kod;
-    if (!kod || !inp) return;
-    const raw = String(inp.value || '').trim();
-    if (raw === '') {
-        if (typeof erpToast === 'function') erpToast('Sayılan adeti girin.', 'info');
-        try { inp.focus(); } catch (e) {}
-        return;
-    }
-    const n = parseFloat(raw);
-    if (isNaN(n) || n < 0) {
-        if (typeof erpToast === 'function') erpToast('Geçerli bir adet girin.', 'info');
-        try { inp.focus(); } catch (e) {}
-        return;
-    }
-    _sayimParcalar[kod] = [sayimYuvarla(n, _sayimTip === 'MAMUL')];
-    sayimSatirToplamYaz(kod);
-    sayimOturumKaydet();
-    if (typeof erpToast === 'function') erpToast('Ürün sayıma eklendi. Rapor henüz oluşmadı.', 'success');
-    sayimListeYenile();
 }
 window.stokSayimSatirKaydet = stokSayimSatirKaydet;
 
@@ -804,61 +837,75 @@ function stokSayimEkleAc(btn) {
 }
 window.stokSayimEkleAc = stokSayimEkleAc;
 
-function stokSayimEkleUygula(btn) {
-    if (!sayimOturumAktifMi()) {
-        if (typeof erpToast === 'function') erpToast('Ekstra eklemek için sayımın açık olması gerekir.', 'info');
-        return;
+function stokSayimEkleUygula(el) {
+    try {
+        if (!sayimOturumAktifMi()) {
+            if (typeof erpToast === 'function') erpToast('Ekstra eklemek için sayımın açık olması gerekir.', 'info');
+            return;
+        }
+        const node = el && el.nodeType === 1 ? el : (el && el.target) || null;
+        if (!node || typeof node.closest !== 'function') return;
+        const kart = node.closest('.sayim-kart');
+        const kod = String((kart && kart.dataset.kod) || '').trim();
+        const inp = (kart && kart.querySelector('.sayim-ekle-inp')) || (node.classList && node.classList.contains('sayim-ekle-inp') ? node : null);
+        if (!kod || !inp) return;
+        const n = sayimParseSayi(inp.value);
+        if (!Number.isFinite(n) || n <= 0) {
+            if (typeof erpToast === 'function') erpToast('Eklenecek adeti girin.', 'info');
+            try { inp.focus(); } catch (e) {}
+            return;
+        }
+        const parcalar = sayimParcalarAl(kod);
+        parcalar.push(sayimYuvarla(n, _sayimTip === 'MAMUL'));
+        _sayimParcalar[kod] = parcalar;
+        sayimSatirToplamYaz(kod);
+        sayimOturumKaydet();
+        sayimListeYenile();
+    } catch (e) {
+        console.error('stokSayimEkleUygula', e);
+        if (typeof erpToast === 'function') erpToast('Ekleme sırasında hata: ' + (e && e.message ? e.message : e), 'error');
     }
-    const kart = btn.closest('.sayim-kart');
-    const kod = kart && kart.dataset.kod;
-    const inp = kart && kart.querySelector('.sayim-ekle-inp');
-    if (!kod || !inp) return;
-    const n = parseFloat(String(inp.value || '').trim());
-    if (isNaN(n) || n <= 0) {
-        if (typeof erpToast === 'function') erpToast('Eklenecek adeti girin.', 'info');
-        try { inp.focus(); } catch (e) {}
-        return;
-    }
-    const parcalar = sayimParcalarAl(kod);
-    parcalar.push(sayimYuvarla(n, _sayimTip === 'MAMUL'));
-    _sayimParcalar[kod] = parcalar;
-    sayimSatirToplamYaz(kod);
-    sayimOturumKaydet();
-    sayimListeYenile();
 }
 window.stokSayimEkleUygula = stokSayimEkleUygula;
 
 function stokSayimFarkGuncelle(inp, idx) {
-    const kod = inp.dataset.kod;
-    if (kod && !sayimMobilMi()) {
-        const v = inp.value.trim();
-        if (v === '') delete _sayimGirisler[kod];
-        else _sayimGirisler[kod] = v;
-        if (typeof debounce === 'function') debounce('sayimOturum', sayimOturumKaydet, 400);
-        else sayimOturumKaydet();
-    }
-    const mevcut = parseFloat(inp.dataset.mevcut) || 0;
-    const sayilan = inp.value.trim() === '' ? null : parseFloat(inp.value);
-    const dolu = sayilan != null && !isNaN(sayilan);
-    const fark = dolu ? Math.round((sayilan - mevcut) * 100) / 100 : null;
-    const farkYazi = fark == null ? '—' : (fark === 0 ? '0' : (fark > 0 ? '+' + fark : String(fark)));
-    const farkMod = fark == null ? '' : (fark > 0 ? ' fark-artis' : fark < 0 ? ' fark-azalis' : '');
-
-    const farkCell = idx != null ? document.getElementById('sayim-fark-' + idx) : null;
-    if (farkCell) {
-        farkCell.textContent = farkYazi;
-        farkCell.className = 'sayim-td-fark' + farkMod;
-    }
-    const kart = inp.closest('.sayim-kart');
-    if (kart) {
-        kart.classList.toggle('sayim-kart--dolu', dolu);
-        const badge = kart.querySelector('.sayim-kart-fark');
-        if (badge) {
-            badge.textContent = fark == null ? '' : farkYazi;
-            badge.className = 'sayim-kart-fark' + farkMod;
+    try {
+        if (!inp || !inp.dataset) return;
+        const kod = String(inp.dataset.kod || '').trim();
+        // Taslağı her zaman sakla (mobilde yenileme / odak kaybında silinmesin)
+        if (kod) {
+            const v = String(inp.value || '').trim();
+            if (v === '') delete _sayimGirisler[kod];
+            else _sayimGirisler[kod] = v;
+            if (typeof debounce === 'function') debounce('sayimOturum', sayimOturumKaydet, 400);
+            else sayimOturumKaydet();
         }
+        const mevcut = sayimParseSayi(inp.dataset.mevcut);
+        const mevcutN = Number.isFinite(mevcut) ? mevcut : 0;
+        const sayilan = String(inp.value || '').trim() === '' ? null : sayimParseSayi(inp.value);
+        const dolu = sayilan != null && Number.isFinite(sayilan);
+        const fark = dolu ? Math.round((sayilan - mevcutN) * 100) / 100 : null;
+        const farkYazi = fark == null ? '—' : (fark === 0 ? '0' : (fark > 0 ? '+' + fark : String(fark)));
+        const farkMod = fark == null ? '' : (fark > 0 ? ' fark-artis' : fark < 0 ? ' fark-azalis' : '');
+
+        const farkCell = idx != null ? document.getElementById('sayim-fark-' + idx) : null;
+        if (farkCell) {
+            farkCell.textContent = farkYazi;
+            farkCell.className = 'sayim-td-fark' + farkMod;
+        }
+        const kart = typeof inp.closest === 'function' ? inp.closest('.sayim-kart') : null;
+        if (kart) {
+            kart.classList.toggle('sayim-kart--dolu', dolu);
+            const badge = kart.querySelector('.sayim-kart-fark');
+            if (badge) {
+                badge.textContent = fark == null ? '' : farkYazi;
+                badge.className = 'sayim-kart-fark' + farkMod;
+            }
+        }
+        sayimInfoGuncelle();
+    } catch (e) {
+        console.error('stokSayimFarkGuncelle', e);
     }
-    sayimInfoGuncelle();
 }
 window.stokSayimFarkGuncelle = stokSayimFarkGuncelle;
 
@@ -885,8 +932,8 @@ function sayimGirisPaketiniTopla() {
         if (sayimMobilMi() && !sayimKayitliMi(kod)) return;
         const raw = _sayimGirisler[kod];
         if (raw == null || String(raw).trim() === '') return;
-        const sayilan = parseFloat(raw);
-        if (isNaN(sayilan)) return;
+        const sayilan = sayimParseSayi(raw);
+        if (!Number.isFinite(sayilan)) return;
         const row = byKod[kod];
         if (!row) return;
         const mevcut = sayimYuvarla(row.mevcut, _sayimTip === 'MAMUL');
