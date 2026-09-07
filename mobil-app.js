@@ -26247,7 +26247,7 @@ function siparisKalemTabloPanelHtml(kalemler) {
                 <span class="siparis-kalem-head-title">Sipariş kalemleri</span>
                 <span class="pill pill-gray" style="font-size:9px;padding:2px 8px;font-weight:600">${kalemler.length} satır</span>
             </div>
-            <div class="siparis-kalem-scroll">
+            <div class="siparis-kalem-scroll" data-scroll-key="ozet-kalemler">
                 <table class="dt-table siparis-kalem-tablo" style="width:100%;min-width:920px;border-collapse:separate;border-spacing:0">
                     <thead>
                         <tr>
@@ -26420,6 +26420,10 @@ function siparisDetailModalSetTab(tab) {
         notlar: document.getElementById('siparis-tab-btn-notlar')
     };
     if (!panels.ozet) return;
+    /* Sekmeler arası geçişte kalem tablosunun yatay kaydırma konumu sıfırlanmasın */
+    if (typeof siparisDurumYatayScrollKaydet === 'function' && panels.ozet.style.display !== 'none') {
+        siparisDurumYatayScrollKaydet(panels.ozet);
+    }
     tabs.forEach(t => {
         if (panels[t]) panels[t].style.display = t === tab ? '' : 'none';
         if (buttons[t]) {
@@ -26427,6 +26431,9 @@ function siparisDetailModalSetTab(tab) {
             buttons[t].setAttribute('aria-selected', t === tab ? 'true' : 'false');
         }
     });
+    if (tab === 'ozet' && typeof siparisDurumYatayScrollUygula === 'function') {
+        siparisDurumYatayScrollUygula(panels.ozet);
+    }
     if (tab === 'detay') {
         const sip = erpDetailKayitBul();
         if (sip && sip.id != null) {
