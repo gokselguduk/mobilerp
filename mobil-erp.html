@@ -4917,10 +4917,19 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         body.light-mode .svk-filtre-bar { background: #fff; }
 
         /* ── Mobil dokunmatik uyum: iOS'ta input odaklanınca otomatik yakınlaştırmayı
-           engelle (16px altı font'larda Safari sayfayı otomatik zoom'lar) ── */
+           engelle (16px altı font'larda Safari sayfayı otomatik zoom'lar). ── */
         input, select, textarea,
         .pro-input, .input-box {
             font-size: 16px !important;
+        }
+        /* Sipariş durumu rozeti (Siparişler listesi) — küçük tasarlanmış pill; yukarıdaki
+           genel 16px kuralı native <select> çarkını (ve dolayısıyla rozeti) devasa
+           büyütüyordu. iOS select'e odaklanınca zaten zoom yapmıyor, bu yüzden bu
+           rozete özel olarak eski kompakt boyutuna geri döndürmek güvenli. */
+        select.siparis-durum-sel {
+            font-size: 9px !important;
+            padding: 3px 6px !important;
+            max-width: 130px !important;
         }
         /* Sevkiyat tablosu: masaüstünde sabit yüzde kolonlar dar mobilde
            okunmaz oluyor — yatay kaydırmaya çevir, kolonlar doğal genişliğinde kalsın */
@@ -4949,7 +4958,66 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .svk-toolbar { width: 100%; }
         .svk-toolbar #sevkiyat-ara { width: 100%; }
         .svk-metrics { grid-template-columns: 1fr 1fr !important; }
-        .svk-channels__grid { grid-template-columns: 1fr !important; }
+        /* Sevkiyat kanal kartları — masaüstü boyutu mobilde kocaman kalıyordu, kompakt 2 sütuna al */
+        .svk-channels__grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+        .svk-chan { padding: 10px 10px 9px !important; min-height: 0 !important; gap: 4px !important; }
+        .svk-chan__ico { width: 26px !important; height: 26px !important; font-size: 14px !important; border-radius: 8px !important; }
+        .svk-chan__name { font-size: 11.5px !important; }
+        .svk-chan__alt { font-size: 9px !important; line-height: 1.25 !important; }
+        /* Depo girişi / Sevkiyat seçim butonları — mobilde daha kompakt */
+        .depo-type-btn { padding: 9px 10px !important; min-width: 0 !important; }
+        .depo-type-btn__t { font-size: 11px !important; }
+        .depo-type-btn__s { font-size: 8.5px !important; margin-top: 2px !important; }
+
+        /* ── .ms-table temel stili — masaüstünden eksikti, mobilde çıplak/düz metin
+           tarayıcı tablosu olarak görünüyordu (Sevkiyat Fişleri, Stok Sayım vb.) ── */
+        .ms-table-wrap { overflow: auto; }
+        .ms-table { width: 100%; border-collapse: collapse; }
+        .ms-table th {
+            text-align: left; font-size: 10px; font-weight: 500; color: var(--text3);
+            letter-spacing: 0; text-transform: none; padding: 5px 8px;
+            border-bottom: 1px solid var(--border); background: transparent;
+            font-family: 'DM Sans', sans-serif; white-space: nowrap;
+        }
+        .ms-table th.num, .ms-table td.num { text-align: right; }
+        .ms-table td {
+            padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: middle;
+            font-size: 12px; font-weight: 500; color: var(--text2);
+            font-family: 'DM Sans', sans-serif; line-height: 1.25;
+        }
+        .ms-table tr:last-child td { border-bottom: none; }
+        .ms-table tbody tr { cursor: pointer; }
+        .ms-table tbody tr:hover td { background: color-mix(in srgb, var(--surface2) 70%, transparent); }
+
+        /* Sevkiyat Fişleri (mf-table) — mobilde 7 sütunlu düz tablo yerine kart görünümü.
+           Sıralama flex `order` ile kontrol edilir (DOM sırası: chev,kod,tarih,tip,musteri,miktar,ozet):
+           satır1 = kod ... miktar · satır2 = tarih · tip · müşteri · satır3 = özet. */
+        .mf-table-wrap { overflow: visible !important; }
+        .mf-table thead { display: none !important; }
+        .mf-table, .mf-table tbody { display: block !important; width: 100% !important; }
+        .mf-table tr.mf-fis-tr {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            align-items: center;
+            gap: 3px 6px;
+            position: relative;
+            background: var(--surface2) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 12px !important;
+            padding: 10px 12px 10px 26px !important;
+            margin-bottom: 8px !important;
+        }
+        .mf-table tr.mf-fis-tr td { display: inline-block !important; padding: 0 !important; border: none !important; }
+        .mf-fis-chev-td { position: absolute !important; left: 10px; top: 11px; order: 0; }
+        .mf-fis-kod { order: 1; font-weight: 800 !important; font-size: 13px !important; color: var(--text) !important; }
+        .mf-fis-miktar { order: 2; margin-left: auto !important; font-weight: 800 !important; font-size: 13px !important; color: var(--emerald-c) !important; text-align: right !important; }
+        .mf-fis-tarih { order: 3; flex-basis: 100% !important; font-size: 10px !important; color: var(--text3) !important; }
+        .mf-fis-tip { order: 4; font-size: 10px !important; color: var(--text3) !important; }
+        .mf-fis-musteri { order: 5; font-size: 10px !important; color: var(--text3) !important; }
+        .mf-fis-tarih::after, .mf-fis-tip::after { content: '·'; margin-left: 6px; color: var(--border2); }
+        .mf-fis-ozet { order: 6; flex-basis: 100% !important; font-size: 10px !important; color: var(--text3) !important; opacity: .85; }
+        .mf-table tr.mf-fis-detail { display: block !important; margin: -6px 0 8px !important; }
+        .mf-table tr.mf-fis-detail td { display: block !important; padding: 0 !important; }
 </style>
 </head>
 <body class="erp-mobil-lite">
@@ -5000,12 +5068,9 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
       <span class="nav-pro-chevron" id="chev-depo">▾</span>
     </div>
     <div id="sub-depo" class="nav-pro-sub-area">
-      <div onclick="setAppMode('DEPO_HAREKET')" class="nav-pro-sub" id="nav-DEPO_HAREKET">Depo Giriş Çıkış</div>
       <div onclick="setAppMode('IPLIK')" class="nav-pro-sub" id="nav-IPLIK">İplik Stoğu</div>
       <div onclick="setAppMode('KUMAS')" class="nav-pro-sub" id="nav-KUMAS">Kumaş Stoğu</div>
       <div onclick="setAppMode('MAMUL_DEPO')" class="nav-pro-sub" id="nav-MAMUL_DEPO">Mamül Stoğu</div>
-      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
-      <div onclick="setAppMode('MUHASEBE_FIS')" class="nav-pro-sub" id="nav-MUHASEBE_FIS">Muhasebe Fişleri</div>
       <div onclick="setAppMode('STOK_SAYIM')" class="nav-pro-sub" id="nav-STOK_SAYIM">Stok Sayım</div>
     </div>
 
@@ -5015,6 +5080,8 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
     </div>
     <div id="sub-sevkiyat" class="nav-pro-sub-area">
       <div onclick="setAppMode('SEVKIYAT')" class="nav-pro-sub" id="nav-SEVKIYAT">Sevkiyat Genel Merkezi</div>
+      <div onclick="setAppMode('DEPO_HAREKET_LISTE')" class="nav-pro-sub" id="nav-DEPO_HAREKET_LISTE">Depo Hareketleri</div>
+      <div onclick="setAppMode('MUHASEBE_FIS')" class="nav-pro-sub" id="nav-MUHASEBE_FIS">Sevkiyat Fişleri</div>
     </div>
 
     <div onclick="toggleChicSub('kart')" class="nav-pro" id="nav-kart-toggle">
@@ -5058,6 +5125,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         </div>
         <div id="sub-terbiye" class="nav-pro-sub-area">
           <div onclick="openTerbiye()" class="nav-pro-sub" id="nav-BOYAHANE_URETIM" data-erp-mode="BOYAHANE_URETIM">Terbiye Paneli</div>
+          <div onclick="openKonfeksiyonYikama()" class="nav-pro-sub" id="nav-KONFEKSIYON_YIKAMA-terbiye">Yıkama</div>
         </div>
 
         <div onclick="toggleChicSub('konfeksiyon')" class="nav-pro" id="nav-konfeksiyon-toggle">
@@ -5068,7 +5136,6 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
           <div onclick="openKonfeksiyonKesim()" class="nav-pro-sub" id="nav-KONFEKSIYON_KESIM">Kesim</div>
           <div onclick="openKonfeksiyonYikama()" class="nav-pro-sub" id="nav-KONFEKSIYON_YIKAMA">Yıkama</div>
           <div onclick="openKonfeksiyonKalite()" class="nav-pro-sub" id="nav-KONFEKSIYON_KALITE">Kalite</div>
-          <div onclick="openKonfeksiyonSevk()" class="nav-pro-sub" id="nav-KONFEKSIYON_SEVK">Konfeksiyon Sevk</div>
           <div onclick="openKonfIslemRaporu('hafta')" class="nav-pro-sub" id="nav-KONF_ISLEM_RAPOR">İşlem Raporu</div>
         </div>
 

@@ -26686,7 +26686,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
     const tabloGenis = `
     <div class="panel-box" style="padding:0;overflow:hidden;margin:0;flex:1;min-width:0">
         ${uaUyariBand}
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch" data-scroll-key="durum-urun">
             <table class="dt-table" style="width:100%;min-width:900px;border-collapse:collapse">
                 <thead>
                     <tr style="background:var(--surface2);font-size:7px;font-weight:800;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;text-align:center;line-height:1.2">
@@ -26783,11 +26783,31 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
     return `<div style="display:flex;flex-direction:column;gap:4px">${fasonPanel}${anaIzgara}${opBlok}</div>`;
 }
 
+/** Sipariş durum inceleme — geniş tablonun yatay scroll konumu (canlı yenilemede sıfırlanmasın; masaüstüyle aynı) */
+const _siparisDurumYatayScroll = {};
+function siparisDurumYatayScrollKaydet(root) {
+    try {
+        (root || document).querySelectorAll('[data-scroll-key]').forEach((el) => {
+            const key = el.getAttribute('data-scroll-key');
+            if (key) _siparisDurumYatayScroll[key] = el.scrollLeft || 0;
+        });
+    } catch (e) {}
+}
+function siparisDurumYatayScrollUygula(root) {
+    try {
+        (root || document).querySelectorAll('[data-scroll-key]').forEach((el) => {
+            const key = el.getAttribute('data-scroll-key');
+            if (key && _siparisDurumYatayScroll[key] > 0) el.scrollLeft = _siparisDurumYatayScroll[key];
+        });
+    } catch (e) {}
+}
+
 async function siparisDetailModalBaslatDurumTab(siparis, quietRefresh = false) {
     const el = document.getElementById('siparis-durum-icerik');
     if (!el || !siparis || siparis.id == null) return;
     const sid = String(siparis.id);
     const fresh = (dataCache.siparisler || []).find(s => String(s.id) === sid) || siparis;
+    if (quietRefresh) siparisDurumYatayScrollKaydet(el);
     if (!quietRefresh) {
         el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3)">Sipariş aşaması verileri yükleniyor…</div>';
     }
@@ -26808,6 +26828,7 @@ async function siparisDetailModalBaslatDurumTab(siparis, quietRefresh = false) {
             <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="siparisKapamaRaporPdf('${fresh.id}')">📄 Sipariş kapama raporu (PDF)</button>
             <span style="font-size:9px;color:var(--text3)">Dokuma, konfeksiyon, fason takip ve aksesuar — tek rapor</span>
         </div>` + buildSiparisDurumIncelemeHtml(fresh, kdK, kdD, rows, allUa);
+        siparisDurumYatayScrollUygula(el);
     } catch (e) {
         if (!erpIsDetailModalOpen()) return;
         el.innerHTML = `<div style="padding:16px;border-radius:10px;border:1px solid rgba(251,113,133,0.35);background:rgba(251,113,133,0.08);color:var(--rose-c);font-size:12px">Veri yüklenemedi: ${pdfEsc(e && e.message ? e.message : String(e))}</div>`;
@@ -33254,17 +33275,7 @@ function sevkiyatAdetGirisAktifMi() {
         && (typeof planlamaIhtiyacSevkGirisYapabilir === 'function' ? planlamaIhtiyacSevkGirisYapabilir() : false);
 }
 try { window.sevkiyatAdetGirisAktifMi = sevkiyatAdetGirisAktifMi; } catch (e) {}
-
-function planlamaYerPanelAcikMi(panelKey) {
-    return !!planlamaYerPanelDurumGet()[String(panelKey || '')];
-}
-function planlamaYerPanelToggle(panelKey) {
-    const d = planlamaYerPanelDurumGet();
-    const k = String(panelKey || '');
-    d[k] = !planlamaYerPanelAcikMi(k);
-    try { localStorage.setItem(PLANLAMA_YER_PANEL_KEY, JSON.stringify(d)); } catch (e) {}
-    renderPlanlama();
-}
+/* planlamaYerPanelAcikMi / planlamaYerPanelToggle — mobilde zaten (yukarıda) tanımlı, tekrar edilmedi */
 
 function planlamaIhtiyacNorm(v) {
     return String(v || '').trim().toLocaleUpperCase('tr-TR');
@@ -35384,6 +35395,9 @@ function sevkiyatMerkezKapat() {
 try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
 
 
+function depoKomutaGrupEtiket(grup) {
+    return { IPLIK: 'İplik', KUMAS: 'Kumaş', MAMUL_DEPO: 'Mamül' }[grup] || grup;
+}
 function depoKomutaFormBaslikGuncelle() {
     const ft = document.getElementById('form-title');
     if (!ft) return;
