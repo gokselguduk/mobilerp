@@ -37,9 +37,13 @@ function mamulDepoStoktaKartlar(q, limit) {
     const kartEkle = (kart, kodHint) => {
         const kod = String(kart?.desen_kodu || kart?.stok_kodu || kodHint || '').trim();
         if (!kod || seen.has(kod)) return;
-        if ((bakMap[kod] || bakMap[String(kart?.desen_kodu || '').trim()] || 0) <= 0) return;
+        const bakiye = bakMap[kod] || bakMap[String(kart?.desen_kodu || '').trim()] || 0;
+        /* Arama yaparken bakiyesi 0 olan kartlar da görünsün (aksi halde "ürün kayboldu" sanılıyor) —
+           yalnızca sorgu yokken (serbest gezinme/varsayılan liste) stoksuz kartlar gizli kalsın. */
+        if (bakiye <= 0 && !qLower) return;
         seen.add(kod);
         if (!kart.desen_kodu) kart = { ...kart, desen_kodu: kod };
+        if (bakiye <= 0) kart = { ...kart, _sifirBakiye: true };
         kartlar.push(kart);
     };
 
@@ -72,6 +76,214 @@ window.mamulDepoAdetBakiyeMap = mamulDepoAdetBakiyeMap;
 window.mamulDepoStoktaKartlar = mamulDepoStoktaKartlar;
 let mamulDepoGirisMod = 'TOPLU';
 
+/** Sipariş kalemi için mamül stok kartı yokken sevk kimliği (SIP-…) */
+function mamulTopluSiparisYerTutucuKod(siparis, kalem, kalemIdx) {
+    const kod = String(kalem?.kod || kalem?.stok_kodu || '').trim();
+    if (kod && kod.toUpperCase() !== 'KODSUZ' && mamulTopluKartBul(kod)) return kod;
+    const sno = String(siparis?.sno || siparis?.id || 'X').trim().replace(/\s+/g, '');
+    const urun = String(kalem?.ad || kalem?.urun || '').trim()
+        .replace(/[^\wçğıöşüÇĞİÖŞÜ\-]+/gi, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 28);
+    const base = urun ? `SIP-${sno}-K${kalemIdx}-${urun}` : `SIP-${sno}-K${kalemIdx}`;
+    return base.slice(0, 60);
+}
+
+/** Açık siparişlerde ADET (mamül) kalemleri — stok kartı olmasa da aranabilir */
+function mamulTopluSiparisKaynakRows() {
+    const out = [];
+    const seen = new Set();
+    const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
+    liste.forEach(sip => {
+        if (!sip || String(sip.durum || '').toUpperCase() === 'TAMAMLANDI') return;
+        const kalemler = typeof siparisListeKalemleriArr === 'function'
+            ? siparisListeKalemleriArr(sip)
+            : (typeof uaSiparisKalemleriGetir === 'function' ? uaSiparisKalemleriGetir(sip) : []);
+        if (!Array.isArray(kalemler) || !kalemler.length) return;
+        const sno = String(sip.sno || '').trim();
+        const firma = String(sip.firma || sip.musteri || '').trim();
+        kalemler.forEach((k, ki) => {
+            const birim = typeof siparisKalemBirim === 'function'
+                ? siparisKalemBirim(k)
+                : String(k?.birim || 'ADET').toUpperCase();
+            if (birim !== 'ADET') return;
+            const ad = String(k.ad || k.urun || k.kumas_cinsi || '').trim();
+            const renk = String(
+                (typeof uaKalemRenkGetir === 'function' ? uaKalemRenkGetir(k) : '') || k.renk || ''
+            ).trim();
+            const ebat = String(
+                (typeof uaKalemEbatGetir === 'function' ? uaKalemEbatGetir(k) : '') || k.ebat || k.olcu || ''
+            ).trim();
+            const hamKod = String(k.kod || k.stok_kodu || '').trim();
+            const kart = hamKod && hamKod.toUpperCase() !== 'KODSUZ' ? mamulTopluKartBul(hamKod) : null;
+            const kartVar = !!(kart && (typeof kumasKutuphanesiKartiMamulMu !== 'function' || kumasKutuphanesiKartiMamulMu(kart)));
+            const kod = kartVar ? hamKod : mamulTopluSiparisYerTutucuKod(sip, k, ki);
+            if (!kod || seen.has(kod.toUpperCase())) return;
+            if (kartVar) return;
+            seen.add(kod.toUpperCase());
+            const miktar = Math.round(parseFloat(k.miktar) || 0);
+            out.push({
+                desen_kodu: kod,
+                stok_kodu: kod,
+                kod,
+                urun_adi: ad || kod,
+                ad: ad || kod,
+                firma: firma || '',
+                renk,
+                ebat,
+                noKart: true,
+                siparisKaynak: true,
+                siparis_id: sip.id,
+                siparis_sno: sno,
+                kalem_idx: ki,
+                siparis_miktar: miktar,
+                siparis_birim: 'ADET',
+                lot_no: sno || ''
+            });
+        });
+    });
+    return out;
+}
+window.mamulTopluSiparisKaynakRows = mamulTopluSiparisKaynakRows;
+
+function mamulTopluBosSatir() {
+    return {
+        kod: '', ad: '', adet: '', not: '', hata: '',
+        noKart: false, renk: '',
+        siparis_id: '', siparis_sno: '', kalem_idx: null,
+        siparis_miktar: 0, siparis_birim: ''
+    };
+}
+
+function mamulTopluSatiraSiparisYaz(row, src) {
+    if (!row) return;
+    row.siparis_id = src?.siparis_id || '';
+    row.kalem_idx = (src && src.kalem_idx != null && src.kalem_idx !== '') ? src.kalem_idx : null;
+    row.siparis_miktar = Math.round(parseFloat(src?.siparis_miktar) || 0);
+    row.siparis_birim = src?.siparis_birim || 'ADET';
+    row.siparis_sno = src?.siparis_sno || src?.lot_no || row.siparis_sno || '';
+    row.renk = src?.renk || row.renk || '';
+    row.ebat = src?.ebat || row.ebat || '';
+    row.noKart = !!(src?.noKart || row.noKart);
+}
+
+function mamulTopluSatirSiparisTemizle(row) {
+    if (!row) return;
+    row.siparis_id = '';
+    row.kalem_idx = null;
+    row.siparis_miktar = 0;
+    row.siparis_birim = '';
+    row.siparis_sno = '';
+    row.noKart = false;
+    row.renk = '';
+    row.ebat = '';
+}
+
+function mamulTopluSiparisOzetHesapla(row) {
+    if (!row) return null;
+    const sid = String(row.siparis_id || '').trim();
+    const ki = parseInt(row.kalem_idx, 10);
+    if (!sid || !Number.isFinite(ki) || ki < 0) return null;
+    const sip = ((typeof dataCache !== 'undefined' && dataCache.siparisler) || [])
+        .find(s => String(s.id) === sid);
+    const kalemler = typeof siparisListeKalemleriArr === 'function'
+        ? siparisListeKalemleriArr(sip || {})
+        : [];
+    const kalem = (kalemler || [])[ki] || {};
+    let siparis = Math.round(parseFloat(row.siparis_miktar) || 0);
+    if (!siparis) siparis = Math.round(parseFloat(kalem.miktar) || 0);
+
+    const kdDok = (typeof _kdCache !== 'undefined' && _kdCache[`KD_DOKUMA_${sid}`]) || {};
+    const uRaw = kdDok.urunler || {};
+    const u = (Array.isArray(uRaw) ? uRaw[ki] : null)
+        || uRaw[ki] || uRaw[String(ki)] || {};
+    let dokunan = 0;
+    if (typeof dokumaUrunIkinciOzet === 'function') {
+        const dokOzet = dokumaUrunIkinciOzet(u, kalem);
+        dokunan = Math.round(parseFloat(
+            dokOzet.adet != null ? dokOzet.adet
+                : (dokOzet.ikinci != null ? dokOzet.ikinci : u.toplam_adet)
+        ) || 0);
+    } else {
+        dokunan = Math.round(parseFloat(u.toplam_adet) || 0);
+    }
+
+    const rowK = (typeof _kdCache !== 'undefined' && _kdCache[`KD_KONFEKSIYON_${sid}`])
+        ? (_kdCache[`KD_KONFEKSIYON_${sid}`][`kalem_${ki}`] || {})
+        : {};
+    let yukleme = 0;
+    if (typeof planlamaIhtiyacSevkAdet === 'function') {
+        yukleme = Math.round(planlamaIhtiyacSevkAdet(sid, ki, rowK) || 0);
+    } else {
+        yukleme = Math.max(
+            parseInt(rowK.sevk_edilen || 0, 10) || 0,
+            parseInt(rowK.sevk_adet || 0, 10) || 0
+        );
+        if (typeof sevkiyatYuklemeCacheOku === 'function') {
+            const loc = sevkiyatYuklemeCacheOku(sid, ki);
+            if (loc != null) yukleme = Math.max(yukleme, loc);
+        }
+    }
+    if (typeof sevkiyatSiparisKalemYuklemeFromDepo === 'function') {
+        yukleme = Math.max(yukleme, Math.round(sevkiyatSiparisKalemYuklemeFromDepo(sid, ki) || 0));
+    }
+
+    // Yüklenebilir = dokuma − yüklenen | Sipariş kalan = sipariş − yükleme
+    const yuklenebilir = Math.max(0, dokunan - yukleme);
+    const siparisKalan = Math.max(0, siparis - yukleme);
+    return {
+        siparis,
+        sevk: yukleme,
+        dokunan,
+        sevkEdilebilir: yuklenebilir,
+        kapanis: siparisKalan,
+        birimLbl: 'ad'
+    };
+}
+
+function mamulTopluSiparisOzetHtml(row) {
+    const o = mamulTopluSiparisOzetHesapla(row);
+    if (!o) return '';
+    const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+    const b = o.birimLbl || 'ad';
+    return `<div class="kumas-toplu-urun-ozet" title="Dokuma ${fmt(o.dokunan)} ${b} · Yüklenen ${fmt(o.sevk)} ${b} · Sipariş ${fmt(o.siparis)} ${b}">
+        <span class="kt-ozet-chip kt-ozet--sevk" title="Dokuma − yüklenen">Yüklenebilir <b>${fmt(o.sevkEdilebilir)}</b> ${b}</span>
+        <span class="kt-ozet-chip kt-ozet--kapama" title="Sipariş − yükleme">Sipariş kalan <b>${fmt(o.kapanis)}</b> ${b}</span>
+    </div>`;
+}
+
+function mamulTopluSerbestKimlik(q) {
+    const raw = String(q || '').trim();
+    if (!raw) return null;
+    // Kartı olan mamül kodu serbest kimlik olmasın
+    if (typeof depoMamulStokKartiDogrula === 'function' && !depoMamulStokKartiDogrula(raw)) return null;
+    if (!/^SIP-/i.test(raw) && raw.length < 2) return null;
+    const ad = /^SIP-/i.test(raw)
+        ? raw.replace(/^SIP-[^-]+-K\d+-?/i, '').replace(/_/g, ' ').trim() || raw
+        : raw;
+    return {
+        desen_kodu: raw.slice(0, 60),
+        stok_kodu: raw.slice(0, 60),
+        kod: raw.slice(0, 60),
+        urun_adi: ad,
+        ad,
+        noKart: true,
+        siparisKaynak: false,
+        firma: '',
+        renk: ''
+    };
+}
+
+function mamulTopluKaynakBul(kod) {
+    const k = String(kod || '').trim();
+    if (!k) return null;
+    const ku = k.toUpperCase();
+    const sip = mamulTopluSiparisKaynakRows().find(r => String(r.kod || '').toUpperCase() === ku);
+    if (sip) return sip;
+    if (/^SIP-/i.test(k)) return mamulTopluSerbestKimlik(k);
+    return null;
+}
+
 function mamulDepoModSec(mod) {
     mamulDepoGirisMod = 'TOPLU';
     const tekli = document.getElementById('mamul-depo-tekli-wrap');
@@ -99,7 +311,7 @@ function mamulDepoModSec(mod) {
 
 function mamulTopluSatirBaslat() {
     mamulTopluKodDropKapat();
-    window._mamulTopluSatirlar = [{ kod: '', ad: '', adet: '', not: '', hata: '' }];
+    window._mamulTopluSatirlar = [mamulTopluBosSatir()];
     mamulTopluListeRender();
 }
 
@@ -116,8 +328,14 @@ function mamulTopluKodSatiraYaz(kod, satirIdx) {
     if (coz.hata) { if (typeof erpToast === 'function') erpToast(coz.hata, 'error'); return false; }
     if (coz.coklu) { if (typeof erpToast === 'function') erpToast(`"${k}" için ${coz.adaylar.length} eşleşme — kodu netleştirin.`, 'warn', 5000); return false; }
     r.kod = coz.kod || k;
-    r.ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || '—';
+    r.ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || coz.kart?.ad || '—';
     r.hata = '';
+    if (coz.noKart || coz.kart?.noKart) {
+        mamulTopluSatiraSiparisYaz(r, coz.kart);
+        r.noKart = true;
+    } else {
+        mamulTopluSatirSiparisTemizle(r);
+    }
     mamulTopluListeRender();
     mamulTopluOzetGuncelle();
     setTimeout(() => {
@@ -131,13 +349,13 @@ window.mamulTopluKodSatiraYaz = mamulTopluKodSatiraYaz;
 
 function mamulTopluSatirEkle() {
     if (!window._mamulTopluSatirlar) window._mamulTopluSatirlar = [];
-    window._mamulTopluSatirlar.push({ kod: '', ad: '', adet: '', not: '', hata: '' });
+    window._mamulTopluSatirlar.push(mamulTopluBosSatir());
     mamulTopluListeRender();
 }
 
 function mamulTopluSatirSil(idx) {
     const rows = window._mamulTopluSatirlar || [];
-    if (rows.length <= 1) window._mamulTopluSatirlar = [{ kod: '', ad: '', adet: '', not: '', hata: '' }];
+    if (rows.length <= 1) window._mamulTopluSatirlar = [mamulTopluBosSatir()];
     else rows.splice(idx, 1);
     mamulTopluListeRender();
     mamulTopluOzetGuncelle();
@@ -163,7 +381,11 @@ async function mamulTopluYapistir() {
             const coz = mamulTopluKodCoz(r.kod);
             if (coz.kod && !coz.hata && !coz.coklu) {
                 r.kod = coz.kod;
-                r.ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || '—';
+                r.ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || coz.kart?.ad || '—';
+                if (coz.noKart || coz.kart?.noKart) {
+                    mamulTopluSatiraSiparisYaz(r, coz.kart);
+                    r.noKart = true;
+                }
             } else if (coz.coklu) {
                 r.hata = `${coz.adaylar.length} eşleşme — satırda kod seçin`;
             } else {
@@ -190,20 +412,56 @@ function mamulTopluKartBul(kod) {
     ) || null;
 }
 
-function mamulTopluKodAra(q, limit = 12) {
-    if (mamulDepoCikisSecimModu()) return mamulDepoStoktaKartlar(q, limit);
+function mamulTopluKodAra(q, limit = 60) {
+    const lim = Number.isFinite(limit) ? limit : 12;
     const s = String(q || '').trim();
-    if (!s) return [];
-    if (typeof mamulDepoAramaSonuclari === 'function') return mamulDepoAramaSonuclari(s, limit);
     const qLower = s.toLowerCase();
-    return (dataCache.kumas_kutuphanesi || []).filter(x =>
+    const out = [];
+    const seen = new Set();
+    const push = (item) => {
+        if (!item) return;
+        const kod = String(item.desen_kodu || item.stok_kodu || item.kod || '').trim();
+        if (!kod || seen.has(kod.toUpperCase())) return;
+        seen.add(kod.toUpperCase());
+        out.push(item);
+    };
+
+    if (mamulDepoCikisSecimModu()) {
+        mamulDepoStoktaKartlar(s, lim).forEach(push);
+        mamulTopluSiparisKaynakRows().forEach(r => {
+            if (out.length >= lim) return;
+            if (qLower) {
+                const blob = [r.kod, r.ad, r.urun_adi, r.siparis_sno, r.firma, r.renk, r.ebat]
+                    .map(v => String(v || '').toLowerCase()).join(' ');
+                if (!blob.includes(qLower)) return;
+            }
+            push(r);
+        });
+        return out.slice(0, lim);
+    }
+
+    if (!s) return [];
+    if (typeof mamulDepoAramaSonuclari === 'function') {
+        mamulDepoAramaSonuclari(s, lim).forEach(push);
+        return out.slice(0, lim);
+    }
+    (dataCache.kumas_kutuphanesi || []).filter(x =>
         x.desen_kodu && !String(x.desen_kodu).startsWith('NU') && kumasKutuphanesiKartiMamulMu(x) &&
         [x.desen_kodu, x.urun_adi, x.desen_adi, x.firma, x.kumas_cinsi, x.renk]
             .some(v => String(v || '').toLowerCase().includes(qLower))
-    ).slice(0, limit);
+    ).slice(0, lim).forEach(push);
+    return out;
 }
 
 function mamulTopluKodEtiket(kart) {
+    if (kart?.noKart || kart?.siparisKaynak) {
+        return {
+            ad: kart.urun_adi || kart.ad || kart.kod || '—',
+            renk: kart.renk || '',
+            ebat: kart.ebat || '',
+            musteri: kart.firma || ''
+        };
+    }
     if (typeof mamulTopluUrunDetayOlustur === 'function') {
         const d = mamulTopluUrunDetayOlustur(kart);
         return { ad: d.ad, renk: d.renk, ebat: d.ebat, musteri: d.musteri };
@@ -212,49 +470,102 @@ function mamulTopluKodEtiket(kart) {
     return {
         ad: kart.urun_adi || kart.desen_adi || kart.kumas_cinsi || '—',
         renk: kart.renk || '',
-        ebat: '',
+        ebat: kart.ebat || kart.olcu || '',
         musteri: kart.firma || ''
     };
+}
+
+/** Arama satırı: yüklenebilir (dokuma−yükleme) + sipariş kalan (sipariş−yükleme) */
+function mamulTopluDropAdetOzet(k) {
+    if (k?.noKart || k?.siparisKaynak || (k?.siparis_id != null && k?.kalem_idx != null)) {
+        const o = mamulTopluSiparisOzetHesapla(k);
+        if (o) {
+            return {
+                yuklenebilir: Math.max(0, Math.round(Number(o.sevkEdilebilir) || 0)),
+                siparisKalan: Math.max(0, Math.round(Number(o.kapanis) || 0))
+            };
+        }
+        const sip = Math.round(parseFloat(k.siparis_miktar) || 0);
+        return { yuklenebilir: 0, siparisKalan: sip };
+    }
+    const kod = String(k?.desen_kodu || k?.stok_kodu || k?.kod || '').trim();
+    const bak = kod ? mamulDepoAdetBakiye(kod) : 0;
+    return { yuklenebilir: Math.max(0, bak), siparisKalan: null };
 }
 
 function mamulTopluKodCoz(girdi) {
     const raw = String(girdi || '').trim();
     if (!raw) return { kod: '', kart: null, hata: '', adaylar: [] };
-    const exactHata = depoMamulStokKartiDogrula(raw);
+
+    // Kartsız sipariş / SIP kimliği (çıkış)
+    if (mamulDepoCikisSecimModu()) {
+        const sipExact = mamulTopluKaynakBul(raw);
+        if (sipExact?.noKart) {
+            return { kod: String(sipExact.kod || sipExact.desen_kodu || raw).trim(), kart: sipExact, hata: '', adaylar: [], noKart: true };
+        }
+    }
+
+    const exactHata = typeof depoMamulStokKartiDogrula === 'function' ? depoMamulStokKartiDogrula(raw) : null;
     if (!exactHata) {
         if (mamulDepoCikisSecimModu() && mamulDepoAdetBakiye(raw) <= 0) {
-            return { kod: raw, kart: null, hata: `"${raw}" stokta yok — yalnız stokta bulunan ürün çıkılabilir`, adaylar: [] };
+            return { kod: raw, kart: null, hata: `"${raw}" stokta yok — yalnız stokta bulunan veya sipariş ürünü çıkılabilir`, adaylar: [] };
         }
         const kart = mamulTopluKartBul(raw);
         return { kod: raw, kart, hata: '', adaylar: [] };
     }
-    const adaylar = mamulTopluKodAra(raw, 12);
+
+    const adaylar = mamulTopluKodAra(raw, 60);
     if (adaylar.length === 1) {
         const kart = adaylar[0];
-        const kod = String(kart.desen_kodu || '').trim();
-        return { kod, kart, hata: '', adaylar: [], otomatik: true };
+        const kod = String(kart.desen_kodu || kart.stok_kodu || kart.kod || '').trim();
+        return { kod, kart, hata: '', adaylar: [], otomatik: true, noKart: !!kart.noKart };
     }
     if (adaylar.length > 1) {
+        const kartli = adaylar.filter(a => !a.noKart);
+        if (kartli.length === 1) {
+            const kart = kartli[0];
+            return { kod: String(kart.desen_kodu || '').trim(), kart, hata: '', adaylar: [], noKart: false };
+        }
         return { kod: raw, kart: null, hata: '', adaylar, coklu: true };
     }
-    return { kod: raw, kart: null, hata: exactHata || `"${raw}" için mamül kartı bulunamadı`, adaylar: [] };
+
+    if (mamulDepoCikisSecimModu()) {
+        const serbest = mamulTopluSerbestKimlik(raw);
+        if (serbest) return { kod: serbest.kod, kart: serbest, hata: '', adaylar: [], noKart: true };
+    }
+    return { kod: raw, kart: null, hata: exactHata || `"${raw}" için mamül kartı veya sipariş ürünü bulunamadı`, adaylar: [] };
 }
 
 window._mamulTopluDropIdx = -1;
 
 function mamulTopluKodDropKapat() {
     document.querySelectorAll('#mamul-toplu-kod-drop').forEach(drop => {
+        if (typeof dropdownPortalTemizle === 'function') {
+            dropdownPortalTemizle(drop);
+            return;
+        }
         drop.classList.remove('is-open');
         drop.style.display = 'none';
         drop.style.pointerEvents = 'none';
         drop.innerHTML = '';
+        drop._anchorInput = null;
+        ['position', 'top', 'left', 'width', 'maxHeight', 'zIndex'].forEach(k => { try { drop.style[k] = ''; } catch (e) {} });
+        if (drop.parentElement === document.body) {
+            try { drop.remove(); } catch (e) {}
+        }
     });
     window._mamulTopluDropIdx = -1;
+    window._mamulTopluAramaAdaylari = [];
 }
 
 function mamulTopluKodDropPortalaAl(drop) {
     if (!drop) drop = document.getElementById('mamul-toplu-kod-drop');
-    if (!drop) return null;
+    if (!drop) {
+        drop = document.createElement('div');
+        drop.id = 'mamul-toplu-kod-drop';
+        document.body.appendChild(drop);
+    }
+    if (typeof dropdownAnchorKaydet === 'function') dropdownAnchorKaydet(drop);
     if (drop.parentElement !== document.body) document.body.appendChild(drop);
     return drop;
 }
@@ -262,52 +573,112 @@ function mamulTopluKodDropPortalaAl(drop) {
 function mamulTopluKodDropKonumla(inp, drop) {
     if (!inp || !drop) return;
     const rect = inp.getBoundingClientRect();
-    const maxH = Math.min(280, Math.max(160, window.innerHeight * 0.42));
-    drop.style.maxHeight = maxH + 'px';
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const top = (spaceBelow < 140 && rect.top > spaceBelow)
+    const spaceBelow = window.innerHeight - rect.bottom - 10;
+    const spaceAbove = rect.top - 10;
+    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow + 20;
+    const avail = Math.max(140, openUp ? spaceAbove : spaceBelow);
+    const maxH = Math.min(420, avail);
+    const minW = Math.min(920, window.innerWidth - 16);
+    const width = Math.min(Math.max(rect.width, minW), window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 16 - width));
+    const top = openUp
         ? Math.max(8, rect.top - maxH - 4)
         : (rect.bottom + 4);
+    if (typeof dropdownAnchorKaydet === 'function') dropdownAnchorKaydet(drop);
     drop.style.position = 'fixed';
-    drop.style.zIndex = '100000';
+    drop.style.zIndex = '200000';
     drop.style.top = top + 'px';
-    drop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 16 - Math.max(rect.width, 260))) + 'px';
-    drop.style.width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16) + 'px';
+    drop.style.left = left + 'px';
+    drop.style.width = width + 'px';
+    drop.style.minWidth = Math.min(560, width) + 'px';
+    drop.style.maxWidth = (window.innerWidth - 16) + 'px';
+    drop.style.maxHeight = maxH + 'px';
+    drop.style.overflowY = 'auto';
+    drop.style.overflowX = 'auto';
+    drop.style.webkitOverflowScrolling = 'touch';
+    drop._anchorInput = inp;
+    if (drop.parentElement !== document.body) document.body.appendChild(drop);
 }
 
 function mamulTopluKodDropGoster(idx, adaylar) {
     const inp = document.getElementById('mt-kod-' + idx);
     const drop = mamulTopluKodDropPortalaAl();
     if (!inp || !drop || !adaylar?.length) return;
+    try {
+        if (typeof hideAllDropdowns === 'function') {
+            ['iplik-search-results', 'kumas-search-results', 'mamul-search-results', 'kumas-toplu-kod-drop'].forEach(id => {
+                document.querySelectorAll('#' + id).forEach(d => {
+                    if (typeof dropdownPortalTemizle === 'function') dropdownPortalTemizle(d);
+                });
+            });
+            try { if (typeof kumasTopluDropKapat === 'function') kumasTopluDropKapat(); } catch (e) {}
+        }
+    } catch (e) {}
     window._mamulTopluDropIdx = idx;
+    window._mamulTopluAramaAdaylari = adaylar;
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    drop.innerHTML = adaylar.map(k => {
-        const kod = String(k.desen_kodu || k.stok_kodu || '').trim();
+    const fmt = (n) => (n == null || n === '') ? '—' : Math.round(Number(n) || 0).toLocaleString('tr-TR');
+    const head = `<div class="mamul-drop-head" aria-hidden="true">
+        <span>Stok kodu</span><span>Ürün adı</span><span>Müşteri</span><span>Ebat</span><span>Renk</span>
+        <span class="mamul-drop-num">Yüklenebilir</span><span class="mamul-drop-num">Sipariş kalan</span>
+    </div>`;
+    const rowsHtml = adaylar.map((k, ai) => {
         const et = mamulTopluKodEtiket(k);
-        const kodEsc = esc(kod);
-        const bak = mamulDepoAdetBakiye(kod);
-        const metaParca = [et.ebat, et.renk, et.musteri].filter(Boolean);
-        if (mamulDepoCikisSecimModu()) metaParca.push(bak + ' ad stok');
-        return `<div class="mamul-toplu-kod-drop-item" onmousedown="event.preventDefault();mamulTopluKodSec(${idx},'${kodEsc.replace(/'/g, "\\'")}')">
-            <span class="mamul-toplu-kod-drop-item__kod">${kodEsc}</span>
-            <span class="mamul-toplu-kod-drop-item__ad">${esc(et.ad)}</span>
-            ${metaParca.length ? `<span class="mamul-toplu-kod-drop-item__meta">${metaParca.map(x => esc(x)).join(' · ')}</span>` : ''}
+        const adet = mamulTopluDropAdetOzet(k);
+        const kod = String(k.desen_kodu || k.stok_kodu || k.kod || '').trim();
+        const musteriGoster = String(et.musteri || k.firma || '').trim() || '—';
+        const sipBadge = k.siparis_sno
+            ? `<span class="mamul-drop-sip">Sip ${esc(k.siparis_sno)}${k.noKart ? ' · kartsız' : ''}</span>`
+            : (k.noKart ? '<span class="mamul-drop-sip">kartsız</span>' : '');
+        const sifirBadge = k._sifirBakiye ? '<span class="mamul-drop-sip" style="color:var(--rose-c);border-color:var(--rose-c)">0 stok</span>' : '';
+        return `<div class="mamul-toplu-kod-drop-item mamul-drop-row${k._sifirBakiye ? ' is-sifir-bakiye' : ''}" onmousedown="event.preventDefault();mamulTopluKodSec(${idx},${ai})" title="${esc(kod)}">
+            <span class="mamul-drop-kod">${esc(kod || '—')}</span>
+            <span class="mamul-drop-ad">
+                <b>${esc(et.ad || '—')}</b>
+                ${sipBadge}${sifirBadge}
+            </span>
+            <span class="mamul-drop-musteri">${esc(musteriGoster)}</span>
+            <span class="mamul-drop-ebat">${esc(et.ebat || '—')}</span>
+            <span class="mamul-drop-renk">${esc(et.renk || '—')}</span>
+            <span class="mamul-drop-num mamul-drop-yuk">${fmt(adet.yuklenebilir)}</span>
+            <span class="mamul-drop-num mamul-drop-kalan">${fmt(adet.siparisKalan)}</span>
         </div>`;
     }).join('');
+    drop.innerHTML = head + rowsHtml;
     drop.style.display = 'block';
     drop.style.pointerEvents = 'auto';
     drop.classList.add('is-open');
+    drop._anchorInput = inp;
     mamulTopluKodDropKonumla(inp, drop);
 }
 window.mamulTopluKodDropKonumla = mamulTopluKodDropKonumla;
 
-function mamulTopluKodSec(idx, kod) {
+function mamulTopluKodSec(idx, adayIdxOrKod) {
     window._mamulTopluDropSeciliyor = true;
     const rows = window._mamulTopluSatirlar || [];
     if (!rows[idx]) return;
-    const k = String(kod || '').trim();
-    if (mamulDepoCikisSecimModu() && mamulDepoAdetBakiye(k) <= 0) {
+    let src = null;
+    let k = '';
+    if (typeof adayIdxOrKod === 'number' || (typeof adayIdxOrKod === 'string' && /^\d+$/.test(adayIdxOrKod) && (window._mamulTopluAramaAdaylari || [])[Number(adayIdxOrKod)])) {
+        src = (window._mamulTopluAramaAdaylari || [])[Number(adayIdxOrKod)];
+        k = String(src?.desen_kodu || src?.stok_kodu || src?.kod || '').trim();
+    } else {
+        k = String(adayIdxOrKod || '').trim();
+        src = mamulTopluKaynakBul(k) || mamulTopluKartBul(k);
+        if (src && !src.noKart && !src.desen_kodu) src = { ...src, desen_kodu: k };
+    }
+    if (!k) {
+        window._mamulTopluDropSeciliyor = false;
+        return;
+    }
+    const noKart = !!(src?.noKart || src?.siparisKaynak || /^SIP-/i.test(k));
+    if (mamulDepoCikisSecimModu() && !noKart && mamulDepoAdetBakiye(k) <= 0) {
         if (typeof erpToast === 'function') erpToast('Bu ürün stokta yok — çıkış yapılamaz.', 'error', 4500);
+        window._mamulTopluDropSeciliyor = false;
+        return;
+    }
+    if (!mamulDepoCikisSecimModu() && noKart) {
+        if (typeof erpToast === 'function') erpToast('Kartsız ürün depoya girilemez — önce mamül kartı açın.', 'error', 4500);
         window._mamulTopluDropSeciliyor = false;
         return;
     }
@@ -315,8 +686,15 @@ function mamulTopluKodSec(idx, kod) {
     if (inp) inp.value = k;
     rows[idx].kod = k;
     rows[idx].hata = '';
-    const kart = mamulTopluKartBul(k);
-    rows[idx].ad = kart?.urun_adi || kart?.desen_adi || kart?.kumas_cinsi || '—';
+    if (noKart) {
+        rows[idx].ad = src?.urun_adi || src?.ad || k;
+        mamulTopluSatiraSiparisYaz(rows[idx], src);
+        rows[idx].noKart = true;
+    } else {
+        const kart = mamulTopluKartBul(k) || src;
+        rows[idx].ad = kart?.urun_adi || kart?.desen_adi || kart?.kumas_cinsi || '—';
+        mamulTopluSatirSiparisTemizle(rows[idx]);
+    }
     mamulTopluKodDropKapat();
     mamulTopluListeRender();
     mamulTopluOzetGuncelle();
@@ -335,7 +713,7 @@ function mamulTopluKodInput(idx) {
     rows[idx].hata = '';
     if (q.length < 1) {
         if (mamulDepoCikisSecimModu()) {
-            const stoktakiler = mamulDepoStoktaKartlar('', 12);
+            const stoktakiler = mamulTopluKodAra('', 60);
             if (stoktakiler.length) mamulTopluKodDropGoster(idx, stoktakiler);
             else mamulTopluKodDropKapat();
         } else {
@@ -343,17 +721,20 @@ function mamulTopluKodInput(idx) {
         }
         const urunEl = document.querySelector(`#mamul-toplu-hareket-body .mamul-toplu-hareket-row:nth-child(${idx + 1}) .mamul-toplu-hareket-urun`);
         if (urunEl && !q) urunEl.textContent = '—';
+        mamulTopluSatirSiparisTemizle(rows[idx]);
         return;
     }
-    if (!depoMamulStokKartiDogrula(q)) {
+    if (typeof depoMamulStokKartiDogrula === 'function' && !depoMamulStokKartiDogrula(q)) {
         mamulTopluKodDropKapat();
         const kart = mamulTopluKartBul(q);
         rows[idx].ad = kart?.urun_adi || kart?.desen_adi || kart?.kumas_cinsi || '—';
-        mamulTopluListeRender();
+        mamulTopluSatirSiparisTemizle(rows[idx]);
+        const urunEl = document.querySelector(`#mamul-toplu-hareket-body .mamul-toplu-hareket-row:nth-child(${idx + 1}) .mamul-toplu-hareket-urun`);
+        if (urunEl) urunEl.textContent = rows[idx].ad || '—';
         mamulTopluOzetGuncelle();
         return;
     }
-    const adaylar = mamulTopluKodAra(q, 10);
+    const adaylar = mamulTopluKodAra(q, 60);
     if (adaylar.length) mamulTopluKodDropGoster(idx, adaylar);
     else mamulTopluKodDropKapat();
 }
@@ -367,7 +748,12 @@ function mamulTopluKodUygula(idx) {
         rows[idx].kod = '';
         rows[idx].ad = '';
         rows[idx].hata = '';
-        mamulTopluListeRender();
+        mamulTopluSatirSiparisTemizle(rows[idx]);
+        /* Listeyi yeniden basma — odak kaybolunca Backspace formu/sayfayı kapatıyordu */
+        const rowEl = document.querySelector(`#mamul-toplu-hareket-body .mamul-toplu-hareket-row:nth-child(${idx + 1})`);
+        const urunEl = rowEl?.querySelector?.('.mamul-toplu-hareket-urun');
+        if (urunEl) urunEl.textContent = '—';
+        if (rowEl) rowEl.classList.remove('has-error');
         mamulTopluOzetGuncelle();
         return;
     }
@@ -376,15 +762,23 @@ function mamulTopluKodUygula(idx) {
         rows[idx].kod = girdi;
         rows[idx].hata = `${coz.adaylar.length} eşleşme — listeden seçin`;
         rows[idx].ad = '—';
+        mamulTopluSatirSiparisTemizle(rows[idx]);
         mamulTopluKodDropGoster(idx, coz.adaylar);
     } else if (coz.hata) {
         rows[idx].kod = girdi;
         rows[idx].hata = coz.hata;
         rows[idx].ad = '';
+        mamulTopluSatirSiparisTemizle(rows[idx]);
     } else {
         rows[idx].kod = coz.kod;
         rows[idx].hata = '';
-        rows[idx].ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || '—';
+        rows[idx].ad = coz.kart?.urun_adi || coz.kart?.desen_adi || coz.kart?.kumas_cinsi || coz.kart?.ad || '—';
+        if (coz.noKart || coz.kart?.noKart) {
+            mamulTopluSatiraSiparisYaz(rows[idx], coz.kart);
+            rows[idx].noKart = true;
+        } else {
+            mamulTopluSatirSiparisTemizle(rows[idx]);
+        }
         const inp = document.getElementById('mt-kod-' + idx);
         if (inp && coz.kod !== girdi) inp.value = coz.kod;
     }
@@ -410,27 +804,38 @@ function mamulTopluSatirOku(idx) {
 function mamulTopluListeRender() {
     const host = document.getElementById('mamul-toplu-hareket-body');
     if (!host) return;
+    // Liste yenilenince eski sabit dropdown ortada kalmasın
+    try { mamulTopluKodDropKapat(); } catch (e) {}
     const rows = window._mamulTopluSatirlar || [];
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     host.innerHTML = rows.map((r, idx) => {
-        const kart = (!r.hata && r.kod) ? mamulTopluKartBul(r.kod) : null;
+        const noKart = !!(r.noKart || /^SIP-/i.test(String(r.kod || '')));
+        const kart = (!r.hata && r.kod && !noKart) ? mamulTopluKartBul(r.kod) : null;
         const detay = kart && typeof mamulTopluUrunDetayOlustur === 'function'
             ? mamulTopluUrunDetayOlustur(kart)
             : null;
+        const ozetHtml = noKart && r.siparis_id != null && r.kalem_idx != null
+            ? mamulTopluSiparisOzetHtml(r)
+            : '';
         const urunTitle = r.hata
             ? r.hata
             : (detay && typeof mamulTopluUrunDetayMetin === 'function'
                 ? mamulTopluUrunDetayMetin(detay)
                 : (r.ad || '—'));
-        const urunInner = r.hata
-            ? `<span style="color:var(--rose-c)">${esc(r.hata)}</span>`
-            : (detay && typeof mamulTopluUrunDetayHtml === 'function'
-                ? mamulTopluUrunDetayHtml(detay, esc)
-                : esc(r.ad || '—'));
+        let urunInner;
+        if (r.hata) {
+            urunInner = `<span style="color:var(--rose-c)">${esc(r.hata)}</span>`;
+        } else if (noKart) {
+            urunInner = `<span class="kumas-toplu-urun-ad">${esc(r.ad || 'Ürün')}${r.siparis_sno ? ` <span style="font-size:9px;color:var(--text3)">· Sip ${esc(r.siparis_sno)}</span>` : ''} <span style="font-size:9px;color:var(--amber-c);font-weight:700">kartsız</span></span>${ozetHtml}`;
+        } else if (detay && typeof mamulTopluUrunDetayHtml === 'function') {
+            urunInner = mamulTopluUrunDetayHtml(detay, esc);
+        } else {
+            urunInner = esc(r.ad || '—');
+        }
         return `
         <div class="mamul-toplu-hareket-row${r.hata ? ' has-error' : ''}">
             <div class="mamul-toplu-kod-cell">
-            <input id="mt-kod-${idx}" class="pro-input" placeholder="Kod veya ürün adı" value="${esc(r.kod)}"
+            <input id="mt-kod-${idx}" class="pro-input" placeholder="Kod, ürün veya sipariş" value="${esc(r.kod)}"
                 oninput="mamulTopluKodInput(${idx})" onfocus="mamulTopluKodInput(${idx})" onblur="mamulTopluKodBlur(${idx})"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();mamulTopluKodUygula(${idx});document.getElementById('mt-adet-${idx}')?.focus();}"
                 style="font-family:'DM Mono',monospace;font-weight:700;color:var(--amber-c);width:100%">
@@ -481,21 +886,78 @@ function mamulTopluPayloadOlustur() {
     const hatalar = [];
     rows.forEach((r, i) => {
         let kod = (r.kod || '').trim();
+        let noKart = !!(r.noKart || /^SIP-/i.test(kod));
+        let src = noKart ? (mamulTopluKaynakBul(kod) || {
+            kod, ad: r.ad || kod, urun_adi: r.ad || kod, noKart: true,
+            siparis_id: r.siparis_id, kalem_idx: r.kalem_idx,
+            siparis_sno: r.siparis_sno, siparis_miktar: r.siparis_miktar, renk: r.renk
+        }) : null;
         if (kod) {
             const coz = mamulTopluKodCoz(kod);
-            if (!coz.hata && !coz.coklu && coz.kod) kod = coz.kod;
-            else if (coz.coklu) { hatalar.push(`Satır ${i + 1}: "${kod}" için ${coz.adaylar.length} eşleşme — kod seçin`); return; }
+            if (!coz.hata && !coz.coklu && coz.kod) {
+                kod = coz.kod;
+                if (coz.noKart || coz.kart?.noKart) {
+                    noKart = true;
+                    src = coz.kart;
+                }
+            } else if (coz.coklu) { hatalar.push(`Satır ${i + 1}: "${kod}" için ${coz.adaylar.length} eşleşme — kod seçin`); return; }
         }
         const ad = parseInt(r.adet, 10) || 0;
         if (!kod && !ad) return;
-        if (!kod) { hatalar.push(`Satır ${i + 1}: stok kodu boş`); return; }
+        const sevkiyatCikisKodsuz = isCikis && typeof appMode === 'string' && appMode === 'SEVKIYAT';
+        let kodsuzFallback = false;
+        if (!kod) {
+            if (sevkiyatCikisKodsuz) {
+                const yedek = String(r.not || r.urun || r.ad || '').trim();
+                kod = yedek
+                    ? (typeof sevkiyatMamulStokKoduCoz === 'function'
+                        ? sevkiyatMamulStokKoduCoz({ kod: '', urun: yedek, sno: '', kalemIdx: i })
+                        : yedek.slice(0, 72))
+                    : `SEVK-KODSUZ-${i + 1}`;
+                kodsuzFallback = true;
+                noKart = true;
+            } else {
+                hatalar.push(`Satır ${i + 1}: stok kodu boş`);
+                return;
+            }
+        }
         if (ad <= 0) { hatalar.push(`Satır ${i + 1}: adet girin`); return; }
-        const kartHata = depoMamulStokKartiDogrula(kod);
-        if (kartHata) { hatalar.push(`Satır ${i + 1}: ${kartHata}`); return; }
-        kodToplam[kod] = (kodToplam[kod] || 0) + ad;
-        const kart = mamulTopluKartBul(kod);
+        if (!isCikis && (noKart || kodsuzFallback)) {
+            hatalar.push(`Satır ${i + 1}: kartsız ürün depoya girilemez — önce mamül kartı açın`);
+            return;
+        }
+        if (!kodsuzFallback && !noKart) {
+            const kartHata = typeof depoMamulStokKartiDogrula === 'function' ? depoMamulStokKartiDogrula(kod) : null;
+            if (kartHata) { hatalar.push(`Satır ${i + 1}: ${kartHata}`); return; }
+        }
+        // Kartsız sipariş sevk: stok bakiyesi kontrolüne dahil etme
+        if (!noKart && !kodsuzFallback) {
+            kodToplam[kod] = (kodToplam[kod] || 0) + ad;
+        }
+        const kart = (noKart || kodsuzFallback) ? null : mamulTopluKartBul(kod);
         const sign = isCikis ? -1 : 1;
-        const satirNot = [genelNot, r.not].filter(Boolean).join(' · ');
+        const sidTag = (src?.siparis_id != null ? String(src.siparis_id) : String(r.siparis_id || '')).trim();
+        const kiTag = Number.isFinite(parseInt(src?.kalem_idx != null ? src.kalem_idx : r.kalem_idx, 10))
+            ? parseInt(src?.kalem_idx != null ? src.kalem_idx : r.kalem_idx, 10)
+            : null;
+        const sno = String(src?.siparis_sno || r.siparis_sno || src?.lot_no || '').trim();
+        const sevkTag = (isCikis && sidTag && kiTag != null && kiTag >= 0)
+            ? `[SEVK_MERKEZ_ADET:sip=${sidTag}|k=${kiTag}|ad=${ad}]`
+            : '';
+        const renkVal = String(kart?.renk || src?.renk || r.renk || '').trim();
+        const ebatVal = String(kart?.ebat || kart?.olcu || src?.ebat || src?.olcu || r.ebat || '').trim();
+        const grupVal = String(kart?.urun_grubu || src?.grup || src?.urun_grubu || r.grup || '').trim();
+        const sevkTagTemizle = (v) => String(v || '').replace(/[\[\]]/g, '').trim();
+        const sipNot = noKart
+            ? [sno ? `Sipariş ${sno}` : '', renkVal ? `Renk ${renkVal}` : '', 'kartsız mamül sevk'].filter(Boolean).join(' · ')
+            : '';
+        const satirNot = [
+            genelNot, r.not, sipNot, sevkTag,
+            kodsuzFallback ? `[SEVK_URUN:${sevkTagTemizle(kod)}]` : '',
+            renkVal ? `[SEVK_RENK:${sevkTagTemizle(renkVal)}]` : '',
+            ebatVal ? `[SEVK_EBAT:${sevkTagTemizle(ebatVal)}]` : '',
+            grupVal ? `[SEVK_GRUP:${sevkTagTemizle(grupVal)}]` : ''
+        ].filter(Boolean).join(' · ');
         const notlarVal = isCikis
             ? (typeof depoNotlarWithTeslimDetay === 'function'
                 ? depoNotlarWithTeslimDetay(depoNotlarWithBirim('AD', satirNot), typeof muhasebeFisTeslimFormOku === 'function' ? muhasebeFisTeslimFormOku() : null)
@@ -503,24 +965,32 @@ function mamulTopluPayloadOlustur() {
             : depoNotlarWithBirim('AD', satirNot);
         payloads.push({
             stok_kodu: kod,
-            kumas_cinsi: kart?.kumas_cinsi || kart?.urun_adi || '',
-            lot_no: kart?.lot_no || '',
-            marka: kart?.firma || '',
-            renk: kart?.renk || '',
+            urun_adi: kart?.urun_adi || kart?.desen_adi || src?.urun_adi || src?.ad || r.ad || (kodsuzFallback ? kod : ''),
+            kumas_cinsi: kart?.kumas_cinsi || kart?.urun_adi || src?.urun_adi || src?.ad || r.ad || (kodsuzFallback ? kod : ''),
+            lot_no: kart?.lot_no || sno || '',
+            marka: kart?.firma || src?.firma || '',
+            renk: renkVal,
+            ebat: ebatVal,
+            urun_grubu: grupVal,
             cuval_sayisi: sign * ad,
             irsaliye_no: isCikis ? irs : '',
             firma: isCikis ? firmaCikis.toUpperCase() : '',
             notlar: notlarVal,
+            siparis_id: sidTag || null,
+            kalem_idx: kiTag,
+            siparis_sno: sno,
             islem_turu: movementType,
             kaynak_birim: 'DEPO_HAREKET_MAMUL_DEPO',
+            ana_grup: 'MAMUL',
             updated_by: String(erpCurrentUser?.display_name || erpCurrentUser?.username || 'Sistem').trim() || 'Sistem',
-            islem_gecmisi: `✨ ${new Date().toLocaleString('tr-TR')} — Toplu mamül ${isCikis ? 'çıkış' : 'giriş'}`
+            islem_gecmisi: `✨ ${new Date().toLocaleString('tr-TR')} — Toplu mamül ${isCikis ? 'çıkış' : 'giriş'}${noKart ? ' · kartsız' : ''}`
         });
     });
     if (!payloads.length && !hatalar.length) return { err: 'En az bir satırda stok kodu ve adet girin.' };
     if (hatalar.length) return { err: hatalar.slice(0, 5).join('\n') + (hatalar.length > 5 ? `\n… +${hatalar.length - 5} hata` : '') };
     if (isCikis) {
         for (const [kod, istenen] of Object.entries(kodToplam)) {
+            if (!(istenen > 0)) continue;
             const bak = mamulDepoAdetBakiye(kod);
             if (bak + 1e-6 < istenen) return { err: `${kod}: yetersiz stok (mevcut ${bak}, istenen ${istenen})` };
         }
@@ -538,7 +1008,13 @@ async function mamulTopluKaydet() {
     try { mamulTopluKodDropKapat(); } catch (e) {}
     isSaveInProgress = true;
     try {
-        let insertPayload = payloads.map(x => ({ ...x }));
+        let insertPayload = payloads.map(x => {
+            const r = { ...x };
+            delete r.siparis_id;
+            delete r.kalem_idx;
+            delete r.siparis_sno;
+            return r;
+        });
         const triedCols = new Set();
         let hareketIds = [];
         while (true) {
@@ -554,12 +1030,81 @@ async function mamulTopluKaydet() {
             triedCols.add(missingCol);
             insertPayload = insertPayload.map(row => { const r = { ...row }; delete r[missingCol]; return r; });
         }
+        if (Array.isArray(dataCache.kumas_stok)) {
+            const ts = new Date().toISOString();
+            (hareketIds || []).forEach((id, i) => {
+                if (!id) return;
+                dataCache.kumas_stok.unshift({ ...(payloads[i] || payloads[0] || {}), id, created_at: ts });
+            });
+        }
         let fisNo = '';
         if (movementType === 'ÇIKIŞ' && typeof muhasebeFisMamulCikisKaydet === 'function') {
             try {
                 const fis = await muhasebeFisMamulCikisKaydet({ payloads, hareketIds });
                 if (fis?.fis_no) fisNo = fis.fis_no;
             } catch (e) { console.warn('muhasebe fişi:', e?.message || e); }
+        }
+        /* Sipariş Yükleme (adet) — kartsız / sipariş bağlı satırlar (toplu / hızlı) */
+        if (movementType === 'ÇIKIŞ') {
+            const yukEntries = [];
+            for (const p of payloads) {
+                const sid = p.siparis_id != null ? String(p.siparis_id).trim() : '';
+                let ki = parseInt(p.kalem_idx, 10);
+                const stok = String(p.stok_kodu || '').trim();
+                const mSip = stok.match(/^SIP-([^-]+)-K(\d+)/i);
+                let sidUse = sid;
+                if (mSip && !sidUse) {
+                    const sno = String(mSip[1] || '').trim();
+                    const sip = (dataCache.siparisler || []).find(s => String(s.sno || '').trim() === sno);
+                    if (sip?.id != null) sidUse = String(sip.id);
+                    if (!Number.isFinite(ki) || ki < 0) ki = parseInt(mSip[2], 10);
+                }
+                if (!sidUse || !Number.isFinite(ki) || ki < 0) continue;
+                const adet = Math.abs(parseInt(p.cuval_sayisi, 10) || 0);
+                if (!adet) continue;
+                yukEntries.push({
+                    siparisId: sidUse,
+                    kalemIdx: ki,
+                    deltaAdet: adet,
+                    note: `Mamül sevk +${adet} ad`
+                });
+            }
+            let yukOk = 0;
+            if (yukEntries.length) {
+                try {
+                    if (typeof konfSevkMamulTopluYukle === 'function') {
+                        yukOk = await konfSevkMamulTopluYukle(yukEntries);
+                    } else if (typeof konfSevkToplamYaz === 'function') {
+                        for (const e of yukEntries) {
+                            const rowK = (typeof _kdCache !== 'undefined' && _kdCache[`KD_KONFEKSIYON_${e.siparisId}`])
+                                ? (_kdCache[`KD_KONFEKSIYON_${e.siparisId}`][`kalem_${e.kalemIdx}`] || {})
+                                : {};
+                            const kdN = Math.max(
+                                parseInt(rowK.sevk_edilen || 0, 10) || 0,
+                                parseInt(rowK.sevk_adet || 0, 10) || 0,
+                                (typeof sevkiyatYuklemeCacheOku === 'function' ? sevkiyatYuklemeCacheOku(e.siparisId, e.kalemIdx) : null) || 0
+                            );
+                            const hedef = Math.max(0, kdN + e.deltaAdet);
+                            if (hedef === kdN) continue;
+                            await konfSevkToplamYaz(e.siparisId, e.kalemIdx, hedef, {
+                                kaynak: 'SEVKIYAT_MAMUL_TOPLU',
+                                note: e.note,
+                                skipDetayYenile: true,
+                                skipAkisReload: true
+                            });
+                            yukOk += 1;
+                        }
+                    }
+                } catch (e) { console.warn('mamül→sipariş yükleme', e); }
+            }
+            if (yukOk > 0 && typeof erpToast === 'function') {
+                erpToast(`${yukOk} sipariş kaleminde Yükleme (adet) güncellendi.`, 'success', 3500);
+            }
+            try {
+                if (yukOk > 0 && typeof sevkiyatRender === 'function' && typeof appMode === 'string' && appMode === 'SEVKIYAT') {
+                    sevkiyatRender({ keepFocus: true });
+                }
+            } catch (e) {}
         }
         if (typeof erpSyncTablesBackground === 'function') erpSyncTablesBackground(['kumas_stok']);
         else if (typeof syncAllData === 'function') {
@@ -572,9 +1117,15 @@ async function mamulTopluKaydet() {
         mamulTopluSatirBaslat();
         if (typeof mamulDepoFormKapat === 'function' && typeof appMode !== 'undefined' && appMode === 'MAMUL_DEPO') {
             mamulDepoFormKapat();
+        } else if (typeof appMode === 'string' && appMode === 'SEVKIYAT') {
+            /* Tam loadData çağırma — sevkiyat kaydını 30–60 sn uzatıyordu */
+            if (typeof sevkiyatRender === 'function') {
+                try { sevkiyatRender({ keepFocus: true }); } catch (e) {}
+            }
         } else {
             loadData();
         }
+        if (typeof sevkiyatFormModalKayitSonrasiKapat === 'function') sevkiyatFormModalKayitSonrasiKapat();
     } catch (e) {
         erpToast('Toplu kayıt hatası: ' + (e?.message || e), 'error', 7000);
     } finally {
@@ -662,7 +1213,7 @@ function mamulDepoKomutaFormHtml(isGiris, accentColor, accentRgb) {
                         <button type="button" class="btn-pro btn-secondary-pro" style="padding:5px 10px;font-size:11px" onclick="mamulTopluSatirEkle()">+ Satır</button>
                         <button type="button" class="btn-pro btn-secondary-pro" style="padding:5px 10px;font-size:11px" onclick="mamulTopluYapistir()">Excel yapıştır</button>
                         <button type="button" class="btn-pro btn-secondary-pro" style="padding:5px 10px;font-size:11px" onclick="mamulTopluSatirBaslat()">Temizle</button>
-                        <span class="mdf-hint">Kod veya ürün adı yazın, adet girin.</span>
+                        <span class="mdf-hint">Kod, sipariş ürün adı veya SIP kimliği yazın. Çıkışta stoksuz sipariş ürünleri de seçilebilir.</span>
                     </div>
                 </div>
             </div>
@@ -723,7 +1274,23 @@ function mamulDepoKomutaFormMount(grid, notesContainer, isGiris, opts) {
 window.mamulDepoKomutaFormMount = mamulDepoKomutaFormMount;
 
 function mamulStokHizliIslem(tip, kod) {
-    const t = tip === 'ÇIKIŞ' ? 'ÇIKIŞ' : 'GİRİŞ';
+    // Depo Stok: yalnızca stok girişi (çıkış / sevkiyat Sevkiyat menüsünden)
+    const t = 'GİRİŞ';
+    if (tip === 'ÇIKIŞ' || tip === 'CIKIS') {
+        if (typeof sevkiyatMerkezAc === 'function') {
+            sevkiyatMerkezAc('MAMUL_DEPO');
+            return;
+        }
+        if (typeof erpToast === 'function') erpToast('Çıkış bu ekranda yok. Sevkiyat menüsünü kullanın.', 'info');
+        if (typeof setAppMode === 'function') {
+            try {
+                if (typeof sevkiyatMerkezGrup !== 'undefined') sevkiyatMerkezGrup = 'MAMUL_DEPO';
+                if (typeof saveUiState === 'function') saveUiState({ sevkiyatMerkezGrup: 'MAMUL_DEPO' });
+            } catch (e) {}
+            setAppMode('SEVKIYAT');
+        }
+        return;
+    }
     const k = String(kod || '').trim() || null;
     const masaustu = typeof mamulDepoFormKapat === 'function' && typeof appMode !== 'undefined' && appMode === 'MAMUL_DEPO';
     if (masaustu) {
@@ -885,7 +1452,7 @@ function mamulStokListeOzetDomGuncelle(ozet) {
     }
     if (sub) {
         const n = Array.isArray(window._mamulGroups) ? window._mamulGroups.length : 0;
-        sub.textContent = `${n} ürün`;
+        sub.textContent = String(n);
     }
 }
 window.mamulStokListeOzetDomGuncelle = mamulStokListeOzetDomGuncelle;
@@ -909,6 +1476,14 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
     const rowFn = opts.rowFn || 'showKumasGroupDetail';
     const desk = !!opts.masaustu;
     const fmtTs = (ts) => ts ? new Date(ts).toLocaleDateString('tr-TR') : '—';
+    const winKey = opts.windowKey || 'mamul-stok-liste';
+    const win = typeof erpListePencere === 'function'
+        ? erpListePencere(grps || [], winKey)
+        : { visible: grps || [], total: (grps || []).length, lim: 400 };
+    const paint = win.visible;
+    const moreBtn = typeof erpListeDahaFazlaHtml === 'function'
+        ? erpListeDahaFazlaHtml(winKey, win.total, win.lim, "if(typeof loadData==='function')loadData({mamulBodyOnly:true})")
+        : '';
     const grupOzet = mamulStokGrupOzeti(grps);
     let html = '';
     if (grupOzet.length) {
@@ -927,7 +1502,7 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
                 <th>Ürün grubu</th><th>Stok kodu</th><th>Ürün</th><th>Ürün renk</th><th>Ürün ebat</th>
                 <th class="num">Stok</th><th>Son hareket</th>
             </tr></thead><tbody>`;
-        html += grps.map((g, idx) => {
+        html += paint.map((g, idx) => {
             const kod = String(g.stok_kodu || '').trim();
             const adet = g.adet != null ? (parseInt(g.adet, 10) || 0) : (parseInt(g.net_ad, 10) || 0);
             const detay = g._detay || null;
@@ -950,10 +1525,10 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
                 <td class="ms-son">${esc(sonTxt)}</td>
             </tr>`;
         }).join('');
-        html += `</tbody></table></div></div>`;
+        html += `</tbody></table></div>${moreBtn}</div>`;
         return html;
     }
-    html += grps.map((g, idx) => {
+    html += paint.map((g, idx) => {
         const kod = String(g.stok_kodu || '').trim();
         const adet = g.adet != null ? (parseInt(g.adet, 10) || 0) : (parseInt(g.net_ad, 10) || 0);
         const detay = g._detay || null;
@@ -973,7 +1548,7 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
             <div class="ms-qty${qtyCls}">${adet.toLocaleString('tr-TR')}<em>ad</em></div>
         </article>`;
     }).join('');
-    html += `</div>`;
+    html += `${moreBtn}</div>`;
     return html;
 }
 window.mamulStokListeDynamicHtml = mamulStokListeDynamicHtml;
@@ -1002,24 +1577,31 @@ function mamulStokListeEkranHtml(grps, ozet, opts) {
         : '';
     const seg = (id, label, n) =>
         `<button type="button" class="ms-seg-btn${filtre === id ? ' is-on' : ''}" onclick="mamulStokHizliFiltreSet('${id}')">${label}${n != null ? ` <b>${n}</b>` : ''}</button>`;
+    const shellFn = typeof window.depoStokShellHtml === 'function' ? window.depoStokShellHtml : null;
+    const netN = Number(net);
+    const shellCfg = {
+        shellId: 'mamul-stok-shell',
+        variant: 'mamul',
+        masaustu: desk,
+        icon: '🧥',
+        title: 'Mamül Stoğu',
+        desc: 'Bitmiş ürün depo bakiyesi · adet',
+        metrics: [
+            { id: 'mamul-stok-hero-ad', val: netN.toLocaleString('tr-TR'), unit: 'adet', lbl: 'Toplam stok', primary: true, neg: netN < 0 },
+            { id: 'mamul-stok-sub', val: String((grps || []).length), lbl: 'Ürün kalemi', primary: false }
+        ],
+        segHtml: `${seg('POZITIF', 'Stokta', sayac.pozitif)}${seg('HEPSI', 'Tümü', sayac.hepsi)}${seg('KRITIK', 'Tükendi', sayac.kritik)}`,
+        toolsHtml: `
+            <button type="button" class="ms-btn ms-btn-giris" onclick="mamulStokHizliIslem('GİRİŞ')">Stok girişi</button>
+            <button type="button" class="ms-btn ms-btn-sevk" onclick="mamulStokHizliIslem('ÇIKIŞ')">Sevkiyat</button>
+            <button type="button" class="ms-btn ms-btn-ghost" onclick="mamulStokHareketlereGit()">Hareketler</button>
+            ${typeof exportMamulStokPdf === 'function' ? `<button type="button" class="ms-btn ms-btn-ghost" onclick="exportMamulStokPdf()">PDF</button>` : ''}`,
+        filtreBar,
+        dynamicId: 'mamul-stok-dynamic',
+        dynamicHtml: mamulStokListeDynamicHtml(grps, ozet, opts)
+    };
+    if (shellFn) return shellFn(shellCfg);
     return `<div id="mamul-stok-shell" class="ms-ekran ms-ekran--mamul${desk ? ' ms-ekran--desk' : ''}">
-        <div class="ms-head">
-            <div class="ms-head-meta">
-                <div class="ms-qty-hero${net < 0 ? ' is-neg' : ''}" id="mamul-stok-hero-ad">${Number(net).toLocaleString('tr-TR')}<span>adet</span></div>
-                <div class="ms-sub" id="mamul-stok-sub">${(grps || []).length} ürün</div>
-                <div class="ms-seg">
-                    ${seg('POZITIF', 'Stokta', sayac.pozitif)}
-                    ${seg('HEPSI', 'Tümü', sayac.hepsi)}
-                    ${seg('KRITIK', 'Tükendi', sayac.kritik)}
-                </div>
-            </div>
-            <div class="ms-tools">
-                <button type="button" class="ms-btn ms-btn-giris" onclick="mamulStokHizliIslem('GİRİŞ')">Giriş</button>
-                <button type="button" class="ms-btn ms-btn-sevk" onclick="mamulStokHizliIslem('ÇIKIŞ')">Sevkiyat</button>
-                <button type="button" class="ms-btn ms-btn-ghost" onclick="mamulStokHareketlereGit()">Hareketler</button>
-                ${typeof exportMamulStokPdf === 'function' ? `<button type="button" class="ms-btn ms-btn-ghost" onclick="exportMamulStokPdf()">PDF</button>` : ''}
-            </div>
-        </div>
         ${filtreBar}
         <div id="mamul-stok-dynamic">${mamulStokListeDynamicHtml(grps, ozet, opts)}</div>
     </div>`;

@@ -80,8 +80,15 @@ function kumasCekiAc() {
     const musteri = String(document.getElementById('val-afirma')?.value || document.getElementById('val-firma-detay')?.value || '').trim();
     const metaEl = div.querySelector('#kumas-ceki-stok-meta');
     const musEl = div.querySelector('#kumas-ceki-musteri-meta');
+    const tp = kumasCekiTeslimPlakaOku();
     if (metaEl) metaEl.textContent = [kod, urun].filter(x => x && String(x).trim()).join(' - ') || 'Ürün seçilmedi';
-    if (musEl) musEl.textContent = musteri ? ('Müşteri: ' + musteri) : '';
+    if (musEl) {
+        const parcalar = [];
+        if (musteri) parcalar.push('Müşteri: ' + musteri);
+        if (tp.teslim) parcalar.push('Teslim alan: ' + tp.teslim);
+        if (tp.plaka) parcalar.push('Plaka: ' + tp.plaka);
+        musEl.textContent = parcalar.join(' · ');
+    }
     kumasCekiRenderTablo();
 }
 
@@ -249,17 +256,28 @@ function kumasCekiNotlarEkle(mevcutNotlar) {
 //   2) Sıkışık (eski toplu sevk)  [CEKI:12.5/3|13|14.2/1.1]
 function kumasCekiSatirlariNormalize(arr) {
     if (!Array.isArray(arr) || !arr.length) return null;
+    let topNo = 0;
     const out = arr.map((x, i) => {
         if (x == null) return null;
-        if (typeof x === 'number') return { no: i + 1, mt: x, kg: 0 };
+        if (typeof x === 'object' && String(x.tip || '').toLowerCase() === 'ayrac') {
+            const etiket = String(x.etiket || x.baslik || x.renk || '').trim();
+            if (!etiket) return null;
+            return { tip: 'ayrac', etiket };
+        }
+        if (typeof x === 'number') {
+            topNo++;
+            return { no: topNo, mt: x, kg: 0 };
+        }
         if (typeof x === 'string') {
             const p = x.split('/');
-            return { no: i + 1, mt: parseFloat(p[0]) || 0, kg: parseFloat(p[1]) || 0 };
+            topNo++;
+            return { no: topNo, mt: parseFloat(p[0]) || 0, kg: parseFloat(p[1]) || 0 };
         }
         const mt = parseFloat(x.mt) || 0;
         const kg = parseFloat(x.kg) || parseFloat(x.ad) || 0;
         if (mt <= 0 && kg <= 0) return null;
-        return { no: parseInt(x.no, 10) || (i + 1), mt, kg };
+        topNo++;
+        return { no: parseInt(x.no, 10) || topNo, mt, kg };
     }).filter(Boolean);
     return out.length ? out : null;
 }
@@ -305,22 +323,60 @@ function kumasCekiUrunAdiBul(row) {
     }
     return String(row.urun_adi || row.ad || row.desen_adi || row.kumas_cinsi || '').trim();
 }
-function kumasCekiMetaNormalize(input, row) {
+function kumasCekiTeslimPlakaNotlardan(notlar) {
+    if (typeof muhasebeFisNotMetaOku === 'function') {
+        return {
+            teslim: muhasebeFisNotMetaOku(notlar, 'TESLIM_ALAN') || '',
+            plaka: muhasebeFisNotMetaOku(notlar, 'PLAKA') || ''
+        };
+    }
+    const s = String(notlar || '');
+    const pick = tag => {
+        const m = s.match(new RegExp('\\[' + tag + ':([^\\]]+)\\]', 'i'));
+        return m ? m[1].trim() : '';
+    };
+    return { teslim: pick('TESLIM_ALAN'), plaka: pick('PLAKA') };
+}
+function kumasCekiTeslimPlakaOku(extra, notlar) {
+    const o = (extra && typeof extra === 'object') ? extra : {};
+    let teslim = String(o.teslim || o.teslim_alan || '').trim();
+    let plaka = String(o.plaka || '').trim();
+    const notKaynak = notlar || o.notlar || '';
+    if ((!teslim || !plaka) && notKaynak) {
+        const fromNot = kumasCekiTeslimPlakaNotlardan(notKaynak);
+        if (!teslim) teslim = fromNot.teslim;
+        if (!plaka) plaka = fromNot.plaka;
+    }
+    if (!teslim || !plaka) {
+        if (typeof muhasebeFisTeslimFormOku === 'function') {
+            const t = muhasebeFisTeslimFormOku();
+            if (!teslim) teslim = String(t.teslim_alan || '').trim();
+            if (!plaka) plaka = String(t.plaka || '').trim();
+        } else {
+            if (!teslim) teslim = String(document.getElementById('val-teslim-alan')?.value || '').trim().toUpperCase();
+            if (!plaka) plaka = String(document.getElementById('val-plaka')?.value || '').trim().toUpperCase();
+        }
+    }
+    return { teslim, plaka };
+}
+function kumasCekiMetaNormalize(input, row, notlar) {
     const o = (input && typeof input === 'object' && !Array.isArray(input)) ? input : {};
     const stok = String(o.stok_kodu || o.kod || (row && (row.stok_kodu || row.kod)) || '').trim();
     let urun = String(o.urun_adi || o.ad || '').trim();
     if (!urun && row) urun = kumasCekiUrunAdiBul(row);
     let musteri = String(o.musteri || o.firma || (row && (row.firma || row.musteri)) || '').trim();
-    let urunSatir = [stok, urun].filter(Boolean).join(' - ');
+    let urunSatir = String(o.urunSatir || o.baslik || '').trim();
+    if (!urunSatir) urunSatir = [stok, urun].filter(Boolean).join(' - ');
     if (!urunSatir && typeof input === 'string') urunSatir = String(input).trim();
-    if (!urunSatir) urunSatir = String(o.baslik || '').trim();
+    if (!urunSatir) urunSatir = '—';
+    const tp = kumasCekiTeslimPlakaOku(o, notlar || o.notlar || (row && row.notlar));
     return {
         stok_kodu: stok,
         urun_adi: urun,
         musteri,
         urunSatir: urunSatir || '—',
-        teslim: String(o.teslim || '').trim(),
-        plaka: String(o.plaka || '').trim(),
+        teslim: tp.teslim,
+        plaka: tp.plaka,
         tarih: o.tarih || '',
         otoyazdir: !!o.otoyazdir
     };
@@ -335,25 +391,32 @@ function kumasCekiGoster(notlar, baslikBilgi) {
         if (typeof erpToast === 'function') erpToast('Bu harekette çeki listesi verisi yok.', 'warn');
         return;
     }
-    const t = satirlar.reduce((acc, s) => {
-        acc.mt += parseFloat(s.mt) || 0;
-        acc.kg += parseFloat(s.kg) || 0;
-        return acc;
-    }, { mt: 0, kg: 0 });
+    kumasCekiGosterSatirlar(satirlar, baslikBilgi);
+}
 
+/** Eski çeki tablosu: Sıra No · Metre · Kg/Ad. Araya renk ayırıcı satırı gelebilir. */
+function kumasCekiKolonHtmlUret(satirlar) {
+    const list = Array.isArray(satirlar) ? satirlar : [];
     const GRUP = KUMAS_CEKI_SATIR;
-    const kolonSayisi = Math.ceil(satirlar.length / GRUP);
+    const kolonSayisi = Math.max(1, Math.ceil(list.length / GRUP));
     let kolonHtml = '';
     for (let k = 0; k < kolonSayisi; k++) {
         const baslangic = k * GRUP;
-        const kisim = satirlar.slice(baslangic, baslangic + GRUP);
-        const satirHtml = kisim.map(s => `<tr>
-            <td class="no">${s.no}</td>
-            <td>${s.mt > 0 ? (+s.mt).toLocaleString('tr-TR', {maximumFractionDigits:2}) : ''}</td>
-            <td>${s.kg > 0 ? (+s.kg).toLocaleString('tr-TR', {maximumFractionDigits:2}) : ''}</td>
-        </tr>`).join('');
-        const kolMt = kisim.reduce((a, s) => a + (parseFloat(s.mt) || 0), 0);
-        const kolKg = kisim.reduce((a, s) => a + (parseFloat(s.kg) || 0), 0);
+        const kisim = list.slice(baslangic, baslangic + GRUP);
+        const satirHtml = kisim.map(s => {
+            if (s && s.tip === 'ayrac') {
+                return `<tr class="kumas-ceki-ayrac">
+                    <td colspan="3" style="text-align:left;font-weight:800;font-size:11px;background:#f1f5f9;padding:4px 6px">${kumasCekiEsc(s.etiket || '')}</td>
+                </tr>`;
+            }
+            return `<tr>
+                <td class="no">${s.no}</td>
+                <td>${s.mt > 0 ? (+s.mt).toLocaleString('tr-TR', {maximumFractionDigits:2}) : ''}</td>
+                <td>${s.kg > 0 ? (+s.kg).toLocaleString('tr-TR', {maximumFractionDigits:2}) : ''}</td>
+            </tr>`;
+        }).join('');
+        const kolMt = kisim.reduce((a, s) => a + (s && s.tip === 'ayrac' ? 0 : (parseFloat(s.mt) || 0)), 0);
+        const kolKg = kisim.reduce((a, s) => a + (s && s.tip === 'ayrac' ? 0 : (parseFloat(s.kg) || 0)), 0);
         kolonHtml += `<div class="kumas-ceki-col">
             <table>
                 <thead><tr><th class="no">Sıra No</th><th>Metre</th><th>Kg/Ad</th></tr></thead>
@@ -366,14 +429,34 @@ function kumasCekiGoster(notlar, baslikBilgi) {
             </table>
         </div>`;
     }
+    return kolonHtml;
+}
+
+function kumasCekiGosterSatirlar(satirlarIn, baslikBilgi) {
+    const satirlar = Array.isArray(satirlarIn)
+        ? (typeof kumasCekiSatirlariNormalize === 'function' ? (kumasCekiSatirlariNormalize(satirlarIn) || satirlarIn) : satirlarIn)
+        : [];
+    if (!satirlar.length) {
+        if (typeof erpToast === 'function') erpToast('Çeki listesi boş.', 'warn');
+        return;
+    }
+    const topSatirlar = satirlar.filter(s => !(s && s.tip === 'ayrac'));
+    const t = topSatirlar.reduce((acc, s) => {
+        acc.mt += parseFloat(s.mt) || 0;
+        acc.kg += parseFloat(s.kg) || 0;
+        return acc;
+    }, { mt: 0, kg: 0 });
 
     const meta = kumasCekiMetaNormalize(baslikBilgi);
     const metaEnc = encodeURIComponent(JSON.stringify({
         stok_kodu: meta.stok_kodu,
         urun_adi: meta.urun_adi,
-        musteri: meta.musteri
+        musteri: meta.musteri,
+        teslim: meta.teslim,
+        plaka: meta.plaka,
+        urunSatir: meta.urunSatir,
+        baslik: meta.urunSatir
     }));
-    // Mevcut overlay varsa kaldır
     let ov = document.getElementById('kumas-ceki-goruntule-overlay');
     if (ov) ov.remove();
     ov = document.createElement('div');
@@ -387,6 +470,7 @@ function kumasCekiGoster(notlar, baslikBilgi) {
                     <h3>ÇEKİ LİSTESİ</h3>
                     <div class="kumas-ceki-meta">${kumasCekiEsc(meta.urunSatir)}</div>
                     ${meta.musteri ? `<div class="kumas-ceki-musteri">Müşteri: ${kumasCekiEsc(meta.musteri)}</div>` : ''}
+                    <div class="kumas-ceki-musteri">Teslim alan: ${kumasCekiEsc(meta.teslim || '—')} · Plaka: ${kumasCekiEsc(meta.plaka || '—')}</div>
                 </div>
                 <div class="kumas-ceki-toolbar">
                     <button type="button" onclick="kumasCekiGosteriYazdir('${encodeURIComponent(JSON.stringify(satirlar))}','${metaEnc}')">Yazdır</button>
@@ -395,12 +479,12 @@ function kumasCekiGoster(notlar, baslikBilgi) {
                 </div>
             </div>
             <div class="kumas-ceki-ozet-bar">
-                <span>Top sayısı: <b>${satirlar.length}</b></span>
+                <span>Top sayısı: <b>${topSatirlar.length}</b></span>
                 <span>Toplam metre: <b>${t.mt > 0 ? t.mt.toLocaleString('tr-TR',{maximumFractionDigits:2}) : '—'}</b></span>
                 <span>Toplam kg: <b>${t.kg > 0 ? t.kg.toLocaleString('tr-TR',{maximumFractionDigits:2}) : '—'}</b></span>
             </div>
             <div class="kumas-ceki-blocks" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:8px">
-                ${kolonHtml}
+                ${kumasCekiKolonHtmlUret(satirlar)}
             </div>
         </div>`;
     document.body.appendChild(ov);
@@ -419,7 +503,8 @@ function kumasCekiYazdir() {
     const kod  = document.getElementById('val-stok-kodu')?.value || '';
     const urun = document.getElementById('val-cins')?.value || document.getElementById('ksel-cins')?.textContent || '';
     const musteri = String(document.getElementById('val-afirma')?.value || document.getElementById('val-firma-detay')?.value || '').trim();
-    kumasCekiA4Yazdir(dolu, { stok_kodu: kod, urun_adi: urun, musteri });
+    const tp = kumasCekiTeslimPlakaOku();
+    kumasCekiA4Yazdir(dolu, { stok_kodu: kod, urun_adi: urun, musteri, teslim: tp.teslim, plaka: tp.plaka });
 }
 
 /** A4 dikey, 5 sütun × 25 sıra. Hem ekran Yazdır hem muhasebe/depo çıktısı bunu kullanır. */
@@ -437,20 +522,26 @@ function kumasCekiA4Html(satirlar, meta) {
     const COLS = KUMAS_CEKI_KOLON;
     const ROWS = KUMAS_CEKI_SATIR;
     const PAGE = COLS * ROWS;
-    const list = Array.isArray(satirlar) ? satirlar : [];
-    const slots = [];
-    list.forEach((s, i) => {
-        const no = Math.max(1, parseInt(s && s.no, 10) || (i + 1));
-        slots[no - 1] = { mt: sayi(s.mt), kg: sayi(s.kg) || sayi(s.ad) };
+    const list = Array.isArray(satirlar)
+        ? (typeof kumasCekiSatirlariNormalize === 'function' ? (kumasCekiSatirlariNormalize(satirlar) || satirlar) : satirlar)
+        : [];
+    /* Fiziksel satırlar (top + renk ayırıcı) sırayla dolsun */
+    const slots = list.map(s => {
+        if (s && s.tip === 'ayrac') return { ayrac: true, etiket: String(s.etiket || '').trim() };
+        return {
+            ayrac: false,
+            no: s && s.no,
+            mt: sayi(s && s.mt),
+            kg: sayi(s && s.kg) || sayi(s && s.ad)
+        };
     });
-    const doluSay = list.filter(s => sayi(s.mt) > 0 || sayi(s.kg) > 0 || sayi(s.ad) > 0).length;
-    const maxNo = Math.max(doluSay, slots.length, 1);
-    const n = Math.max(PAGE, Math.ceil(maxNo / PAGE) * PAGE);
     const t = slots.reduce((a, s) => {
-        if (!s) return a;
+        if (!s || s.ayrac) return a;
         a.mt += s.mt; a.kg += s.kg; if (s.mt > 0 || s.kg > 0) a.top++;
         return a;
     }, { mt: 0, kg: 0, top: 0 });
+    const maxNo = Math.max(slots.length, 1);
+    const n = Math.max(PAGE, Math.ceil(maxNo / PAGE) * PAGE);
 
     let pages = '';
     for (let b = 0; b < n; b += PAGE) {
@@ -460,9 +551,15 @@ function kumasCekiA4Html(satirlar, meta) {
             const end = start + ROWS;
             let mt = 0, kg = 0, rows = '';
             for (let i = start; i < end; i++) {
-                const s = slots[i] || { mt: 0, kg: 0 };
-                mt += s.mt; kg += s.kg;
-                rows += `<tr><td class="no">${i + 1}</td><td>${fmt(s.mt)}</td><td>${fmt(s.kg)}</td></tr>`;
+                const s = slots[i];
+                if (s && s.ayrac) {
+                    rows += `<tr class="ayrac"><td colspan="3">${esc(s.etiket)}</td></tr>`;
+                } else {
+                    const row = s || { mt: 0, kg: 0, no: '' };
+                    mt += row.mt || 0; kg += row.kg || 0;
+                    const noYazi = (row.no != null && row.no !== '') ? row.no : (s ? (i + 1) : (i + 1));
+                    rows += `<tr><td class="no">${s ? noYazi : (i + 1)}</td><td>${fmt(row.mt)}</td><td>${fmt(row.kg)}</td></tr>`;
+                }
             }
             pages += `<div class="ceki-col"><table>
                 <thead><tr><th>Sıra</th><th>Metre</th><th>Kg/Ad</th></tr></thead>
@@ -477,32 +574,47 @@ function kumasCekiA4Html(satirlar, meta) {
     return `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8">
     <title>Çeki Listesi — SİMTEKS</title>
     <style>
-      @page { size: A4 portrait; margin: 6mm 5mm; }
+      @page { size: A4 portrait; margin: 5mm 4mm; }
       * { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; background: #fff; color: #111;
         font-family: 'Segoe UI', Arial, sans-serif; }
-      @media print { .no-print { display: none !important; } }
-      .wrap { width: 200mm; margin: 0 auto; }
+      @media print { .no-print { display: none !important; } .wrap { page-break-inside: avoid; } }
+      .wrap { width: 100%; max-width: 202mm; margin: 0 auto; }
       .head { display: flex; justify-content: space-between; align-items: flex-end;
-        border-bottom: 2px solid #111; padding-bottom: 3mm; margin-bottom: 2.5mm; }
-      .brand { font-size: 18px; font-weight: 900; letter-spacing: -0.3px; line-height: 1; }
-      .brand-sub { font-size: 7px; letter-spacing: .14em; color: #666; text-transform: uppercase; margin-top: 2px; }
-      .doc-b { font-size: 13px; font-weight: 800; }
-      .doc-m { font-size: 11px; font-weight: 700; margin-top: 2px; }
-      .doc-t { font-size: 9px; color: #555; }
-      .oz { display: flex; gap: 6mm; font-size: 10px; font-weight: 800; margin-bottom: 2.5mm; }
-      .ceki-page { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.4mm; width: 100%; }
-      .ceki-page + .ceki-page { page-break-before: always; margin-top: 3mm; }
-      .ceki-col { border: 1px solid #111; min-width: 0; }
+        border-bottom: 2px solid #111; padding-bottom: 2.5mm; margin-bottom: 2mm; }
+      .doc-b { font-size: 15px; font-weight: 800; line-height: 1.2; }
+      .doc-m { font-size: 12px; font-weight: 700; margin-top: 2px; }
+      .doc-t { font-size: 10px; color: #555; }
+      .oz { display: flex; gap: 6mm; font-size: 11px; font-weight: 800; margin-bottom: 2mm; }
+      .teslim-bar {
+        display: flex; flex-wrap: wrap; gap: 6mm 10mm; font-size: 11px;
+        margin-bottom: 2.5mm; padding: 2mm 2.5mm; border: 1px solid #bbb; background: #f7f7f7;
+      }
+      .teslim-bar div { display: flex; gap: 2mm; align-items: baseline; min-width: 0; }
+      .teslim-bar span { color: #666; font-size: 8px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+      .teslim-bar b { font-weight: 800; word-break: break-word; }
+      .ceki-page {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 1.2mm;
+        width: 100%;
+        max-width: 100%;
+      }
+      .ceki-page + .ceki-page { page-break-before: always; margin-top: 2mm; }
+      .ceki-col { border: 1px solid #111; min-width: 0; overflow: hidden; }
       table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      th, td { border: 1px solid #111; text-align: center; font-size: 7px; height: 6.6mm; padding: 0 1px; }
-      th { background: #eee; font-size: 6.5px; font-weight: 800; height: 5.8mm; }
-      .no { width: 26%; background: #f4f4f4; font-weight: 700; font-family: Consolas, monospace; }
-      tfoot td { background: #f0f0f0; font-weight: 800; height: 5.8mm; }
-      .imza { margin-top: 5mm; display: flex; justify-content: space-between; }
+      th, td {
+        border: 1px solid #111; text-align: center; font-size: 9px; height: 7.2mm;
+        padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.15;
+      }
+      th { background: #eee; font-size: 8.5px; font-weight: 800; height: 6.4mm; }
+      .no { width: 24%; background: #f4f4f4; font-weight: 700; font-family: Consolas, monospace; }
+      tr.ayrac td { background: #e8e8e8; font-weight: 800; font-size: 8px; text-align: left; padding: 0 3px; }
+      tfoot td { background: #f0f0f0; font-weight: 800; height: 6.4mm; font-size: 9px; }
+      .imza { margin-top: 4mm; display: flex; justify-content: space-between; }
       .imza div { text-align: center; width: 48mm; }
-      .imza i { display: block; border-top: 1px solid #999; margin: 0 auto 2px; width: 42mm; font-style: normal; }
-      .imza span { font-size: 7px; color: #666; text-transform: uppercase; letter-spacing: .06em; }
+      .imza i { display: block; border-top: 1px solid #999; margin: 0 auto 2px; width: 42mm; font-style: normal; min-height: 5mm; font-size: 10px; font-weight: 700; }
+      .imza span { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: .06em; }
     </style></head><body>
     <button class="no-print" onclick="window.print()" style="position:fixed;top:8px;right:8px;padding:8px 14px;background:#111;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;z-index:9">🖨 Yazdır</button>
     <div class="wrap">
@@ -518,14 +630,57 @@ function kumasCekiA4Html(satirlar, meta) {
         <span>${esc(fmt(t.mt) || '0')} mt</span>
         <span>${esc(fmt(t.kg) || '0')} kg</span>
       </div>
+      <div class="teslim-bar">
+        <div><span>Teslim alan</span><b>${esc(info.teslim || '—')}</b></div>
+        <div><span>Araç plaka</span><b>${esc(info.plaka || '—')}</b></div>
+      </div>
       ${pages}
       <div class="imza">
         <div><i></i><span>Teslim Eden</span></div>
-        <div><i></i><span>Teslim Alan</span></div>
-        <div><i></i><span>Tarih / İmza</span></div>
+        <div><i>${esc(info.teslim || '')}</i><span>Teslim Alan</span></div>
+        <div><i>${esc(info.plaka || '')}</i><span>Plaka</span></div>
       </div>
     </div>
     </body></html>`;
+}
+
+function kumasCekiPdfSatirYukseklikAyarla(root, contentMaxPx) {
+    const wrap = root.querySelector('.wrap');
+    if (!wrap) return;
+    const fixed = ['.head', '.oz', '.teslim-bar', '.imza'].reduce((s, sel) => {
+        const el = wrap.querySelector(sel);
+        return s + (el ? el.offsetHeight : 0);
+    }, 0);
+    const page = wrap.querySelector('.ceki-page');
+    if (!page) return;
+    const budget = Math.max(220, contentMaxPx - fixed - 10);
+    const tbody = page.querySelector('tbody');
+    const rowCount = tbody ? tbody.querySelectorAll('tr').length : KUMAS_CEKI_SATIR;
+    const theadH = 18;
+    const tfootH = 18;
+    // Satır yüksekliğini sayfaya yay; kare/boş hücre için üst sınır koy
+    const rawH = Math.floor((budget - theadH - tfootH) / Math.max(rowCount, 1));
+    const rowH = Math.max(16, Math.min(24, rawH));
+    const bodyFont = Math.max(9, Math.min(11, Math.floor(rowH * 0.52)));
+    const headFont = Math.max(8, bodyFont - 1);
+    page.querySelectorAll('thead th').forEach(el => {
+        el.style.height = theadH + 'px';
+        el.style.fontSize = headFont + 'px';
+        el.style.padding = '0 2px';
+        el.style.lineHeight = '1.15';
+    });
+    page.querySelectorAll('tfoot td').forEach(el => {
+        el.style.height = tfootH + 'px';
+        el.style.fontSize = bodyFont + 'px';
+        el.style.lineHeight = '1.15';
+    });
+    page.querySelectorAll('tbody tr').forEach(el => { el.style.height = rowH + 'px'; });
+    page.querySelectorAll('tbody td').forEach(el => {
+        el.style.height = rowH + 'px';
+        el.style.lineHeight = rowH + 'px';
+        el.style.fontSize = bodyFont + 'px';
+        el.style.padding = '0 2px';
+    });
 }
 
 function erpBelgeDosyaAdi(ad) {
@@ -580,24 +735,116 @@ async function erpBelgePdfIndir(html, dosyaAdi) {
         try { await erpEnsureHtml2Pdf(); } catch (e) {}
     }
     if (typeof html2pdf !== 'function') {
+        try {
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                s.onload = () => resolve();
+                s.onerror = () => reject(new Error('html2pdf yüklenemedi'));
+                document.head.appendChild(s);
+            });
+        } catch (e) {}
+    }
+    if (typeof html2pdf !== 'function') {
         if (typeof erpToast === 'function') erpToast('PDF için yazdırma ekranından “PDF olarak kaydet” seçin.', 'info');
         erpBelgeYazdir(html, ad);
         return;
     }
+
+    // html2canvas iframe içindeki elementi yanlış keser (boş / kırpık PDF).
+    // Belgeyi ana document'te geçici host'a koyup oradan yakalıyoruz.
+    const old = document.getElementById('erp-pdf-capture-host');
+    if (old) try { old.remove(); } catch (e) {}
+
     const host = document.createElement('div');
-    host.style.cssText = 'position:fixed;left:-12000px;top:0;width:210mm;background:#fff;z-index:-1;';
-    host.innerHTML = erpBelgeHtmlGovde(html);
+    host.id = 'erp-pdf-capture-host';
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = [
+        'position:fixed',
+        'left:0',
+        'top:0',
+        'width:794px',
+        'max-width:794px',
+        'background:#ffffff',
+        'color:#111111',
+        'z-index:2147483646',
+        'opacity:1',
+        'pointer-events:none',
+        'overflow:visible',
+        'box-sizing:border-box',
+        'padding:0',
+        'margin:0'
+    ].join(';');
+
+    const root = document.createElement('div');
+    root.className = 'erp-pdf-root';
+    root.style.cssText = 'width:794px;max-width:794px;background:#fff;color:#111;box-sizing:border-box;';
+    root.innerHTML = erpBelgeHtmlGovde(html);
+    // Harici img CORS / taint riskini kaldır
+    Array.from(root.querySelectorAll('img')).forEach(img => { try { img.remove(); } catch (e) {} });
+    // mm ölçüleri html2canvas'ta kaydırma yapabiliyor → px'e zorla
+    const isCekiBelge = !!root.querySelector('.ceki-page');
+    // A4 (210mm) − html2pdf kenar boşlukları ≈ yazdırılabilir alan
+    const pdfMarginMm = isCekiBelge ? 4 : 8;
+    const pdfContentPx = isCekiBelge
+        ? Math.round((210 - pdfMarginMm * 2) * 96 / 25.4)
+        : 794;
+    const pdfContentHpx = Math.round((297 - pdfMarginMm * 2) * 96 / 25.4);
+    const pageEl = root.querySelector('.page, .wrap');
+    if (pageEl) {
+        pageEl.style.width = pdfContentPx + 'px';
+        pageEl.style.maxWidth = pdfContentPx + 'px';
+        pageEl.style.margin = '0';
+        pageEl.style.boxSizing = 'border-box';
+        pageEl.style.background = '#ffffff';
+        pageEl.style.color = '#111111';
+    }
+    if (isCekiBelge) {
+        host.style.width = pdfContentPx + 'px';
+        host.style.maxWidth = pdfContentPx + 'px';
+        root.style.width = pdfContentPx + 'px';
+        root.style.maxWidth = pdfContentPx + 'px';
+        root.querySelectorAll('.ceki-page').forEach(el => {
+            el.style.width = '100%';
+            el.style.maxWidth = '100%';
+        });
+        kumasCekiPdfSatirYukseklikAyarla(root, pdfContentHpx);
+    }
+    host.appendChild(root);
     document.body.appendChild(host);
+
     try {
         if (typeof erpToast === 'function') erpToast('PDF hazırlanıyor…', 'info');
-        await html2pdf().set({
-            margin: [8, 8, 8, 8],
+        // Layout settle
+        void host.offsetHeight;
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await new Promise(r => setTimeout(r, 60));
+
+        const target = pageEl || root;
+        const captureW = Math.max(320, Math.round((target && target.offsetWidth) || pdfContentPx));
+        const opt = {
+            margin: [pdfMarginMm, pdfMarginMm, pdfMarginMm, pdfMarginMm],
             filename: ad,
-            image: { type: 'jpeg', quality: 0.92 },
-            html2canvas: { scale: 1.8, useCORS: true, logging: false },
+            image: { type: 'jpeg', quality: 0.96 },
+            pagebreak: { mode: ['css', 'legacy'], before: '.page-break' },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                backgroundColor: '#ffffff',
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: captureW,
+                width: captureW,
+                x: 0,
+                y: 0
+            },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        }).from(host).save();
+        };
+        await html2pdf().set(opt).from(target).save();
     } catch (e) {
+        console.warn('[erpBelgePdfIndir]', e);
         if (typeof erpToast === 'function') erpToast('PDF indirilemedi, yazdırma açılıyor.', 'warn');
         erpBelgeYazdir(html, ad);
     } finally {
@@ -616,7 +863,8 @@ function kumasCekiPdfIndir() {
     const kod  = document.getElementById('val-stok-kodu')?.value || '';
     const urun = document.getElementById('val-cins')?.value || document.getElementById('ksel-cins')?.textContent || '';
     const musteri = String(document.getElementById('val-afirma')?.value || document.getElementById('val-firma-detay')?.value || '').trim();
-    const html = kumasCekiA4Html(dolu, { stok_kodu: kod, urun_adi: urun, musteri });
+    const tp = kumasCekiTeslimPlakaOku();
+    const html = kumasCekiA4Html(dolu, { stok_kodu: kod, urun_adi: urun, musteri, teslim: tp.teslim, plaka: tp.plaka });
     erpBelgePdfIndir(html, 'ceki-listesi' + (kod ? '-' + kod : ''));
 }
 
@@ -650,10 +898,13 @@ function kumasCekiHarekettenGoster(hareketId) {
     const kumasStok = typeof dataCache !== 'undefined' ? (dataCache.kumas_stok || []) : [];
     const hareket = kumasStok.find(h => String(h.id) === String(hareketId));
     if (!hareket) { if (typeof erpToast === 'function') erpToast('Hareket bulunamadı.', 'error'); return; }
+    const tp = kumasCekiTeslimPlakaOku({}, hareket.notlar);
     kumasCekiGoster(hareket.notlar, {
         stok_kodu: hareket.stok_kodu,
         urun_adi: kumasCekiUrunAdiBul(hareket),
-        musteri: hareket.firma
+        musteri: hareket.firma,
+        teslim: tp.teslim,
+        plaka: tp.plaka || String(hareket.araci_firma || '').trim()
     });
 }
 
@@ -686,8 +937,10 @@ window.erpBelgePdfIndir         = erpBelgePdfIndir;
 window.kumasCekiA4Yazdir        = kumasCekiA4Yazdir;
 window.kumasCekiA4Html          = kumasCekiA4Html;
 window.kumasCekiGoster          = kumasCekiGoster;
+window.kumasCekiGosterSatirlar  = kumasCekiGosterSatirlar;
 window.kumasCekiGoruntuleKapat  = kumasCekiGoruntuleKapat;
 window.kumasCekiHarekettenGoster= kumasCekiHarekettenGoster;
 window.kumasCekiFormSifirla     = kumasCekiFormSifirla;
 window.kumasCekiPayloadNotlarEkle = kumasCekiPayloadNotlarEkle;
 window.kumasCekiNotlarOku       = kumasCekiNotlarOku;
+window.kumasCekiTeslimPlakaOku  = kumasCekiTeslimPlakaOku;
