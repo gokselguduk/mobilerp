@@ -4994,6 +4994,136 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .ms-table tbody tr { cursor: pointer; }
         .ms-table tbody tr:hover td { background: color-mix(in srgb, var(--surface2) 70%, transparent); }
 
+
+        /* ── .mf-* temel stili (fiş ekranı) — masaüstünden eksikti: butonlar, detay
+           paneli, kalem tablosu tamamen çıplak görünüyordu ── */
+        .mf-ekran { padding: 4px 0 12px; }
+        .mf-ekran-baslik {
+            font-size: 13px; font-weight: 600; color: var(--text1);
+            padding: 0 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px;
+        }
+        .mf-ozet { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; align-items: center; }
+        .mf-ozet-chip {
+            display: inline-flex; align-items: baseline; gap: 8px;
+            padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface); font-size: 12px; color: var(--text1);
+        }
+        .mf-ozet-chip em { font-style: normal; font-size: 10px; color: var(--text3); font-weight: 500; }
+        .mf-ozet-chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+        .mf-daha-fazla-wrap { display: flex; justify-content: center; padding: 14px 12px 18px; border-top: 1px solid var(--border); }
+        .mf-daha-fazla-btn {
+            appearance: none; border: 1px solid var(--border); background: var(--surface);
+            color: var(--text2); font-size: 12px; font-weight: 600; padding: 10px 18px;
+            border-radius: 999px; cursor: pointer; transition: background .15s, border-color .15s;
+        }
+        .mf-daha-fazla-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent2) 10%, var(--surface)); border-color: color-mix(in srgb, var(--accent2) 35%, var(--border)); }
+        .mf-daha-fazla-btn:disabled { opacity: .65; cursor: wait; }
+        .mf-empty { padding: 18px 8px; color: var(--text3); font-size: 12px; }
+        .mf-table-wrap { border-top: 1px solid var(--border); }
+        .mf-table th { white-space: nowrap; }
+        .mf-fis-tr td { vertical-align: middle; }
+        .mf-fis-tr.is-open td { background: color-mix(in srgb, var(--accent2) 8%, transparent); }
+        .mf-fis-chev-td { width: 28px; text-align: center; }
+        .mf-fis-chev { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; }
+        .mf-fis-kod { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 600; color: var(--text2); white-space: nowrap; }
+        .mf-fis-tarih { font-size: 11px; color: var(--text3); white-space: nowrap; }
+        .mf-fis-tip { font-size: 11px; color: var(--text2); white-space: nowrap; }
+        .mf-table .mf-fis-musteri {
+            font-weight: 600; font-size: 12px; color: var(--text1);
+            max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .mf-table .mf-fis-miktar { font-size: 12px; font-weight: 600; color: var(--text1); white-space: nowrap; }
+        .mf-fis-ozet {
+            font-size: 11px; color: var(--text3);
+            max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .mf-fis-detail { cursor: default; }
+        .mf-fis-detail:hover td { background: transparent !important; }
+        .mf-fis-detail td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+        .mf-fis-detail:not(.is-open) { display: none; }
+        .mf-fis-detay-panel {
+            margin: 0 10px 10px 28px; padding: 10px;
+            border: 1px solid var(--border); border-radius: 0 0 10px 10px;
+            background: var(--surface2);
+        }
+        .mf-fis-detay-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .mf-fis-detay-meta { font-size: 11px; color: var(--text3); margin-bottom: 8px; }
+        .mf-fis-detay-not {
+            padding: 6px 2px 0; margin-top: 8px; font-size: 11px; color: var(--text3);
+            border-top: 1px solid var(--border);
+        }
+        .mf-kalem-wrap { overflow: auto; }
+        .mf-kalem-tablo { min-width: 560px; }
+        /* Kalem tablosu dar ekranda sütunlar birbirine yapışık görünüyordu —
+           kaydırmayı zorunlu kıl, hücre sınırlarını netleştir */
+        .mf-kalem-tablo td, .mf-kalem-tablo th { white-space: nowrap !important; border-right: 1px solid var(--border); }
+        .mf-kalem-tablo td:last-child, .mf-kalem-tablo th:last-child { border-right: none; }
+        .mf-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            height: 32px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text1); font-size: 11px; font-weight: 650;
+            letter-spacing: 0.01em; cursor: pointer; white-space: nowrap; line-height: 1;
+            transition: background .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+        }
+        .mf-btn:hover {
+            background: var(--surface); border-color: var(--border2, var(--border));
+            box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+        }
+        .mf-btn:active { transform: translateY(1px); }
+        .mf-btn svg { width: 13px; height: 13px; flex-shrink: 0; opacity: 0.9; }
+        .mf-btn--view { background: #111827; color: #fff; border-color: #111827; }
+        .mf-btn--view:hover { background: #1f2937; border-color: #1f2937; color: #fff; }
+        .mf-btn--print { background: var(--surface); color: var(--text1); border-color: var(--border); }
+        .mf-btn--print:hover { background: var(--surface2); border-color: var(--border2, var(--border)); }
+        .mf-btn--pdf { background: rgba(14,165,233,0.08); color: #0369a1; border-color: rgba(14,165,233,0.35); }
+        .mf-btn--pdf:hover { background: rgba(14,165,233,0.14); border-color: rgba(14,165,233,0.55); }
+        .mf-btn--ceki { background: rgba(16,185,129,0.08); color: #047857; border-color: rgba(16,185,129,0.35); }
+        .mf-btn--ceki:hover { background: rgba(16,185,129,0.14); border-color: rgba(16,185,129,0.55); }
+        .mf-btn--ghost { background: var(--surface); color: var(--text2); border-color: var(--border); }
+        .mf-btn--danger-soft { background: #111; color: #fff; border-color: #111; }
+        .mf-btn--danger-soft:hover { background: #262626; border-color: #262626; color: #fff; }
+        .kumas-ceki-toolbar, .mf-ceki-toolbar {
+            display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end;
+        }
+        .kumas-ceki-toolbar .mf-btn, .mf-ceki-toolbar .mf-btn { height: 36px; padding: 0 14px; font-size: 12px; }
+        /* Eski kart liste (mobil/geri uyumluluk) */
+        .mf-fis-row { padding: 0; overflow: hidden; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+        .mf-fis-head {
+            display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px 12px; align-items: center;
+            padding: 10px 12px; cursor: pointer; user-select: none;
+        }
+        .mf-fis-no { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text3); margin-bottom: 2px; }
+        .mf-fis-row .mf-fis-musteri { font-weight: 700; font-size: 13px; color: var(--text1); }
+        .mf-fis-miktar, .mf-fis-kalem-ozet, .mf-fis-teslim { font-size: 11px; color: var(--text3); margin-top: 2px; }
+        .mf-fis-head:hover { background: color-mix(in srgb, var(--surface2) 70%, transparent); }
+        .mf-fis-kalem-badge {
+            display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+            font-size: 9px; font-weight: 700; color: var(--text3); background: var(--surface2); font-family: 'DM Mono', monospace;
+        }
+        .mf-fis-body { display: none; padding: 8px 12px 12px; background: var(--surface2); border-top: 1px solid var(--border); }
+        .mf-fis-row.is-open .mf-fis-body { display: block; }
+        .mf-fis-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+        @media (max-width: 900px) {
+            .mf-fis-ozet { display: none; }
+            .mf-fis-detay-acts .mf-btn { flex: 1 1 calc(50% - 6px); min-width: 120px; }
+        }
+        .mf-fis-section { margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+        .mf-fis-section-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 10px 14px; cursor: pointer; user-select: none;
+            background: var(--surface2); border-bottom: 1px solid var(--border);
+            font-size: 11px; font-weight: 600; color: var(--text);
+        }
+        .mf-fis-section-head:hover { filter: brightness(1.03); }
+        .mf-fis-section-head--aktif { cursor: default; }
+        .mf-fis-section-head--aktif:hover { filter: none; }
+        .mf-fis-section-count { font-size: 10px; font-weight: 500; color: var(--text3); font-family: 'DM Mono', monospace; }
+        .mf-fis-section-chev { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; }
+        .mf-fis-section-body { padding: 10px 12px 12px; }
+        .mf-fis-section--gecmis .mf-fis-section-body { display: none; }
+        .mf-fis-section--gecmis.is-open .mf-fis-section-body { display: block; }
+        .mf-fis-section--gecmis.is-open .mf-fis-section-chev { transform: rotate(0deg); }
+
         /* Sevkiyat Fişleri (mf-table) — mobilde 7 sütunlu düz tablo yerine kart görünümü.
            Sıralama flex `order` ile kontrol edilir (DOM sırası: chev,kod,tarih,tip,musteri,miktar,ozet):
            satır1 = kod ... miktar · satır2 = tarih · tip · müşteri · satır3 = özet. */
@@ -5022,7 +5152,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .mf-fis-tarih::after, .mf-fis-tip::after { content: '·'; margin-left: 6px; color: var(--border2); }
         .mf-fis-ozet { order: 6; flex-basis: 100% !important; font-size: 10px !important; color: var(--text3) !important; opacity: .85; }
         .mf-table tr.mf-fis-detail { display: block !important; margin: -6px 0 8px !important; }
-        .mf-table tr.mf-fis-detail td { display: block !important; padding: 0 !important; }
+        .mf-table tr.mf-fis-detail > td { display: block !important; padding: 0 !important; }
 </style>
 </head>
 <body class="erp-mobil-lite">

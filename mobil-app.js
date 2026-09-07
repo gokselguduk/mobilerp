@@ -1523,6 +1523,19 @@ function depoBirimFromNotlar(s) {
 function depoNotlarStripBirim(s) {
     return String(s || '').replace(/\s*\[BİRİM:(KG|MT|AD)\]\s*\n?/gi, '').trim();
 }
+/** Sadece görüntüleme için — TÜM [ANAHTAR:değer] etiketlerini temizler (SEVK_* dahil).
+ *  Masaüstünden birebir taşındı — Sevkiyat Fişleri "Not:" alanında ham etiketler
+ *  görünmesin diye. Yazma akışında kullanılmaz (depoNotlarStripBirim onun işi). */
+function depoNotlarStripMeta(s) {
+    let t = String(s || '');
+    t = t.replace(/\s*\[CEKI:\[[\s\S]*?\]\]\s*\n?/gi, '');
+    t = t.replace(/\s*\[[A-ZÇĞİÖŞÜ_]+:[^\[\]]*\]\s*\n?/gi, '');
+    return t.replace(/\n{2,}/g, '\n').trim();
+}
+function depoNotlarTeslimOku(s) {
+    const m = String(s || '').match(/\[TESLİM:([^\]]+)\]/i);
+    return m ? m[1].trim() : '';
+}
 function depoNotlarWithBirim(birim, notlar) {
     const b = (birim || 'KG').toUpperCase();
     const raw = depoNotlarStripBirim(notlar);
