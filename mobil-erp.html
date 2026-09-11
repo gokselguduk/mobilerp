@@ -5153,6 +5153,72 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .mf-fis-ozet { order: 6; flex-basis: 100% !important; font-size: 10px !important; color: var(--text3) !important; opacity: .85; }
         .mf-table tr.mf-fis-detail { display: block !important; margin: -6px 0 8px !important; }
         .mf-table tr.mf-fis-detail > td { display: block !important; padding: 0 !important; }
+
+/* ── SİPARİŞ DURUM İNCELEME · DAR EKRAN ──────────────────────────────────
+   Telefonda (375px) soldaki sipariş kartı 200px alıyordu; 16 sütunluk ve
+   900px genişliğindeki ürün tablosuna yalnızca 209px kalıyor, tablonun
+   %23'ü görünüyordu. Yatay kaydırınca ürün adı da ekrandan çıktığı için
+   hangi satırda olunduğu kayboluyordu.
+   1) Dar ekranda kart tablonun ÜSTÜNE çıkar → tabloya tam genişlik kalır.
+   2) Ürün adı sütunu yatay kaydırmada yerinde sabit kalır.
+   3) Tablo başlıkları dikey kaydırmada üstte sabit kalır.
+   Satır içi style'ları ezmek gerektiği için !important şart.            */
+@media (max-width: 760px) {
+    .siparis-durum-izgara {
+        flex-direction: column !important;
+        flex-wrap: wrap !important;
+    }
+    .siparis-durum-izgara > .panel-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 auto !important;
+    }
+    /* Sıra numarası sütunu dar ekranda yer kaplamasın */
+    [data-scroll-key="durum-urun"] table.dt-table th:first-child,
+    [data-scroll-key="durum-urun"] table.dt-table td:first-child {
+        display: none;
+    }
+    /* Ürün adı sabit: sayılar kayarken hangi ürün olduğu hep görünür */
+    [data-scroll-key="durum-urun"] table.dt-table th:nth-child(2),
+    [data-scroll-key="durum-urun"] table.dt-table td:nth-child(2) {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--surface);
+        box-shadow: 1px 0 0 var(--border);
+        max-width: 128px;
+        min-width: 108px;
+    }
+    [data-scroll-key="durum-urun"] table.dt-table thead th:nth-child(2) {
+        background: var(--surface2);
+        z-index: 4;
+    }
+}
+/* Başlık satırı dikey kaydırmada üstte kalsın (her ekranda) */
+.siparis-durum-izgara table.dt-table thead th,
+.siparis-op-gunluk table.dt-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--surface2);
+}
+
+@media (max-width: 760px) {
+    /* Operasyon günlüğünde de zaman sütunu sabit kalsın — yatay kaydırınca
+       hangi kaydın satırında olunduğu kaybolmasın. */
+    .siparis-op-gunluk table.dt-table th:first-child,
+    .siparis-op-gunluk table.dt-table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--surface);
+        box-shadow: 1px 0 0 var(--border);
+    }
+    .siparis-op-gunluk table.dt-table thead th:first-child {
+        background: var(--surface2);
+        z-index: 4;
+    }
+}
 </style>
 </head>
 <body class="erp-mobil-lite">
@@ -5501,7 +5567,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
     });
   }
 
-  var v = '20260911-511306';
+  var v = '20260911-d0edb4';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
