@@ -425,12 +425,12 @@
             k.desen_kodu, k.stok_kodu, k.urun_adi, k.desen_adi, k.firma, k.kumas_cinsi, k.renk,
             k.atki_renkleri,
             a.desen_kodu, a.urun_adi, a.desen_adi, a.firma, a.kumas_cinsi
-        ].map(x => String(x || '').toLowerCase()).join(' ');
+        ].map(x => String(x || '').toLocaleLowerCase('tr-TR')).join(' ');
     }
     window.mamulDepoAramaMetni = mamulDepoAramaMetni;
 
     function mamulDepoAramaSonuclari(q, limit = 24) {
-        const qLower = String(q || '').trim().toLowerCase();
+        const qLower = String(q || '').trim().toLocaleLowerCase('tr-TR');
         if (!qLower) return [];
 
         const kartlar = (dataCache.kumas_kutuphanesi || []).filter(x =>
@@ -474,7 +474,7 @@
             const ana = mamulAnaKodBul(kod);
             const grup = anaMap[ana] || { ana: null, varyantlar: [] };
             const anaKart = grup.ana;
-            const kodHit = kod.toLowerCase().includes(qLower);
+            const kodHit = kod.toLocaleLowerCase('tr-TR').includes(qLower);
             const metinHit = mamulDepoAramaMetni(k, anaKart).includes(qLower);
             if (!kodHit && !metinHit) return;
 
@@ -645,6 +645,8 @@
         for (let n = 0; n < src.length; n++) {
             const x = src[n];
             if (!x) continue;
+            /* Siparişe bağlı hareketler (kumas_stok.siparis_id) genel Simteks bakiyesine karışmasın. */
+            if (x.siparis_id != null && x.siparis_id !== '') continue;
             /* kumasStokHareketiKumasDepoMu = !MamulDepoMu — tek kontrol yeterli */
             if (mamulMu && mamulMu(x)) {
                 const kod = String(x.stok_kodu || '').trim().toUpperCase();
@@ -3034,9 +3036,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
 
     function siparisMamulGrupEslestir(grup, q) {
-        const s = String(q || '').trim().toLowerCase();
+        const s = String(q || '').trim().toLocaleLowerCase('tr-TR');
         if (!s) return true;
-        const ana = String(grup?.anaKod || '').toLowerCase();
+        const ana = String(grup?.anaKod || '').toLocaleLowerCase('tr-TR');
         const anaNorm = ana.replace(/-/g, '');
         const sNorm = s.replace(/-/g, '');
         if (ana.includes(s) || anaNorm.includes(sNorm)) return true;
@@ -3064,7 +3066,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             k.desen_kodu, k.desen_adi, k.urun_adi, k.firma, k.kumas_cinsi, k.renk,
             siparisMamulEbatOku(k),
             a.desen_adi, a.urun_adi, a.firma, a.kumas_cinsi
-        ].map(x => String(x || '').toLowerCase()).join(' ');
+        ].map(x => String(x || '').toLocaleLowerCase('tr-TR')).join(' ');
     }
 
     function siparisMamulKaynakOku(k) {
@@ -3407,7 +3409,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
 
     function siparisMamulSeciciGruplariFiltrele(q) {
-        const s = String(q || '').trim().toLowerCase();
+        const s = String(q || '').trim().toLocaleLowerCase('tr-TR');
         if (!s) return siparisMamulGruplariTopla();
         return siparisMamulGruplariTopla().filter(g => siparisMamulGrupEslestir(g, s));
     }
@@ -3878,7 +3880,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const varyantlar = mamulVaryantlariKayittanTopla(anaKod, meta);
         const out = [];
         varyantlar.forEach((v, i) => {
-            if (!mamulVaryantFormDoluMu(v)) return;
+            if (!mamulVaryantDoluMu(v)) return;
             out.push(mamulVaryantSentezKartOlustur(anaKayit, i + 1, v));
         });
         return out;
@@ -3942,9 +3944,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const sablon = [];
         for (let i = 0; i < maxV; i++) {
             const vNo = i + 1;
-            if (byNo[vNo] && mamulVaryantFormDoluMu(byNo[vNo])) {
+            if (byNo[vNo] && mamulVaryantDoluMu(byNo[vNo])) {
                 sablon[i] = legacy[i] ? mamulVaryantKayitBirlestir(byNo[vNo], legacy[i]) : byNo[vNo];
-            } else if (legacy[i] && mamulVaryantFormDoluMu(legacy[i])) {
+            } else if (legacy[i] && mamulVaryantDoluMu(legacy[i])) {
                 sablon[i] = legacy[i];
             } else {
                 sablon[i] = mamulVaryantBosHucre();
@@ -4179,10 +4181,13 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.mamulStokKoduAta = mamulStokKoduAta;
 
-    function mamulExcelYukle(inp) {
+    async function mamulExcelYukle(inp) {
         try {
             const file = inp?.files?.[0];
             if (!file) return;
+            if (typeof erpEnsureXLSX === 'function') {
+                try { await erpEnsureXLSX(); } catch (e) {}
+            }
             if (typeof XLSX === 'undefined') {
                 if (typeof erpToast === 'function') erpToast('Excel kütüphanesi yüklenemedi.', 'error');
                 return;
@@ -8278,6 +8283,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             if (typeof erpToast === 'function') erpToast('İndirilecek kumaş stoğu yok.', 'warn');
             return;
         }
+        try {
+            await Promise.all([
+                typeof erpEnsureExcelJS === 'function' ? erpEnsureExcelJS() : Promise.resolve(),
+                typeof erpEnsureXLSX === 'function' ? erpEnsureXLSX() : Promise.resolve()
+            ]);
+        } catch (e) {}
         if (typeof ExcelJS === 'undefined' && typeof XLSX === 'undefined') {
             if (typeof erpToast === 'function') erpToast('Excel kütüphanesi yüklenemedi.', 'error');
             return;
@@ -8539,14 +8550,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (typeof erpToast === 'function') erpToast('Kumaş stok formu Excel indirildi.', 'success', 4000);
     };
 
-    function mamulVaryantFormDoluMu(v) {
-        if (!v) return false;
-        if (String(v.renk_etiket || '').trim()) return true;
-        return (Array.isArray(v.atki) ? v.atki : []).some(a =>
-            String(a?.iplik_no || '').trim() || String(a?.renk || '').trim() || String(a?.atki_sayisi || '').trim()
-        );
-    }
-
     function mamulVaryantRenkEtiket(v) {
         if (!v) return '';
         if (String(v.renk_etiket || '').trim()) return String(v.renk_etiket).trim().toUpperCase();
@@ -8585,7 +8588,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     function mamulVaryantListesiNormalize(varyantlar) {
         const src = Array.isArray(varyantlar) ? varyantlar : [];
         const out = src.map(v => mamulVaryantAtkiDensify(v));
-        while (out.length > MAMUL_VARYANT_BASLANGIC && !mamulVaryantFormDoluMu(out[out.length - 1])) {
+        while (out.length > MAMUL_VARYANT_BASLANGIC && !mamulVaryantDoluMu(out[out.length - 1])) {
             out.pop();
         }
         return out;
@@ -8638,7 +8641,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             const v = varyantlar[vNo - 1];
             const varKod = mamulVaryantKodFormatla(anaKod, vNo);
             const existing = aileKayitBul(varKod, vNo);
-            const dolu = mamulVaryantFormDoluMu(v);
+            const dolu = mamulVaryantDoluMu(v);
 
             if (!dolu) {
                 if (existing?.id) silmeIsleri.push(existing.id);
@@ -8736,7 +8739,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         }
         (Array.isArray(varyantlar) ? varyantlar : []).forEach((v, i) => {
             const vNo = i + 1;
-            if (!mamulVaryantFormDoluMu(v)) return;
+            if (!mamulVaryantDoluMu(v)) return;
             const varKod = mamulVaryantKodFormatla(ana, vNo);
             const renk = mamulVaryantRenkEtiket(v);
             const childMeta = mamulVaryantMetaOlustur(v, vNo, ana);

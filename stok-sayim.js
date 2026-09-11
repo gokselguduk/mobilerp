@@ -247,26 +247,103 @@ function sayimKumasSatirlariniOlustur() {
 }
 
 function sayimIplikSatirlariniOlustur() {
+    const ham = (typeof dataCache !== 'undefined' ? (dataCache.iplik_stok || []) : []);
+    const satirlar = [];
+    const pushLot = (opts) => {
+        const kod = String(opts.stok_kodu || '').trim();
+        if (!kod) return;
+        const lotNo = String(opts.lot_no || 'LOTSUZ').trim() || 'LOTSUZ';
+        const marka = String(opts.marka || 'GENEL').trim() || 'GENEL';
+        const cins = String(opts.cins || '').trim();
+        const iplikNo = String(opts.iplik_no || '').trim();
+        const sayimKod = `${kod}||${lotNo}||${marka}`;
+        satirlar.push({
+            stok_kodu: sayimKod,
+            kayit_kodu: kod,
+            lot_no: lotNo,
+            marka,
+            cins,
+            iplik_no: iplikNo,
+            grup: marka || 'İplik',
+            label: [iplikNo, cins].filter(Boolean).join(' · ') || kod,
+            renk: opts.renk || '',
+            ebat: '',
+            mevcut: Math.round((parseFloat(opts.mevcut) || 0) * 100) / 100,
+            kart: opts.kart || null
+        });
+    };
+
+    if (typeof iplikStokListeGruplariOlustur === 'function') {
+        const gruplar = iplikStokListeGruplariOlustur(ham) || [];
+        gruplar.forEach(g => {
+            const kod = String(g.stok_kodu || '').trim();
+            const lots = (g.lots && g.lots.length)
+                ? g.lots
+                : [{ lot_no: 'LOTSUZ', marka: g.marka, cins: g.cins, net_kg: g.net_kg || 0 }];
+            lots.forEach(lot => {
+                pushLot({
+                    stok_kodu: kod,
+                    lot_no: lot.lot_no,
+                    marka: lot.marka || g.marka,
+                    cins: lot.cins || g.cins,
+                    iplik_no: g.iplik_no,
+                    mevcut: lot.net_kg != null ? lot.net_kg : lot.total_kg,
+                    kart: null
+                });
+            });
+        });
+        if (satirlar.length) {
+            return satirlar.sort((a, b) =>
+                String(a.kayit_kodu).localeCompare(String(b.kayit_kodu), 'tr', { numeric: true })
+                || String(a.lot_no).localeCompare(String(b.lot_no), 'tr', { numeric: true })
+            );
+        }
+    }
+
+    // Yedek: kart + lot meta / hareket toplamı
     const bakiyeMap = {};
-    (dataCache.iplik_stok || []).forEach(r => {
+    ham.forEach(r => {
         const k = (r.stok_kodu || '').trim();
         if (!k) return;
-        bakiyeMap[k] = (bakiyeMap[k] || 0) + (parseFloat(r.miktar_kg) || 0);
+        const lotNo = String(r.lot_no || 'LOTSUZ').trim() || 'LOTSUZ';
+        const marka = String(r.marka || 'GENEL').trim() || 'GENEL';
+        const key = `${k}||${lotNo}||${marka}`;
+        bakiyeMap[key] = (bakiyeMap[key] || 0) + (parseFloat(r.miktar_kg) || 0);
     });
     const kartlar = typeof iplikKartlariListe === 'function' ? iplikKartlariListe() : [];
-    return kartlar.map(k => {
+    const gorulen = new Set();
+    (kartlar || []).forEach(k => {
         const kod = String(k.stok_kodu || '').trim();
-        return {
-            stok_kodu: kod,
-            kayit_kodu: kod,
-            grup: k.marka || k.cins || 'İplik',
-            label: k.cins || k.iplik_no || '',
-            renk: '',
-            ebat: '',
-            mevcut: Math.round((bakiyeMap[kod] || 0) * 100) / 100,
-            kart: k
-        };
-    }).sort((a, b) => a.stok_kodu.localeCompare(b.stok_kodu, 'tr', { numeric: true }));
+        if (!kod) return;
+        const lots = typeof iplikKartLotlariAl === 'function' ? iplikKartLotlariAl(k) : [];
+        const lotList = (lots && lots.length) ? lots : [{ lot_no: k.lot_no || 'LOTSUZ', marka: k.marka, cins: k.cins, miktar_kg: 0 }];
+        lotList.forEach(lot => {
+            const lotNo = String(lot.lot_no || 'LOTSUZ').trim() || 'LOTSUZ';
+            const marka = String(lot.marka || k.marka || 'GENEL').trim() || 'GENEL';
+            const key = `${kod}||${lotNo}||${marka}`;
+            gorulen.add(key);
+            const kartKg = parseFloat(lot.miktar_kg) || 0;
+            const hareketKg = bakiyeMap[key];
+            pushLot({
+                stok_kodu: kod,
+                lot_no: lotNo,
+                marka,
+                cins: lot.cins || k.cins,
+                iplik_no: k.iplik_no,
+                mevcut: hareketKg != null ? hareketKg : kartKg,
+                kart: k
+            });
+        });
+    });
+    Object.keys(bakiyeMap).forEach(key => {
+        if (gorulen.has(key)) return;
+        const [kod, lotNo, marka] = key.split('||');
+        pushLot({ stok_kodu: kod, lot_no: lotNo, marka, mevcut: bakiyeMap[key] });
+    });
+    return satirlar.sort((a, b) =>
+        String(a.kayit_kodu).localeCompare(String(b.kayit_kodu), 'tr', { numeric: true })
+        || String(a.lot_no).localeCompare(String(b.lot_no), 'tr', { numeric: true })
+    );
 }
 
 function sayimSatirlariOlustur() {
@@ -279,7 +356,8 @@ function sayimFiltreleSatirlar(rows) {
     const q = _sayimAra.toLowerCase().trim();
     if (!q) return rows;
     return rows.filter(r => {
-        const blob = [r.stok_kodu, r.label, r.grup, r.kumas_cinsi, r.terbiye, r.renk, r.ebat,
+        const blob = [r.stok_kodu, r.kayit_kodu, r.lot_no, r.label, r.grup, r.marka, r.cins, r.iplik_no,
+            r.kumas_cinsi, r.terbiye, r.renk, r.ebat,
             r.tarak_eni, r.atki_sikligi, r.cozgu_sikligi, r.atki_ipi, r.cozgu_ipi,
             r.kart?.firma, r.kart?.marka].join(' ').toLowerCase();
         return blob.includes(q);
@@ -295,7 +373,7 @@ function sayimBirim() {
 function sayimKolonSayisi() {
     if (_sayimTip === 'MAMUL') return 8;
     if (_sayimTip === 'KUMAS') return 13;
-    return 5;
+    return 7;
 }
 
 function sayimTheadHtml() {
@@ -308,7 +386,7 @@ function sayimTheadHtml() {
                 <th>Tarak eni</th><th>Atkı sıklığı</th><th>Çözgü sıklığı</th><th>Atkı ipi</th><th>Çözgü ipi</th>
                 <th class="num">Stok</th><th class="num">Sayılan</th><th class="num">Fark</th>`;
     }
-    return `<th>Stok kodu</th><th>Ürün</th><th class="num">Stok</th><th class="num">Sayılan</th><th class="num">Fark</th>`;
+    return `<th>Stok kodu</th><th>Lot</th><th>Marka</th><th>Ürün</th><th class="num">Stok</th><th class="num">Sayılan</th><th class="num">Fark</th>`;
 }
 
 function sayimYuvarla(n, mamul) {
@@ -370,7 +448,11 @@ function sayimKartMeta(r) {
     if (_sayimTip === 'KUMAS') {
         return [r.kumas_cinsi, r.terbiye].filter(x => x && x !== '—').join(' · ');
     }
-    return r.grup && r.grup !== '—' ? r.grup : '';
+    return [
+        r.lot_no && r.lot_no !== 'LOTSUZ' ? ('Lot ' + r.lot_no) : '',
+        r.marka && r.marka !== '—' ? r.marka : '',
+        r.cins && r.cins !== '—' ? r.cins : ''
+    ].filter(Boolean).join(' · ');
 }
 
 function sayimKartHtml(r) {
@@ -393,15 +475,16 @@ function sayimKartHtml(r) {
         : mevcut.toLocaleString('tr-TR', { maximumFractionDigits: 1 });
     const meta = sayimKartMeta(r);
     const kod = sayimEsc(r.stok_kodu);
+    const gosterKod = sayimEsc(r.kayit_kodu || r.stok_kodu);
     const parcaHtml = parcalar.map(n => `<span class="sayim-parca">${sayimParcaYazi(n, mamul)}</span>`).join('<span class="sayim-parca-arti">+</span>');
     const ekstraGoster = kayitli && _sayimMobilFiltre === 'SAYILAN' && sayimOturumAktifMi();
     if (kayitli) {
         return `<article class="sayim-kart sayim-kart--dolu sayim-kart--kayitli${mevcut === 0 ? ' sayim-kart--sifir' : ''}" data-kod="${kod}">
             <div class="sayim-kart-ust">
                 <div class="sayim-kart-bilgi">
-                    <div class="sayim-kart-ad">${sayimEsc(r.label || r.stok_kodu)}</div>
+                    <div class="sayim-kart-ad">${sayimEsc(r.label || r.kayit_kodu || r.stok_kodu)}</div>
                     <div class="sayim-kart-meta">
-                        ${kod ? `<span class="sayim-kod">${kod}</span>` : ''}
+                        ${gosterKod ? `<span class="sayim-kod">${gosterKod}</span>` : ''}
                         ${meta ? `<span>${sayimEsc(meta)}</span>` : ''}
                     </div>
                 </div>
@@ -438,9 +521,9 @@ function sayimKartHtml(r) {
     return `<article class="sayim-kart${mevcut === 0 ? ' sayim-kart--sifir' : ''}${kilitli ? ' sayim-kart--kilit' : ''}${Number.isFinite(taslakN) ? ' sayim-kart--dolu' : ''}" data-kod="${kod}">
         <div class="sayim-kart-ust">
             <div class="sayim-kart-bilgi">
-                <div class="sayim-kart-ad">${sayimEsc(r.label || r.stok_kodu)}</div>
+                <div class="sayim-kart-ad">${sayimEsc(r.label || r.kayit_kodu || r.stok_kodu)}</div>
                 <div class="sayim-kart-meta">
-                    ${kod ? `<span class="sayim-kod">${kod}</span>` : ''}
+                    ${gosterKod ? `<span class="sayim-kod">${gosterKod}</span>` : ''}
                     ${meta ? `<span>${sayimEsc(meta)}</span>` : ''}
                 </div>
             </div>
@@ -546,8 +629,13 @@ function sayimTabloHtml(rows) {
         }
         let cells = '';
         if (mamul || kumas) cells += `<td class="ms-grup">${sayimEsc(r.grup || '—')}</td>`;
-        cells += `<td class="ms-kod">${sayimEsc(r.stok_kodu)}</td>
-                  <td><div class="ms-name">${sayimEsc(r.label)}</div></td>`;
+        const kodGoster = (_sayimTip === 'IPLIK') ? (r.kayit_kodu || r.stok_kodu) : r.stok_kodu;
+        cells += `<td class="ms-kod">${sayimEsc(kodGoster)}</td>`;
+        if (_sayimTip === 'IPLIK') {
+            cells += `<td class="ms-ozellik">${sayimEsc(r.lot_no && r.lot_no !== 'LOTSUZ' ? r.lot_no : '—')}</td>
+                      <td class="ms-ozellik">${sayimEsc(r.marka || '—')}</td>`;
+        }
+        cells += `<td><div class="ms-name">${sayimEsc(r.label)}</div></td>`;
         if (mamul) {
             cells += `<td class="ms-ozellik">${sayimEsc(r.renk)}</td>
                       <td class="ms-ozellik">${sayimEsc(r.ebat)}</td>`;
@@ -941,8 +1029,13 @@ function sayimGirisPaketiniTopla() {
         const s = sayimYuvarla(sayilan, _sayimTip === 'MAMUL');
         const fark = sayimYuvarla(s - mevcut, _sayimTip === 'MAMUL');
         const rec = {
-            stok_kodu: row.stok_kodu,
+            stok_kodu: row.kayit_kodu || row.stok_kodu,
             kayit_kodu: row.kayit_kodu || row.stok_kodu,
+            sayim_kod: row.stok_kodu,
+            lot_no: row.lot_no || '',
+            marka: row.marka || '',
+            cins: row.cins || '',
+            iplik_no: row.iplik_no || '',
             label: row.label || '',
             grup: row.grup || '',
             renk: row.renk || '',
@@ -1217,7 +1310,11 @@ function sayimRaporDetayGovdeHtml(r) {
             ? farklar.map(s => {
                 const f = Number(s.fark) || 0;
                 const cls = f > 0 ? ' fark-artis' : ' fark-azalis';
-                const ekstra = [s.renk && s.renk !== '—' ? s.renk : '', s.ebat && s.ebat !== '—' ? s.ebat : ''].filter(Boolean).join(' · ');
+                const ekstra = [
+                    s.lot_no && s.lot_no !== 'LOTSUZ' ? ('Lot ' + s.lot_no) : '',
+                    s.renk && s.renk !== '—' ? s.renk : '',
+                    s.ebat && s.ebat !== '—' ? s.ebat : ''
+                ].filter(Boolean).join(' · ');
                 return `<article class="sayim-kart">
                     <div class="sayim-kart-ust">
                         <div class="sayim-kart-ad">${sayimEsc(s.label)}</div>
@@ -1232,7 +1329,11 @@ function sayimRaporDetayGovdeHtml(r) {
             <tbody>${farklar.map(s => {
                 const f = Number(s.fark) || 0;
                 const cls = f > 0 ? ' fark-artis' : ' fark-azalis';
-                const ekstra = [s.renk && s.renk !== '—' ? s.renk : '', s.ebat && s.ebat !== '—' ? s.ebat : ''].filter(Boolean).join(' · ');
+                const ekstra = [
+                    s.lot_no && s.lot_no !== 'LOTSUZ' ? ('Lot ' + s.lot_no) : '',
+                    s.renk && s.renk !== '—' ? s.renk : '',
+                    s.ebat && s.ebat !== '—' ? s.ebat : ''
+                ].filter(Boolean).join(' · ');
                 return `<tr>
                 <td>${sayimEsc(s.grup || '—')}</td>
                 <td class="ms-kod">${sayimEsc(s.stok_kodu)}</td>
@@ -1314,7 +1415,7 @@ window.stokSayimRaporYazdir = stokSayimRaporYazdir;
 function sayimHareketPayload(f) {
     const isGiris = f.fark > 0;
     const user = sayimKullanici();
-    const notlar = `[SAYIM] ${f.stok_kodu} · eski ${f.mevcut} · sayılan ${f.sayilan} · fark ${f.fark > 0 ? '+' : ''}${f.fark}`;
+    const notlar = `[SAYIM] ${f.kayit_kodu || f.stok_kodu}${f.lot_no && f.lot_no !== 'LOTSUZ' ? ' lot ' + f.lot_no : ''} · eski ${f.mevcut} · sayılan ${f.sayilan} · fark ${f.fark > 0 ? '+' : ''}${f.fark}`;
     const kutup = (dataCache.kumas_kutuphanesi || []).find(k =>
         String(k.desen_kodu || k.stok_kodu || '').trim() === String(f.kayit_kodu || f.stok_kodu)) || {};
     const base = {
@@ -1324,14 +1425,16 @@ function sayimHareketPayload(f) {
         updated_by: user
     };
     if (_sayimTip === 'IPLIK') {
+        const kod = f.kayit_kodu || f.stok_kodu;
         const ipKart = typeof iplikKartlariListe === 'function'
-            ? iplikKartlariListe().find(k => k.stok_kodu === f.stok_kodu) : null;
+            ? iplikKartlariListe().find(k => k.stok_kodu === kod) : null;
         return {
             ...base,
-            iplik_no: ipKart?.iplik_no || '',
-            marka: ipKart?.marka || '',
-            cins: ipKart?.cins || '',
-            lot_no: ipKart?.lot_no || '',
+            stok_kodu: kod,
+            iplik_no: f.iplik_no || ipKart?.iplik_no || '',
+            marka: f.marka || ipKart?.marka || '',
+            cins: f.cins || ipKart?.cins || '',
+            lot_no: f.lot_no && f.lot_no !== 'LOTSUZ' ? f.lot_no : (ipKart?.lot_no || ''),
             miktar_kg: isGiris ? Math.abs(f.fark) : -Math.abs(f.fark),
             kaynak_birim: 'IPLIK'
         };

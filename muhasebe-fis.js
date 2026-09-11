@@ -150,135 +150,7 @@ async function muhasebeFisStokKaynakYukle(opts) {
 
 /* ─── Supabase: kumas_stok taze çekme (tek fiş / detay) ─── */
 
-async function muhasebeFisIplikStokTazele() {
-    if (typeof sb === 'undefined' || !sb) return;
-    try {
-        const syncedAt = typeof erpTableSyncedAt === 'function' ? erpTableSyncedAt('iplik_stok') : 0;
-        if (syncedAt && (Date.now() - syncedAt) < 60000) return;
-        if (typeof erpSyncFetchTable === 'function') {
-            const prev = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.iplik_stok))
-                ? dataCache.iplik_stok
-                : [];
-            let fo = {};
-            if (prev.length >= 80 && typeof erpSyncTableWatermarkMs === 'function') {
-                const wm = erpSyncTableWatermarkMs(prev);
-                if (wm > 0) {
-                    fo = {
-                        sinceIso: new Date(wm - 3000).toISOString(),
-                        maxPages: 25,
-                        pageSize: 400
-                    };
-                }
-            }
-            const out = await erpSyncFetchTable('iplik_stok', true, fo);
-            if (out?.error) console.warn('[MF] iplik_stok yükleme hatası:', out.error.message || out.error);
-            const gelen = out?.data;
-            if (typeof dataCache === 'undefined') return;
-            if (Array.isArray(gelen) && gelen.length) {
-                if ((out?.incremental || out?.truncated) && typeof erpSyncUnionById === 'function') {
-                    dataCache.iplik_stok = erpSyncUnionById(gelen, dataCache.iplik_stok);
-                } else if (typeof erpDataCacheMergeTable === 'function') {
-                    dataCache.iplik_stok = erpDataCacheMergeTable('iplik_stok', gelen, dataCache.iplik_stok);
-                } else {
-                    dataCache.iplik_stok = gelen;
-                }
-            }
-            if (typeof erpTableSyncedAtYaz === 'function') erpTableSyncedAtYaz('iplik_stok');
-            return;
-        }
-        const cols = (typeof erpSyncLightCols === 'function')
-            ? erpSyncLightCols('iplik_stok')
-            : ((typeof ERP_SYNC_LIGHT_COLS !== 'undefined' && ERP_SYNC_LIGHT_COLS.iplik_stok) || '*');
-        const pageSize = 1000;
-        let all = [];
-        for (let from = 0; from < 50000; from += pageSize) {
-            const { data, error } = await sb.from('iplik_stok')
-                .select(cols)
-                .order('created_at', { ascending: false })
-                .range(from, from + pageSize - 1);
-            if (error) { console.warn('[MF] iplik_stok yükleme hatası:', error.message); break; }
-            const batch = Array.isArray(data) ? data : [];
-            all = all.concat(batch);
-            if (batch.length < pageSize) break;
-        }
-        if (!all.length || typeof dataCache === 'undefined') return;
-        const prevMap = new Map((dataCache.iplik_stok || []).map(r => [String(r.id), r]));
-        const tazeler = new Map(all.map(r => [String(r.id), r]));
-        dataCache.iplik_stok = (dataCache.iplik_stok || []).map(r =>
-            tazeler.has(String(r.id)) ? { ...r, ...tazeler.get(String(r.id)) } : r
-        );
-        all.forEach(r => {
-            if (!prevMap.has(String(r.id))) dataCache.iplik_stok.unshift(r);
-        });
-    } catch (e) {
-        console.warn('[MF] iplik_stok tazele exception:', e.message);
-    }
-}
 
-async function muhasebeFisKumasStokTazele() {
-    if (typeof sb === 'undefined' || !sb) return;
-    try {
-        const syncedAt = typeof erpTableSyncedAt === 'function' ? erpTableSyncedAt('kumas_stok') : 0;
-        if (syncedAt && (Date.now() - syncedAt) < 60000) return;
-        if (typeof erpSyncFetchTable === 'function') {
-            const prev = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.kumas_stok))
-                ? dataCache.kumas_stok
-                : [];
-            let fo = {};
-            if (prev.length >= 80 && typeof erpSyncTableWatermarkMs === 'function') {
-                const wm = erpSyncTableWatermarkMs(prev);
-                if (wm > 0) {
-                    fo = {
-                        sinceIso: new Date(wm - 3000).toISOString(),
-                        maxPages: 25,
-                        pageSize: 400
-                    };
-                }
-            }
-            const out = await erpSyncFetchTable('kumas_stok', true, fo);
-            if (out?.error) console.warn('[MF] kumas_stok yükleme hatası:', out.error.message || out.error);
-            const gelen = out?.data;
-            if (typeof dataCache === 'undefined') return;
-            if (Array.isArray(gelen) && gelen.length) {
-                if ((out?.incremental || out?.truncated) && typeof erpSyncUnionById === 'function') {
-                    dataCache.kumas_stok = erpSyncUnionById(gelen, dataCache.kumas_stok);
-                } else if (typeof erpDataCacheMergeTable === 'function') {
-                    dataCache.kumas_stok = erpDataCacheMergeTable('kumas_stok', gelen, dataCache.kumas_stok);
-                } else {
-                    dataCache.kumas_stok = gelen;
-                }
-            }
-            if (typeof erpTableSyncedAtYaz === 'function') erpTableSyncedAtYaz('kumas_stok');
-            return;
-        }
-        const cols = (typeof erpSyncLightCols === 'function')
-            ? erpSyncLightCols('kumas_stok')
-            : ((typeof ERP_SYNC_LIGHT_COLS !== 'undefined' && ERP_SYNC_LIGHT_COLS.kumas_stok) || '*');
-        const pageSize = 1000;
-        let all = [];
-        for (let from = 0; from < 50000; from += pageSize) {
-            const { data, error } = await sb.from('kumas_stok')
-                .select(cols)
-                .order('created_at', { ascending: false })
-                .range(from, from + pageSize - 1);
-            if (error) { console.warn('[MF] kumas_stok yükleme hatası:', error.message); break; }
-            const batch = Array.isArray(data) ? data : [];
-            all = all.concat(batch);
-            if (batch.length < pageSize) break;
-        }
-        if (!all.length || typeof dataCache === 'undefined') return;
-        const prevMap = new Map((dataCache.kumas_stok || []).map(r => [String(r.id), r]));
-        const tazeler = new Map(all.map(r => [String(r.id), r]));
-        dataCache.kumas_stok = (dataCache.kumas_stok || []).map(r =>
-            tazeler.has(String(r.id)) ? { ...r, ...tazeler.get(String(r.id)) } : r
-        );
-        all.forEach(r => {
-            if (!prevMap.has(String(r.id))) dataCache.kumas_stok.unshift(r);
-        });
-    } catch (e) {
-        console.warn('[MF] kumas_stok tazele exception:', e.message);
-    }
-}
 
 /* ─── Ana yükleme ─── */
 
@@ -520,8 +392,11 @@ async function muhasebeFisHareketleriTazele(fis) {
     const tablo = grup === 'IPLIK' ? 'iplik_stok' : 'kumas_stok';
     try {
         const cols = tablo === 'kumas_stok'
-            ? 'id,stok_kodu,urun_adi,kumas_cinsi,firma,marka,renk,ebat,olcu,miktar_kg,miktar_mt,cuval_sayisi,top_sayisi,notlar,islem_turu,kaynak_birim,ana_grup,lot_no,created_at,updated_by,irsaliye_no'
-            : 'id,stok_kodu,iplik_no,urun_adi,cins,firma,marka,renk,miktar_kg,miktar_mt,cuval_sayisi,notlar,islem_turu,kaynak_birim,created_at,updated_by';
+            /* Not: urun_adi/marka/renk/ebat/olcu/ana_grup/irsaliye_no kumas_stok'ta KOLON DEĞİL —
+               bu değerler notlar içindeki [SEVK_*] etiketlerinden çözülür. Eskiden bunlar
+               sorguya konduğu için sorgu tamamen hata veriyor ve fiş verisi hiç tazelenmiyordu. */
+            ? 'id,stok_kodu,kumas_cinsi,firma,parti_no,kumas_rengi,cuval_rengi,araci_firma,miktar_kg,miktar_mt,cuval_sayisi,top_sayisi,notlar,islem_turu,kaynak_birim,lot_no,created_at,updated_by,siparis_id,kalem_idx,siparis_sno'
+            : 'id,stok_kodu,iplik_no,iplik_cinsi,cins,marka,iplik_rengi,uretici_firma,araci_firma,miktar_kg,cuval_sayisi,cuval_rengi,notlar,islem_turu,kaynak_birim,created_at,updated_by,irsaliye_no,lot_no';
         const { data } = await sb.from(tablo).select(cols).in('id', hIds);
         if (!Array.isArray(data) || !data.length || typeof dataCache === 'undefined') {
             return muhasebeFisHareketleriCoz(fis);
@@ -634,11 +509,16 @@ function muhasebeFisKalemFromPayload(p, depoGrup) {
     }
     const gRaw = String(depoGrup || '').toUpperCase();
     const grup = gRaw === 'KUMAS' ? 'KUMAS' : (gRaw === 'IPLIK' ? 'IPLIK' : 'MAMUL');
+    /* Sipariş no HAM hareket satırından (p) çözülür: siparis_sno / siparis_id / not
+       etiketleri / SIP-… stok kodu burada duruyor. Aşağıda kurulan kalem nesnesi bu
+       alanları taşımadığı için hesap burada yapılıp siparis_no olarak aktarılır. */
+    const siparisNo = typeof muhasebeFisSiparisNo === 'function' ? muhasebeFisSiparisNo(p) : '';
     let kart = muhasebeFisKartBul(kod);
 
     if (grup === 'IPLIK') {
         return {
             depo_grup: 'IPLIK',
+            siparis_no: siparisNo,
             stok_kodu: kod,
             urun_adi: String(p?.iplik_no || p?.urun_adi || p?.cins || kod).trim(),
             urun_grubu: String(p?.marka || '').trim(),
@@ -717,6 +597,7 @@ function muhasebeFisKalemFromPayload(p, depoGrup) {
             : String(bazKart?.ana_grup || kart?.ana_grup || '').trim();
         return {
             depo_grup: 'KUMAS',
+            siparis_no: siparisNo,
             stok_kodu: kod,
             urun_adi: urunAdi,
             urun_grubu: anaGrup,
@@ -792,6 +673,7 @@ function muhasebeFisKalemFromPayload(p, depoGrup) {
     }
     return {
         depo_grup: 'MAMUL',
+        siparis_no: siparisNo,
         stok_kodu: kod || '—',
         urun_adi: ad || kod || '—',
         urun_grubu: urunGrubu,
@@ -1284,15 +1166,46 @@ function muhasebeFisKumasListeHamMi(kalemler) {
     return ks.every(muhasebeFisKumasKalemHamMi);
 }
 
+/** Sevk satırının hangi siparişe ait olduğunu bulur (fişte/irsaliyede gösterilir).
+    Kaynaklar sırayla: siparis_sno kolonu → siparis_id ile sipariş kaydı → not
+    etiketleri ([SEVK_MERKEZ_ADET:sip=…], [SEVK_GRID:…]) → lot_no (sevkiyatta sno yazılır)
+    → SIP-<sno>-K… biçimli yer tutucu stok kodu. */
+function muhasebeFisSiparisNo(k) {
+    if (!k) return '';
+    const dogrudan = String(k.siparis_sno || '').trim();
+    if (dogrudan) return dogrudan;
+
+    const sid = (k.siparis_id != null && k.siparis_id !== '') ? String(k.siparis_id) : '';
+    const sipBul = (id) => {
+        if (!id || typeof dataCache === 'undefined') return '';
+        const s = (dataCache.siparisler || []).find(x => String(x.id) === String(id));
+        return s ? String(s.sno || '').trim() : '';
+    };
+    if (sid) { const s = sipBul(sid); if (s) return s; }
+
+    const not = String(k.notlar || '');
+    let m = not.match(/\[SEVK_MERKEZ_ADET:sip=([^\]|]+)\|/i) || not.match(/\[SEVK_GRID:([^\]|]+)\|/i);
+    if (m) { const s = sipBul(m[1]); if (s) return s; }
+    m = not.match(/Sipariş\s+(SP\s*\d+)/i);
+    if (m) return m[1].replace(/\s+/g, '');
+
+    m = String(k.stok_kodu || '').match(/^SIP-([^-]+)-K\d+/i);
+    if (m) return m[1];
+
+    const lot = String(k.lot_no || '').trim();
+    if (/^SP\s*\d+$/i.test(lot)) return lot.replace(/\s+/g, '');
+    return '';
+}
+
 function muhasebeFisKalemBasliklar(depoGrup, opts) {
     opts = opts || {};
     if (String(depoGrup || '').toUpperCase() === 'KUMAS') {
         if (opts.kumasHam) {
             return ['#', 'Stok kodu', 'Ürün', 'Kumaş cinsi', 'Terbiye', 'Tarak eni', 'Atkı sıklığı', 'Çözgü sıklığı', 'Atkı ipi', 'Çözgü ipi', 'Miktar'];
         }
-        return ['#', 'Stok kodu', 'Ürün', 'Kumaş cinsi', 'Renk', 'Terbiye', 'Miktar'];
+        return ['#', 'Sipariş', 'Stok kodu', 'Ürün', 'Kumaş cinsi', 'Renk', 'Terbiye', 'Miktar'];
     }
-    return ['#', 'Stok kodu', 'Ürün', 'Ürün grubu', 'Renk', 'Ebat', 'Miktar'];
+    return ['#', 'Sipariş', 'Stok kodu', 'Ürün', 'Ürün grubu', 'Renk', 'Ebat', 'Miktar'];
 }
 
 function muhasebeFisKalemHucreler(k, i, depoGrup, opts) {
@@ -1316,6 +1229,7 @@ function muhasebeFisKalemHucreler(k, i, depoGrup, opts) {
         }
         return [
             String(i + 1),
+            k.siparis_no || muhasebeFisSiparisNo(k) || '—',
             k.stok_kodu || '—',
             k.urun_adi || '—',
             k.kumas_cinsi || '—',
@@ -1326,6 +1240,7 @@ function muhasebeFisKalemHucreler(k, i, depoGrup, opts) {
     }
     return [
         String(i + 1),
+        k.siparis_no || muhasebeFisSiparisNo(k) || '—',
         k.stok_kodu || '—',
         k.urun_adi || '—',
         k.urun_grubu || '—',
@@ -1593,12 +1508,12 @@ function muhasebeFisYazdirBasliklar(depoGrup, opts) {
         if (opts.kumasHam) {
             return ['Stok kodu', 'Ürün', 'Kumaş cinsi', 'Terbiye', 'Tarak eni', 'Ham en', 'Miktar'];
         }
-        return ['Stok kodu', 'Ürün', 'Kumaş cinsi', 'Renk', 'Terbiye', 'Miktar'];
+        return ['Sipariş', 'Stok kodu', 'Ürün', 'Kumaş cinsi', 'Renk', 'Terbiye', 'Miktar'];
     }
     if (g === 'IPLIK') {
         return ['Stok kodu', 'Ürün', 'Marka', 'Renk', 'Miktar'];
     }
-    return ['Stok kodu', 'Ürün', 'Ürün grubu', 'Renk', 'Ebat', 'Miktar'];
+    return ['Sipariş', 'Stok kodu', 'Ürün', 'Ürün grubu', 'Renk', 'Ebat', 'Miktar'];
 }
 
 function muhasebeFisYazdirHucreler(k, depoGrup, opts) {
@@ -1618,6 +1533,7 @@ function muhasebeFisYazdirHucreler(k, depoGrup, opts) {
             ].map(esc);
         }
         return [
+            muhasebeFisSiparisNo(k) || '—',
             k.stok_kodu || '—',
             k.urun_adi || '—',
             k.kumas_cinsi || '—',

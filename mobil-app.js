@@ -18201,6 +18201,121 @@ function yikamaTakipDraftAlan(alan, val) {
     if (!yikamaTakipDraft) return;
     yikamaTakipDraft[alan] = val;
 }
+/* ── ORTAK TABLO BAĞLANTISI ────────────────────────────────────────────
+   Yıkama masaüstünde ve konfeksiyon panelinde konf_kesim_yikama tablosunda
+   toplanıyor. Mobil yıkama takibi ise yalnızca kendi KD_YIKAMA bloğuna
+   yazıyordu ve masaüstü bu tipi hiç okumuyor — girilen mal ana programda
+   görünmüyordu. Aşağıdaki iki fonksiyon mobili de aynı tabloya bağlar. */
+const MOBIL_KY_TABLO = 'konf_kesim_yikama';
+
+/** Yıkamaya gönderim: yıkama önündeki kesim kaydından düşer; kayıt yoksa açar. */
+async function mobilYikamaOrtakGonder(sid, kayit) {
+    const adet = Math.round(parseFloat(kayit.miktar_gonder) || 0);
+    if (!sid || adet <= 0) return;
+    const ki = kayit.kalem_idx !== '' && kayit.kalem_idx != null ? parseInt(kayit.kalem_idx, 10) : NaN;
+    const user = String(erpCurrentUser?.display_name || erpCurrentUser?.username || 'Mobil').trim() || 'Mobil';
+    const sip = (dataCache.siparisler || []).find(x => String(x.id) === String(sid));
+    try {
+        const { data, error } = await sb.from(MOBIL_KY_TABLO)
+            .select('id,created_at,kesim_ts,kalem_idx,kesilen_adet,yikama_sevk_adet,aktif,rota')
+            .eq('siparis_id', sid).limit(200);
+        if (error) throw error;
+        const adaylar = (data || []).filter(r => {
+            if (r.aktif === false) return false;
+            if (String(r.rota || 'YIKAMA').toUpperCase() !== 'YIKAMA') return false;
+            if (Number.isFinite(ki) && ki >= 0 && Number(r.kalem_idx) !== ki) return false;
+            return (parseInt(r.kesilen_adet, 10) || 0) > (parseInt(r.yikama_sevk_adet, 10) || 0);
+        }).sort((a, b) => new Date(a.kesim_ts || a.created_at || 0) - new Date(b.kesim_ts || b.created_at || 0));
+
+        let kalan = adet;
+        for (const r of adaylar) {
+            if (kalan <= 0) break;
+            const kes = parseInt(r.kesilen_adet, 10) || 0;
+            const sevk = parseInt(r.yikama_sevk_adet, 10) || 0;
+            const al = Math.min(kes - sevk, kalan);
+            if (al <= 0) continue;
+            const yeniSevk = sevk + al;
+            await sb.from(MOBIL_KY_TABLO).update({
+                yikama_sevk_adet: yeniSevk,
+                durum: yeniSevk >= kes ? 'YIKAMADA' : 'YIKAMA_KISMEN',
+                updated_at: new Date().toISOString()
+            }).eq('id', r.id);
+            kalan -= al;
+        }
+        /* Kuyrukta karşılığı yoksa (kesim girilmemişse) satırı burada aç —
+           mal yıkamaya gittiği için kesilmiş sayılır. */
+        if (kalan > 0) {
+            await sb.from(MOBIL_KY_TABLO).insert([{
+                siparis_id: sid,
+                siparis_sno: sip?.sno || '',
+                firma: sip?.firma || '',
+                kalem_idx: Number.isFinite(ki) ? ki : null,
+                desen: String(kayit.urun || '').trim(),
+                renk: String(kayit.renk || '').trim(),
+                ebat: String(kayit.ebat || '').trim(),
+                kesilen_adet: kalan,
+                yikama_sevk_adet: kalan,
+                yikama_gelen_adet: 0,
+                rota: 'YIKAMA',
+                durum: 'YIKAMADA',
+                kaynak: 'MOBIL_YIKAMA_TAKIP',
+                kesim_user: user,
+                kesim_ts: new Date().toISOString(),
+                aktif: true
+            }]);
+        }
+    } catch (e) { console.warn('mobilYikamaOrtakGonder', e?.message || e); }
+}
+
+/** Yıkamadan geliş: ortak tablodaki yikama_gelen_adet'i artırır. */
+async function mobilYikamaOrtakGelis(sid, kayit, gelenAdet) {
+    let kalan = Math.round(parseFloat(gelenAdet) || 0);
+    if (!sid || kalan <= 0) return;
+    const ki = kayit && kayit.kalem_idx !== '' && kayit.kalem_idx != null ? parseInt(kayit.kalem_idx, 10) : NaN;
+    const user = String(erpCurrentUser?.display_name || erpCurrentUser?.username || 'Mobil').trim() || 'Mobil';
+    try {
+        const { data, error } = await sb.from(MOBIL_KY_TABLO)
+            .select('id,created_at,kesim_ts,kalem_idx,yikama_sevk_adet,yikama_gelen_adet,aktif,rota')
+            .eq('siparis_id', sid).limit(200);
+        if (error) throw error;
+        const adaylar = (data || []).filter(r => {
+            if (r.aktif === false) return false;
+            if (String(r.rota || 'YIKAMA').toUpperCase() !== 'YIKAMA') return false;
+            if (Number.isFinite(ki) && ki >= 0 && Number(r.kalem_idx) !== ki) return false;
+            return (parseInt(r.yikama_sevk_adet, 10) || 0) > (parseInt(r.yikama_gelen_adet, 10) || 0);
+        }).sort((a, b) => new Date(a.kesim_ts || a.created_at || 0) - new Date(b.kesim_ts || b.created_at || 0));
+
+        for (const r of adaylar) {
+            if (kalan <= 0) break;
+            const sevk = parseInt(r.yikama_sevk_adet, 10) || 0;
+            const gel = parseInt(r.yikama_gelen_adet, 10) || 0;
+            const al = Math.min(sevk - gel, kalan);
+            if (al <= 0) continue;
+            const yeniGel = gel + al;
+            await sb.from(MOBIL_KY_TABLO).update({
+                yikama_gelen_adet: yeniGel,
+                durum: yeniGel >= sevk ? 'KALITE_BEKLIYOR' : 'YIKAMA_KISMEN',
+                updated_at: new Date().toISOString()
+            }).eq('id', r.id);
+            kalan -= al;
+        }
+        try {
+            await sb.from('siparis_akis').insert([{
+                siparis_id: sid,
+                islem: 'YIKAMA_GELEN',
+                kalem_ad: String((kayit && kayit.urun) || 'Kumaş'),
+                miktar: Math.round(parseFloat(gelenAdet) || 0),
+                notlar: JSON.stringify({
+                    ts: new Date().toISOString(), user,
+                    kalem_idx: Number.isFinite(ki) ? ki : null,
+                    pipeline: 'MOBIL_YIKAMA_TAKIP',
+                    note: 'Mobil yıkama takibi · gelen'
+                })
+            }]);
+        } catch (e) {}
+    } catch (e) { console.warn('mobilYikamaOrtakGelis', e?.message || e); }
+}
+
 async function yikamaTakipGonderKaydet() {
     const d = yikamaTakipDraft;
     if (!d) return;
@@ -18236,6 +18351,8 @@ async function yikamaTakipGonderKaydet() {
     _kdCache[cacheKey] = { ...(cur || {}), kayitlar, saglama: cur.saglama || {} };
     try {
         await yikamaKdKaydet(sid, kayitlar);
+        /* Ortak tabloya da yaz — masaüstü ve panel aynı yerden okuyor. */
+        await mobilYikamaOrtakGonder(sid, kayit);
         erpToast('Yıkamaya gönderim kaydedildi.', 'success');
     } catch (e) {
         erpToast('Kayıt yazılamadı: ' + (e?.message || 'bilinmeyen hata'), 'error');
@@ -18272,6 +18389,8 @@ async function yikamaTakipGelisKaydet(siparisId, kayitId, miktarGelen, gelisTari
     kayitlar[idx] = k;
     try {
         await yikamaKdKaydet(sid, kayitlar);
+        /* Ortak tabloda da yıkamadan düş. */
+        await mobilYikamaOrtakGelis(sid, k, gelen);
         if (yeniGelen > gonder + 0.0001) {
             erpToast(`Geliş kaydedildi (gönderilenden fazla — %${Math.round(YIKAMA_GELEN_TOLERANS_ORAN * 100)} tolerans).`, 'success');
         } else {

@@ -18,6 +18,7 @@ function mamulDepoAdetBakiyeMap() {
     const map = {};
     (dataCache.kumas_stok || []).forEach(h => {
         if (typeof kumasStokHareketiMamulDepoMu === 'function' && !kumasStokHareketiMamulDepoMu(h)) return;
+        if (h.siparis_id != null && h.siparis_id !== '') return;
         const k = String(h.stok_kodu || '').trim();
         if (!k || k === 'KODSUZ') return;
         map[k] = (map[k] || 0) + (parseInt(h.cuval_sayisi || 0, 10) || 0);
@@ -28,7 +29,7 @@ function mamulDepoAdetBakiyeMap() {
 /** Çıkış seçimi: stok kartı olan ve net bakiyesi > 0 mamül ürünler */
 function mamulDepoStoktaKartlar(q, limit) {
     const lim = Number.isFinite(limit) ? limit : 40;
-    const qLower = String(q || '').trim().toLowerCase();
+    const qLower = String(q || '').trim().toLocaleLowerCase('tr-TR');
     const bakMap = mamulDepoAdetBakiyeMap();
     const stokluKodlar = Object.keys(bakMap).filter(kod => (bakMap[kod] || 0) > 0);
     const kartlar = [];
@@ -60,7 +61,7 @@ function mamulDepoStoktaKartlar(q, limit) {
         if (qLower) {
             const filtered = kartlar.filter(k => {
                 const blob = [k.desen_kodu, k.stok_kodu, k.urun_adi, k.desen_adi, k.firma, k.kumas_cinsi, k.renk]
-                    .map(v => String(v || '').toLowerCase()).join(' ');
+                    .map(v => String(v || '').toLocaleLowerCase('tr-TR')).join(' ');
                 return blob.includes(qLower);
             });
             filtered.sort((a, b) => (bakMap[String(b.desen_kodu || '').trim()] || 0) - (bakMap[String(a.desen_kodu || '').trim()] || 0));
@@ -76,10 +77,9 @@ window.mamulDepoAdetBakiyeMap = mamulDepoAdetBakiyeMap;
 window.mamulDepoStoktaKartlar = mamulDepoStoktaKartlar;
 let mamulDepoGirisMod = 'TOPLU';
 
-/** Sipariş kalemi için mamül stok kartı yokken sevk kimliği (SIP-…) */
+/** Sipariş kalemi sevk kimliği (SIP-…). Stok kartı olsa da sipariş satırı ayrı kimlik alır:
+    aynı kod hem genel Simteks stok kartı hem müşteri sipariş satırı olarak listelenebilsin. */
 function mamulTopluSiparisYerTutucuKod(siparis, kalem, kalemIdx) {
-    const kod = String(kalem?.kod || kalem?.stok_kodu || '').trim();
-    if (kod && kod.toUpperCase() !== 'KODSUZ' && mamulTopluKartBul(kod)) return kod;
     const sno = String(siparis?.sno || siparis?.id || 'X').trim().replace(/\s+/g, '');
     const urun = String(kalem?.ad || kalem?.urun || '').trim()
         .replace(/[^\wçğıöşüÇĞİÖŞÜ\-]+/gi, '_')
@@ -117,21 +117,27 @@ function mamulTopluSiparisKaynakRows() {
             const hamKod = String(k.kod || k.stok_kodu || '').trim();
             const kart = hamKod && hamKod.toUpperCase() !== 'KODSUZ' ? mamulTopluKartBul(hamKod) : null;
             const kartVar = !!(kart && (typeof kumasKutuphanesiKartiMamulMu !== 'function' || kumasKutuphanesiKartiMamulMu(kart)));
-            const kod = kartVar ? hamKod : mamulTopluSiparisYerTutucuKod(sip, k, ki);
+            /* Stok kartı olsa da sipariş satırı listelenir: müşteri siparişi Simteks stok malı
+               değildir, o siparişten sevk edilir ve genel bakiyeyi eksiltmez. Kimlik olarak
+               SIP-… kodu kullanılır ki genel stok kartıyla aynı satırda birleşmesin. */
+            const kod = mamulTopluSiparisYerTutucuKod(sip, k, ki);
             if (!kod || seen.has(kod.toUpperCase())) return;
-            if (kartVar) return;
             seen.add(kod.toUpperCase());
             const miktar = Math.round(parseFloat(k.miktar) || 0);
             out.push({
                 desen_kodu: kod,
                 stok_kodu: kod,
                 kod,
+                /* Kartlı sipariş kaleminde hareket gerçek stok koduna yazılır (siparis_id ile
+                   işaretli olduğu için genel bakiyeye karışmaz). */
+                stok_karti_kodu: kartVar ? hamKod : '',
                 urun_adi: ad || kod,
                 ad: ad || kod,
                 firma: firma || '',
                 renk,
                 ebat,
                 noKart: true,
+                kartliSiparis: kartVar,
                 siparisKaynak: true,
                 siparis_id: sip.id,
                 siparis_sno: sno,
@@ -415,7 +421,7 @@ function mamulTopluKartBul(kod) {
 function mamulTopluKodAra(q, limit = 60) {
     const lim = Number.isFinite(limit) ? limit : 12;
     const s = String(q || '').trim();
-    const qLower = s.toLowerCase();
+    const qLower = s.toLocaleLowerCase('tr-TR');
     const out = [];
     const seen = new Set();
     const push = (item) => {
@@ -427,16 +433,18 @@ function mamulTopluKodAra(q, limit = 60) {
     };
 
     if (mamulDepoCikisSecimModu()) {
-        mamulDepoStoktaKartlar(s, lim).forEach(push);
+        /* Sevkiyatta müşteri sipariş satırları önce gelir: sevk çoğunlukla bir siparişten
+           yapılır ve sonuç sınırında (lim) genel stok kartlarının altında kaybolmamalı. */
         mamulTopluSiparisKaynakRows().forEach(r => {
             if (out.length >= lim) return;
             if (qLower) {
-                const blob = [r.kod, r.ad, r.urun_adi, r.siparis_sno, r.firma, r.renk, r.ebat]
-                    .map(v => String(v || '').toLowerCase()).join(' ');
+                const blob = [r.kod, r.ad, r.urun_adi, r.stok_karti_kodu, r.siparis_sno, r.firma, r.renk, r.ebat]
+                    .map(v => String(v || '').toLocaleLowerCase('tr-TR')).join(' ');
                 if (!blob.includes(qLower)) return;
             }
             push(r);
         });
+        mamulDepoStoktaKartlar(s, lim).forEach(push);
         return out.slice(0, lim);
     }
 
@@ -448,7 +456,7 @@ function mamulTopluKodAra(q, limit = 60) {
     (dataCache.kumas_kutuphanesi || []).filter(x =>
         x.desen_kodu && !String(x.desen_kodu).startsWith('NU') && kumasKutuphanesiKartiMamulMu(x) &&
         [x.desen_kodu, x.urun_adi, x.desen_adi, x.firma, x.kumas_cinsi, x.renk]
-            .some(v => String(v || '').toLowerCase().includes(qLower))
+            .some(v => String(v || '').toLocaleLowerCase('tr-TR').includes(qLower))
     ).slice(0, lim).forEach(push);
     return out;
 }
@@ -627,8 +635,11 @@ function mamulTopluKodDropGoster(idx, adaylar) {
         const adet = mamulTopluDropAdetOzet(k);
         const kod = String(k.desen_kodu || k.stok_kodu || k.kod || '').trim();
         const musteriGoster = String(et.musteri || k.firma || '').trim() || '—';
+        const sipEk = k.kartliSiparis
+            ? (k.stok_karti_kodu ? ` · ${esc(k.stok_karti_kodu)}` : '')
+            : (k.noKart ? ' · kartsız' : '');
         const sipBadge = k.siparis_sno
-            ? `<span class="mamul-drop-sip">Sip ${esc(k.siparis_sno)}${k.noKart ? ' · kartsız' : ''}</span>`
+            ? `<span class="mamul-drop-sip">Sip ${esc(k.siparis_sno)}${sipEk}</span>`
             : (k.noKart ? '<span class="mamul-drop-sip">kartsız</span>' : '');
         const sifirBadge = k._sifirBakiye ? '<span class="mamul-drop-sip" style="color:var(--rose-c);border-color:var(--rose-c)">0 stok</span>' : '';
         return `<div class="mamul-toplu-kod-drop-item mamul-drop-row${k._sifirBakiye ? ' is-sifir-bakiye' : ''}" onmousedown="event.preventDefault();mamulTopluKodSec(${idx},${ai})" title="${esc(kod)}">
@@ -963,8 +974,11 @@ function mamulTopluPayloadOlustur() {
                 ? depoNotlarWithTeslimDetay(depoNotlarWithBirim('AD', satirNot), typeof muhasebeFisTeslimFormOku === 'function' ? muhasebeFisTeslimFormOku() : null)
                 : depoNotlarWithBirim('AD', satirNot))
             : depoNotlarWithBirim('AD', satirNot);
+        /* Kartlı sipariş satırında hareket gerçek stok koduna yazılır; siparis_id işareti
+           bu hareketi genel Simteks bakiyesinin dışında tutar. */
+        const hareketKodu = String(src?.stok_karti_kodu || '').trim() || kod;
         payloads.push({
-            stok_kodu: kod,
+            stok_kodu: hareketKodu,
             urun_adi: kart?.urun_adi || kart?.desen_adi || src?.urun_adi || src?.ad || r.ad || (kodsuzFallback ? kod : ''),
             kumas_cinsi: kart?.kumas_cinsi || kart?.urun_adi || src?.urun_adi || src?.ad || r.ad || (kodsuzFallback ? kod : ''),
             lot_no: kart?.lot_no || sno || '',
@@ -1008,11 +1022,14 @@ async function mamulTopluKaydet() {
     try { mamulTopluKodDropKapat(); } catch (e) {}
     isSaveInProgress = true;
     try {
+        /* siparis_id / kalem_idx / siparis_sno artık kumas_stok'ta gerçek kolon — silinmez.
+           Müşteri siparişinden yapılan sevkin genel Simteks bakiyesine karışmamasını sağlar.
+           Aşağıdaki alanlar kumas_stok'ta kolon değil (değerleri notlar içine [SEVK_*] etiketi
+           olarak zaten yazılıyor); baştan düşülürse her kayıtta 7 gereksiz hata turu olmaz. */
+        const KUMAS_STOK_OLMAYAN_ALANLAR = ['urun_adi', 'marka', 'renk', 'ebat', 'urun_grubu', 'irsaliye_no', 'ana_grup'];
         let insertPayload = payloads.map(x => {
             const r = { ...x };
-            delete r.siparis_id;
-            delete r.kalem_idx;
-            delete r.siparis_sno;
+            KUMAS_STOK_OLMAYAN_ALANLAR.forEach(c => { delete r[c]; });
             return r;
         });
         const triedCols = new Set();
@@ -1357,6 +1374,10 @@ function mamulStokHamGruplariOlustur(mamulData) {
     (mamulData || []).forEach(x => {
         const kod = (x.stok_kodu || '').trim();
         if (!kod || kod === 'KODSUZ') return;
+        /* Bir siparişe özel (Sevkiyat Merkezi'nden o siparişin üretimiyle) yapılan hareket —
+           bu, Simteks'in genel stok kartıyla AYNI kodu paylaşsa bile genel bakiyeye sayılmaz.
+           Sarra gibi müşteriler için üretilip sevk edilen mal, Simteks'in kendi stoğunu düşürmesin. */
+        if (x.siparis_id != null && x.siparis_id !== '') return;
         if (!mGrpMap[kod]) mGrpMap[kod] = {
             stok_kodu: kod,
             kumas_cinsi: x.kumas_cinsi || '—',
