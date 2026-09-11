@@ -9352,6 +9352,11 @@ let siparisDurumPollTimer = null;
 let siparisDurumPollBusy = false;
 /** Sipariş durum inceleme: fason takip paneli (varsayılan kapalı) */
 let _siparisDurumFasonAcikId = null;
+/** Sipariş durum inceleme: operasyon günlüğü "daha fazla göster" açık mı (sipariş id) */
+let _siparisDurumOpAcikId = null;
+/* Sessiz (poll) yenilemede veri degismediyse DOM yeniden kurulmasin — ayni siparis icin son cizilen "stamp". */
+let _siparisDurumLastStamp = '';
+let _siparisDurumLastStampSiparisId = null;
 const SIPARIS_DURUM_POLL_MS = 4000;
 const KONF_LIVE_SYNC_MS = 4000;
 let konfLiveLastStamp = '';
@@ -9363,6 +9368,9 @@ function siparisDurumPollStop() {
     }
     siparisDurumPollBusy = false;
     _siparisDurumFasonAcikId = null;
+    _siparisDurumOpAcikId = null;
+    _siparisDurumLastStamp = '';
+    _siparisDurumLastStampSiparisId = null;
 }
 
 function siparisDurumFasonToggle(siparisId) {
@@ -9380,6 +9388,21 @@ function siparisDurumFasonUiSync() {
     const icon = document.getElementById('siparis-durum-fason-icon');
     if (body) body.style.display = acik ? '' : 'none';
     if (icon) icon.textContent = acik ? '▼' : '▶';
+}
+
+/** Operasyon günlüğü "daha fazla göster" — hafif DOM toggle, ağı/yeniden çizimi
+ * tetiklemez (fasonToggle ile aynı desen), bu yüzden kaydırma konumunu bozmaz. */
+function siparisDurumOpGenisletToggle(siparisId) {
+    const sid = String(siparisId || '');
+    const fazlaAcikti = _siparisDurumOpAcikId === sid;
+    _siparisDurumOpAcikId = fazlaAcikti ? null : sid;
+    const fazla = document.getElementById('siparis-durum-op-fazla');
+    const btn = document.getElementById('siparis-durum-op-buton');
+    if (fazla) fazla.style.display = fazlaAcikti ? 'none' : '';
+    if (btn) {
+        const kalanSay = fazla ? fazla.querySelectorAll('tr').length : 0;
+        btn.textContent = fazlaAcikti ? `+ ${kalanSay} kayıt daha göster ▼` : 'Daha az göster ▲';
+    }
 }
 
 function siparisDurumPollStart(siparisId) {
@@ -26879,11 +26902,10 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         ${tabloGenis}
     </div>` : '';
 
-    const opRows = (islemRows && islemRows.length)
-        ? islemRows.map(r => {
-            const dt = konfParseFlexibleDate(r.ts || r.created_at);
-            const dtTxt = dt ? dt.toLocaleString('tr-TR') : String(r.ts || r.created_at || '—');
-            return `<tr style="border-bottom:1px solid var(--border)">
+    const opSatirHtml = (r) => {
+        const dt = konfParseFlexibleDate(r.ts || r.created_at);
+        const dtTxt = dt ? dt.toLocaleString('tr-TR') : String(r.ts || r.created_at || '—');
+        return `<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);white-space:nowrap;vertical-align:top">${pdfEsc(dtTxt)}</td>
             <td style="padding:8px 10px;font-weight:600;font-size:10px;color:var(--text);vertical-align:top;white-space:nowrap">${pdfEsc(r.kullanici || '—')}</td>
             <td style="padding:8px 10px;vertical-align:top"><span class="pill" style="font-size:9px">${pdfEsc(r.islem || '—')}</span></td>
@@ -26892,16 +26914,36 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
             <td style="padding:8px 10px;font-size:10px;color:var(--text2);vertical-align:top;word-break:break-word">${r.detay_text ? pdfEsc(r.detay_text) : '—'}</td>
             <td style="padding:8px 10px;font-size:10px;color:var(--text2);vertical-align:top;word-break:break-word">${pdfEsc(r.not || '—')}</td>
         </tr>`;
-        }).join('')
-        : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Konfeksiyon operasyon günlüğünde kayıt yok.</td></tr>`;
+    };
+    /* islemRows en yeni once sirali gelir (konfLoadIslemLog: created_at desc) —
+       "son 10 iş" bu yuzden dogrudan ilk 10 kayittir. Kalani "daha fazla goster"
+       ile acilir; bu bir DOM toggle'i (display:none), yeniden cizim yapmaz —
+       ayni fason paneli deseni (siparisDurumFasonToggle). */
+    const opSiraliListe = (islemRows || []).slice();
+    const OP_VARSAYILAN_SAY = 10;
+    const opIlkGrup = opSiraliListe.slice(0, OP_VARSAYILAN_SAY);
+    const opKalanGrup = opSiraliListe.slice(OP_VARSAYILAN_SAY);
+    const opAcikMi = _siparisDurumOpAcikId === String(siparis.id);
+    const opIlkRows = opIlkGrup.length
+        ? opIlkGrup.map(opSatirHtml).join('')
+        : '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Konfeksiyon operasyon günlüğünde kayıt yok.</td></tr>';
+    const opKalanRows = opKalanGrup.map(opSatirHtml).join('');
+    const opDahaFazlaSatir = opKalanGrup.length ? `<tr id="siparis-durum-op-fazla-buton-satir">
+        <td colspan="7" style="padding:0;border-bottom:1px solid var(--border)">
+            <button type="button" id="siparis-durum-op-buton" onclick="siparisDurumOpGenisletToggle('${siparis.id}')"
+                style="width:100%;padding:9px 10px;background:none;border:none;cursor:pointer;color:var(--accent);font-size:10px;font-weight:700;text-align:center">
+                ${opAcikMi ? 'Daha az göster ▲' : `+ ${opKalanGrup.length} kayıt daha göster ▼`}
+            </button>
+        </td>
+    </tr>` : '';
 
     const opBlok = showOpsLog ? `
     <div class="panel-box" style="overflow:hidden">
         <div class="panel-head">
             <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>Operasyon günlüğü</span>
-            <span style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">${(islemRows || []).length} kayıt · kesim / dikim / kalite / koli / yıkama / sevk</span>
+            <span style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">${(islemRows || []).length} kayıt · son ${Math.min(OP_VARSAYILAN_SAY, opSiraliListe.length)} gösteriliyor · kesim / dikim / kalite / koli / yıkama / sevk</span>
         </div>
-        <div style="overflow:auto;max-height:min(36vh,320px)">
+        <div id="siparis-durum-op-scroll" data-scroll-key="durum-op-dikey" style="overflow:auto;max-height:min(36vh,320px)">
             <table class="dt-table" style="width:100%;min-width:640px;border-collapse:collapse">
                 <thead>
                     <tr style="background:var(--surface2);font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;text-align:left">
@@ -26914,7 +26956,9 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
                         <th style="padding:8px 10px">Not</th>
                     </tr>
                 </thead>
-                <tbody>${opRows}</tbody>
+                <tbody>${opIlkRows}</tbody>
+                <tbody id="siparis-durum-op-fazla" style="display:${opAcikMi ? '' : 'none'}">${opKalanRows}</tbody>
+                <tbody>${opDahaFazlaSatir}</tbody>
             </table>
         </div>
     </div>` : '';
@@ -26928,7 +26972,9 @@ function siparisDurumYatayScrollKaydet(root) {
     try {
         (root || document).querySelectorAll('[data-scroll-key]').forEach((el) => {
             const key = el.getAttribute('data-scroll-key');
-            if (key) _siparisDurumYatayScroll[key] = el.scrollLeft || 0;
+            /* İsim "yatay" ama artık her iki yönü de saklıyor — operasyon günlüğü
+               "daha fazla göster" ile açılınca dikey kayabiliyor; onu da koru. */
+            if (key) _siparisDurumYatayScroll[key] = { left: el.scrollLeft || 0, top: el.scrollTop || 0 };
         });
     } catch (e) {}
 }
@@ -26936,7 +26982,10 @@ function siparisDurumYatayScrollUygula(root) {
     try {
         (root || document).querySelectorAll('[data-scroll-key]').forEach((el) => {
             const key = el.getAttribute('data-scroll-key');
-            if (key && _siparisDurumYatayScroll[key] > 0) el.scrollLeft = _siparisDurumYatayScroll[key];
+            const kayit = key ? _siparisDurumYatayScroll[key] : null;
+            if (!kayit) return;
+            if (kayit.left > 0) el.scrollLeft = kayit.left;
+            if (kayit.top > 0) el.scrollTop = kayit.top;
         });
     } catch (e) {}
 }
@@ -26963,6 +27012,20 @@ async function siparisDetailModalBaslatDurumTab(siparis, quietRefresh = false) {
         const rows = _konfIslemLogCache[fresh.id] || [];
         const allUa = _kdCache[`KD_URUN_AGACI_${fresh.id}`] || {};
         if (!erpIsDetailModalOpen()) return;
+
+        /* Sessiz (4 sn'lik poll) yenilemede veri gercekten degismediyse DOM'u
+           yeniden kurma. Onceden her tikte kosulsuz yikilip yeniden
+           olusturuluyordu; bu, kullanici parmagiyla kaydirirken gorunur bir
+           "sicrama/titreme" yaratiyordu — scrollLeft teknik olarak geri
+           yukleniyordu ama arada bir an DOM tamamen sifirdan kuruluyordu. */
+        const yeniStamp = (typeof konfBuildLiveStamp === 'function') ? konfBuildLiveStamp(fresh.id) : '';
+        const ayniSiparis = _siparisDurumLastStampSiparisId === sid;
+        if (quietRefresh && ayniSiparis && yeniStamp && yeniStamp === _siparisDurumLastStamp) {
+            return;
+        }
+        _siparisDurumLastStamp = yeniStamp;
+        _siparisDurumLastStampSiparisId = sid;
+
         el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
             <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="siparisKapamaRaporPdf('${fresh.id}')">📄 Sipariş kapama raporu (PDF)</button>
             <span style="font-size:9px;color:var(--text3)">Dokuma, konfeksiyon, fason takip ve aksesuar — tek rapor</span>
