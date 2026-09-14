@@ -119,7 +119,6 @@ try {
 //  6. loadData fonksiyonu doğru kapatıldı
 // ============================================================
 
-
 // ── OPTİMİZASYON: Debounce + Chart Instance Yönetimi ──
 function yeniKartGirisBaslikMetin() {
     if (archiveTab === 'IPLIK') return { etiket: 'iplik stok kartı', buton: '🧶 + Yeni iplik kartı' };
@@ -249,8 +248,10 @@ const ERP_PERM_MODES = [
     ['STOK_SAYIM', 'Stok sayım'],
     ['BOYAHANE_URETIM', 'Boyahane'],
     ['YIKAMA_TAKIP', 'Yıkama'],    ['DOKUMA_TAKIP', 'Dokuma takip'],
+    ['DOKUMA_FASON_TAKIP', 'Dokuma fason'],
+    ['HASIL_TAKIP', 'Haşıl takip'],
     ['KONFEKSIYON', 'Konfeksiyon'],
-    ['FASON_TAKIP', 'Fason takip'],
+    ['FASON_TAKIP', 'Konfeksiyon fason'],
     ['KONFEKSIYON_PLANLAMA', 'Konfeksiyon planlama'],
     ['TEKNIK_FOY', 'Teknik föy / iş emri'],
     ['URUN_AGACI', 'Ürün ağacı'],
@@ -266,7 +267,7 @@ const ERP_PERM_GROUP_DEFS = [
     { id: 'genel', label: 'Genel', icon: '🏠', codes: ['DASHBOARD', 'PLANLAMA', 'RAPORLAR'] },
     { id: 'siparis', label: 'Sipariş', icon: '📋', codes: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN'] },
     { id: 'stok', label: 'Stok & Depo', icon: '📦', codes: ['IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'MUHASEBE_FIS', 'STOK_SAYIM'] },
-    { id: 'uretim', label: 'Üretim', icon: '⚙️', codes: ['BOYAHANE_URETIM', 'YIKAMA_TAKIP', 'DOKUMA_TAKIP'] },
+    { id: 'uretim', label: 'Üretim', icon: '⚙️', codes: ['BOYAHANE_URETIM', 'YIKAMA_TAKIP', 'DOKUMA_TAKIP', 'DOKUMA_FASON_TAKIP', 'HASIL_TAKIP'] },
     { id: 'konf', label: 'Konfeksiyon', icon: '🧵', codes: ['KONFEKSIYON', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI'] },
     { id: 'kart', label: 'Kart & Arşiv', icon: '🗂️', codes: ['KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS'] }
 ];
@@ -384,7 +385,6 @@ function erpAdminNuRoleChanged(sel) {
     const admin = sel.value === 'admin';
     box.style.display = admin ? 'none' : '';
 }
-
 
 function erpAdminStylesHtml() {
     return `<style id="erp-admin-styles">
@@ -657,6 +657,12 @@ function erpUserCan(mode) {
     if (mode === 'FASON_TAKIP') {
         return modes.includes('FASON_TAKIP') || modes.includes('KONFEKSIYON');
     }
+    if (mode === 'DOKUMA_FASON_TAKIP') {
+        return modes.includes('DOKUMA_FASON_TAKIP') || modes.includes('DOKUMA_TAKIP');
+    }
+    if (mode === 'HASIL_TAKIP') {
+        return modes.includes('HASIL_TAKIP') || modes.includes('DOKUMA_TAKIP');
+    }
     if (mode === 'YIKAMA_TAKIP') {
         return modes.includes('YIKAMA_TAKIP') || modes.includes('BOYAHANE_URETIM');
     }
@@ -758,7 +764,7 @@ function erpApplyNavPermissions() {
         mark(el, m);
     });
 
-    ['siparis', 'depo', 'kart', 'terbiye', 'dokuma', 'konfeksiyon', 'planlama', 'yonetim'].forEach(prefix => {
+    ['siparis', 'depo', 'kart', 'terbiye', 'dokuma', 'konfeksiyon', 'fason', 'planlama', 'yonetim'].forEach(prefix => {
         const area = document.getElementById('sub-' + prefix);
         const toggle = document.getElementById('nav-' + prefix + '-toggle');
         if (!area || !toggle) return;
@@ -941,7 +947,6 @@ function siparisTerminDurumFromGun(gun) {
     if (gun <= SIPARIS_TERMIN_UYARI_GUN) return 'yakin';
     return 'normal';
 }
-
 
 function siparisTerminGunOzetKisa(gun, durum) {
     if (durum === 'yok' || gun == null) return '—';
@@ -1171,7 +1176,6 @@ function siparisGrubuBul(row) {
     if (kalemGrup === 'GIDA' || kalemGrup === 'HALI' || kalemGrup === 'EV_TEKSTILI' || kalemGrup === 'KOLTUK_ORTUSU') return kalemGrup;
     return '';
 }
-
 
 /** Tek kutuya yazılan arama için sipariş metin indeksi (no, firma, özet, durum, grup, termin…) */
 function siparisListeAramaBlob(i) {
@@ -2847,7 +2851,7 @@ const APP_MODE_WHITELIST = [
     'DASHBOARD','PLANLAMA','DEPO_HAREKET','DEPO_HAREKET_LISTE','MUHASEBE_FIS','STOK_SAYIM','IPLIK','KUMAS','SIPARIS_GIRIS','SIPARIS_LISTE','SIPARIS_KAPANAN','KART_LISTE','MAMUL_DEPO',
     'KART_GIRIS','IPLIK_KART_GIRIS','KUMAS_KART_GIRIS',
     'MAMUL_KART_GIRIS','BOYAHANE_URETIM','YIKAMA_TAKIP',
-    'RAPOR','KONFEKSIYON','FASON_TAKIP','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','RAPORLAR','DOKUMA_TAKIP','DOKUMA_DEPO','DOKUMA_SEVK_GECMIS',
+    'RAPOR','KONFEKSIYON','FASON_TAKIP','DOKUMA_FASON_TAKIP','DOKUMA_SIPARIS_GIRIS','HASIL_TAKIP','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','RAPORLAR','DOKUMA_TAKIP','DOKUMA_DEPO','DOKUMA_SEVK_GECMIS',
     'KONFEKSIYON_KESIM','KONFEKSIYON_YIKAMA','KONFEKSIYON_KALITE','KONFEKSIYON_SEVK'
 ];
 function saveUiState(partial = {}) {
@@ -4521,7 +4525,6 @@ function kumasKutuphanesiDbTemizle(p) {
     return o;
 }
 
-
 function numuneKayitTuruOku(i) {
     return numuneNotTagOku(i?.notlar, 'KAYIT_TUR').toUpperCase();
 }
@@ -4873,7 +4876,6 @@ function urunKimligiNumunedenMi(i) {
     if (String(i.kaynak_birim || '').toUpperCase() === 'NUMUNE_ONAY') return true;
     return !!numuneNotTagOku(i.notlar, 'NUMUNE_KAYNAK');
 }
-
 
 let _numuneListeEylemBound = false;
 
@@ -5297,7 +5299,6 @@ function erpDataCachePersist(immediate = false) {
     }, 400);
 }
 
-
 function erpRowSearchIndex(i, table) {
     if (!i) return '';
     if (i._search_idx) return i._search_idx;
@@ -5613,6 +5614,14 @@ async function erpRefreshCurrentScreen(opts = {}) {
             if (typeof renderFasonTakip === 'function') renderFasonTakip();
             return;
         }
+        if (mode === 'DOKUMA_FASON_TAKIP') {
+            if (typeof renderDokumaFasonTakip === 'function') renderDokumaFasonTakip();
+            return;
+        }
+        if (mode === 'HASIL_TAKIP') {
+            if (typeof renderHasilTakip === 'function') renderHasilTakip();
+            return;
+        }
         if (mode === 'YIKAMA_TAKIP' || mode === 'BOYAHANE_URETIM') {
             if (typeof renderYikamaTakip === 'function') renderYikamaTakip();
             else if (typeof openYikamaTakip === 'function') openYikamaTakip();
@@ -5672,7 +5681,6 @@ function erpSyncRefreshUi() {
     }
     erpRefreshCurrentScreen({ force: false });
 }
-
 
 // ── Canlı senkron: başka bilgisayardan girilen veri anında görünsün ──
 const ERP_LIVE_TABLES = ['siparisler', 'kumas_stok', 'kumas_kutuphanesi', 'iplik_stok', 'tezgahlar', 'siparis_akis'];
@@ -6348,7 +6356,6 @@ function planlamaYerPanelToggle(panelKey) {
     try { localStorage.setItem(PLANLAMA_YER_PANEL_KEY, JSON.stringify(d)); } catch (e) {}
     renderPlanlama();
 }
-
 
 const PLANLAMA_KALEM_SECIM_KEY = 'erp_planlama_kalem_secim_v1';
 const PLANLAMA_UA_ASAMA_ISLEM = {
@@ -7229,6 +7236,7 @@ function planlamaKalemUretimAlani(siparisId, kalemIdx) {
     const yer = kalemYer || sipYer;
     return yer || 'SIMTEKS_KONF';
 }
+
 
 const PLANLAMA_MASTER_KEY = 'erp_planlama_master_v1';
 let planlamaAltMode = 'ANA';
@@ -8440,7 +8448,7 @@ async function renderPlanlama() {
             const { data, error } = await sb.from('siparis_akis')
                 .select('siparis_id,islem,miktar,created_at,kalem_ad,notlar')
                 .gte('created_at', d0.toISOString())
-                .in('islem', ['YIKAMA_SEVK', 'YIKAMA_GELEN', 'KESIM', 'KESİM', 'DİKİM', 'DIKIM', 'KALITE', 'SEVK', 'KOLI', 'PAKET'])
+                .in('islem', ['YIKAMA_SEVK', 'YIKAMA_GELEN', 'KESIM', 'KESİM', 'DİKİM', 'DIKIM', 'KALITE', 'KALİTE', 'KALİTE KONTROL', 'KALITE KONTROL', 'KK_GECEN', 'SEVK', 'KOLI', 'KOLİ', 'PAKET'])
                 .order('created_at', { ascending: false })
                 .limit(2500);
             if (!error) {
@@ -9680,15 +9688,11 @@ function konfKalemKey(k = {}) {
     return [konfNormTxt(k.ad || k.kod || ''), konfNormTxt(k.renk || ''), konfNormTxt(k.ebat || k.olcu || '')].join('|');
 }
 
-
-
 function konfGetKdForSiparis(siparisId) {
     const base = _kdCache[`KD_KONFEKSIYON_${siparisId}`] || {};
     // Tek kaynak: KD_KONFEKSIYON
     return base;
 }
-
-
 
 // ════════════════════════════════════════════════════════
 //  DOKUMA TAKİP MODÜLÜ
@@ -9837,8 +9841,6 @@ function dtHareketDetayFormat(detayRaw) {
     return satirlar.join('\n');
 }
 
-
-
 function dtHareketDetayModalKapat() {
     const modal = document.getElementById('dt-hareket-detay-modal');
     if (modal) modal.style.display = 'none';
@@ -9868,7 +9870,7 @@ async function renderDokumaHareketListesi() {
     const localSrc = Array.isArray(data.hareketler) ? data.hareketler : [];
     let dbSrc = [];
     const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
-    const konfIslemSet = new Set(['KESIM','DİKİM','DIKIM','KALITE','PAKET','KOLI','YIKAMA_SEVK','YIKAMA_GELEN','SEVK']);
+    const konfIslemSet = new Set(['KESIM','DİKİM','DIKIM','KALITE','KALITE KONTROL','KK_GECEN','PAKET','KOLI','YIKAMA_SEVK','YIKAMA_GELEN','SEVK']);
     const birimLabel = (kb = '', fallback = 'GENEL') => {
         const n = dtNormTxt(kb || '');
         if (!n) return fallback;
@@ -11154,7 +11156,6 @@ async function dtGirisRevizePrompt(urunIdx, girisIdx) {
     renderDokumaTakip();
 }
 
-
 async function renderDtForm() {
     const siparis = (dataCache.siparisler||[]).find(s=>s.id==dtSeciliSiparisId);
     if (!siparis) return '';
@@ -11579,11 +11580,9 @@ async function dtKaydet(kalemSayi) {
     else renderDokumaTakip();
 }
 
-
 // ════════════════════════════════════════════════════════
 //  RAPORLAR & ANALİZ MODÜLÜ
 // ════════════════════════════════════════════════════════
-
 
 // ── Dokuma Takip · Günlük Excel içe aktarma ─────────────────────────────
 const DT_EXCEL_MAP_LS = 'erp_dt_excel_kolon_map_v1';
@@ -11691,9 +11690,6 @@ async function dtExcelSonImportGeriAl() {
         erpToast('Geri alma başarısız: ' + (err?.message || err), 'error', 5000);
     }
 }
-
-
-
 
 function dtExcelHucre(row, colName) {
     if (!colName || !row) return '';
@@ -12146,8 +12142,6 @@ function raporParseAnyDate(v) {
         return null;
     }
 }
-
-
 
 async function renderRaporlar() {
     const list = document.getElementById('main-list');
@@ -14468,7 +14462,6 @@ function raporUrunOzetSiparisGrubuEtiket(raw) {
     return x.replace(/_/g, ' ') || '—';
 }
 
-
 function raporUrunOzetHesapla(filtreliSiparis) {
     const detay = [];
     const yerFilt = raporUrunOzetUretimYeri;
@@ -14965,8 +14958,6 @@ let uaSeciliSiparisId = null;
 let uaSeciliUrunIdx   = null;  // hangi kalem (beden/renk) düzenleniyor
 let uaCalismaModu = 'URUN'; // URUN | SIPARIS
 let uaSeciliKalemlerMap = {};
-let uaKesimAktifPastalIndex = -1; // manuel pastal paneli (session)
-let uaSiparisFoySekme = 'KESIM'; // KESIM | DIKIM | KALITE — sipariş teknik föy sekmesi
 let uretimSeciliSiparisId = null;
 
 const UA_ASAMALAR = [
@@ -15057,8 +15048,6 @@ const UA_PASTAL_SEKIL_TIPLERI = [
     { id: 'DAIRE', label: 'Daire' },
 ];
 let uaPastalDragState = null;
-let uaDikimSekilDragState = null;
-let uaKesimRowPastalDragState = null;
 
 function uaEnsureIsEmri(ua) {
     if (!ua.is_emri) ua.is_emri = {};
@@ -15086,7 +15075,6 @@ function uaNormalizeUretimYeri(v) {
     if (s === 'DOGRUDAN_SEVK' || s === 'DOGRUDAN' || s === 'DIREKT' || s === 'DIREKT_SEVK') return 'DOGRUDAN_SEVK';
     return 'SIMTEKS_KONF';
 }
-
 function uaUretimYeriLabel(v) {
     const n = uaNormalizeUretimYeri(v);
     if (n === 'FASON_KONF') return 'Fason konfeksiyon';
@@ -15120,16 +15108,6 @@ function uaSiparisUretimYeriFromAll(all = {}, kalemler = []) {
     // Karisik durumda en yuksek adetli uretim yerini sec.
     dolu.sort((a, b) => b[1] - a[1]);
     return dolu[0][0] || foyYer;
-}
-
-function uaEnsureTeknikGenel(ua) {
-    if (!ua.teknik_genel || typeof ua.teknik_genel !== 'object') ua.teknik_genel = {};
-    const t = ua.teknik_genel;
-    t.uretim_yeri = uaNormalizeUretimYeri(t.uretim_yeri);
-    if (typeof t.agir_konfeksiyon !== 'boolean') t.agir_konfeksiyon = false;
-    if (typeof t.fason_firma !== 'string') t.fason_firma = '';
-    if (typeof t.agir_aciklama !== 'string') t.agir_aciklama = '';
-    return t;
 }
 
 function renderUaPastalSvg(sekiller, pastalMeta = {}, opts = {}) {
@@ -15323,10 +15301,6 @@ function uaNormalizeAsamalar(rawAsamalar = [], opts = {}) {
     return uniq;
 }
 
-
-
-
-
 function uaStampKayitMeta(ua = {}, opts = {}) {
     const manual = !!opts.manual;
     const now = new Date();
@@ -15473,8 +15447,6 @@ async function uaSelectSiparis(id) {
     uaSeciliSiparisId = id || null;
     uaCalismaModu = 'URUN';
     uaSeciliUrunIdx = null;
-    uaKesimAktifPastalIndex = -1;
-    uaSiparisFoySekme = 'KESIM';
     if (uaSeciliSiparisId && !Array.isArray(uaSeciliKalemlerMap[uaSeciliSiparisId])) {
         uaSeciliKalemlerMap[uaSeciliSiparisId] = [];
     }
@@ -15501,22 +15473,8 @@ function uaTumUrunAgaciTamamMi(kalemler = []) {
 }
 
 function uaSetCalismaModu(mod) {
-    uaCalismaModu = mod === 'URUN' ? 'URUN' : 'SIPARIS';
-    uaKesimAktifPastalIndex = -1;
-    if (uaCalismaModu === 'SIPARIS') {
-        uaSiparisFoySekme = 'KESIM';
-        const siparis = (dataCache.siparisler||[]).find(s=>s.id==uaSeciliSiparisId);
-        const kalemler = uaSiparisKalemleriGetir(siparis);
-        if (!uaTumUrunAgaciTamamMi(kalemler)) {
-            alert('Önce ürün ağacı çalışmalarını tüm kalemler için tamamlayın, sonra sipariş teknik föyüne geçin.');
-            uaCalismaModu = 'URUN';
-        }
-    }
-    if (uaCalismaModu === 'SIPARIS') {
-        uaSeciliUrunIdx = uaSeciliSiparisId ? 'SIPARIS' : null;
-    } else if (uaCalismaModu === 'URUN') {
-        if (uaSeciliUrunIdx === 'SIPARIS') uaSeciliUrunIdx = null;
-    }
+    uaCalismaModu = 'URUN';
+    if (uaSeciliUrunIdx === 'SIPARIS') uaSeciliUrunIdx = null;
     const cont = document.getElementById('ua-content');
     if (cont) cont.innerHTML = renderUrunAgaciIcerik();
 }
@@ -15652,7 +15610,6 @@ function uaIsSetUrun(urunAdi) {
     return t.includes('nevresim') || t.includes('pike') || t.includes('set');
 }
 
-
 function uaBuildKesimRows(kalemler, mevcutRows = []) {
     return (kalemler || []).map((k, i) => {
         const mevcut = mevcutRows[i] || {};
@@ -15685,39 +15642,6 @@ function uaBuildKesimRows(kalemler, mevcutRows = []) {
     });
 }
 
-function uaSiparisFoySekmeSec(s) {
-    uaSiparisFoySekme = s === 'DIKIM' ? 'DIKIM' : s === 'KALITE' ? 'KALITE' : 'KESIM';
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaSiparisSekmeOnayla(sekme) {
-    if (!uaSeciliSiparisId) return;
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    if (!ua.sekme_onay) ua.sekme_onay = {};
-    const k = String(sekme || '').toLowerCase();
-    if (k === 'kesim') ua.sekme_onay.kesim = true;
-    else if (k === 'dikim') ua.sekme_onay.dikim = true;
-    else if (k === 'kalite') ua.sekme_onay.kalite = true;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-    renderUrunAgaci();
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaKesimRowTalimatGuncelle(rowIndex, value) {
-    if (!uaSeciliSiparisId) return;
-    const siparis = (dataCache.siparisler || []).find(s => s.id == uaSeciliSiparisId);
-    const kalemler = uaSiparisKalemleriGetir(siparis);
-    const { ua, isEmri, kesim } = uaGetSiparisKesimState();
-    const rows = uaBuildKesimRows(kalemler, kesim.rows || []);
-    if (!rows[rowIndex]) return;
-    rows[rowIndex].kesim_talimat = String(value || '');
-    kesim.rows = rows;
-    ua.is_emri = isEmri;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-}
-
 function uaEnsureUrunTeknikGenel(ua) {
     if (!ua.urun_teknik_genel || typeof ua.urun_teknik_genel !== 'object') ua.urun_teknik_genel = {};
     const t = ua.urun_teknik_genel;
@@ -15733,304 +15657,11 @@ async function uaUrunTeknikGenelGuncelle(aln, val, doRefresh) {
     if (aln === 'uretim_yeri') ua.urun_teknik_genel.uretim_yeri = uaNormalizeUretimYeri(val);
     else if (aln === 'fason_firma') ua.urun_teknik_genel.fason_firma = String(val || '');
     await uaSetAgac(uaSeciliSiparisId, uaSeciliUrunIdx, ua);
-    const need = doRefresh !== false && aln === 'uretim_yeri';
+    const need = doRefresh !== false && (aln === 'uretim_yeri' || aln === 'dokuma_uretim_yeri');
     if (need) {
         const cont = document.getElementById('ua-content');
         if (cont) cont.innerHTML = renderUrunAgaciIcerik();
     }
-}
-
-function renderUaSiparisTeknikFoy(siparis, kalemler) {
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    const isEmri = uaEnsureIsEmri(ua);
-    const tg = uaEnsureTeknikGenel(ua);
-    const kesim = isEmri.kesim || {};
-    const dik = isEmri.dikim || {};
-    const dSek = dik.urun_sekli && typeof dik.urun_sekli === 'object' ? dik.urun_sekli : { grid: 25, snap: true, sekiller: [] };
-    const dSekiller = Array.isArray(dSek.sekiller) ? dSek.sekiller : [];
-    const kp = isEmri.kalite_paket || {};
-    const rows = uaBuildKesimRows(kalemler, kesim.rows || []);
-    const aktifPastalIndex = Number.isInteger(uaKesimAktifPastalIndex) ? uaKesimAktifPastalIndex : -1;
-    const aktifPastalRow = rows[aktifPastalIndex];
-    const so = ua.sekme_onay || {};
-    const allSnap = _kdCache[`KD_URUN_AGACI_${uaSeciliSiparisId}`] || {};
-    const teknikFoyTamam = uaTeknikFoyTamamMiFromAll(allSnap);
-    const kdDok = _kdCache[`KD_DOKUMA_${siparis.id}`] || {};
-    const kdKonf = _kdCache[`KD_KONFEKSIYON_${siparis.id}`] || {};
-    const dokTop = konfDokumaUrunToplamlari(kdDok);
-    const yikSevk = parseInt(kdKonf.panel_yikama_sevk, 10) || 0;
-    const yikGel = parseInt(kdKonf.panel_yikama_gelen, 10) || 0;
-    const yikBek = Math.max(0, yikSevk - yikGel);
-    const sipTopAdet = kalemler.reduce((s, k) => s + (parseInt(k?.miktar, 10) || 0), 0);
-    const kesimTop = parseInt(kdKonf.kesim_toplam, 10) || 0;
-    const dikimTop = parseInt(kdKonf.dikim_toplam, 10) || 0;
-    const kaliteTop = parseInt(kdKonf.kk_gecen, 10) || 0;
-    const koliTop = parseInt(kdKonf.koli_toplam, 10) || 0;
-    const sevkTop = parseInt(kdKonf.panel_sevk_toplam, 10) || 0;
-    const kapamaFark = {
-        kesim: kesimTop - sipTopAdet,
-        dikim: dikimTop - kesimTop,
-        kalite: kaliteTop - dikimTop,
-        koli: koliTop - kaliteTop,
-        sevk: sevkTop - koliTop
-    };
-    const uaStageOrder = UA_ASAMALAR.map(a => a.id);
-    const uaStageMetaById = Object.fromEntries(UA_ASAMALAR.map(a => [a.id, a]));
-    let uaSiparisStages = konfMergedUretimAsamalari(kalemler, allSnap);
-    const islemRows = _konfIslemLogCache[siparis.id] || [];
-    const uaKapamaStageRows = [];
-    let prevQty = sipTopAdet;
-    uaSiparisStages.forEach(stageId => {
-        const qty = parseInt(konfSiparisMetricForStage(stageId, kdKonf, islemRows, kdDok), 10) || 0;
-        const diff = qty - prevQty;
-        uaKapamaStageRows.push({ stageId, qty, diff });
-        prevQty = qty;
-    });
-    const sek = uaSiparisFoySekme;
-    const uyariEksik = !teknikFoyTamam
-        ? 'Siparişte eksik bilgi: üretim yeri (Simteks konfeksiyon / Fason konfeksiyon + firma / Doğrudan sevk), ardından Kesim — Dikim — Kalite iş emri sekmelerini doldurup her sekmede «Sekmeyi onaylıyorum» ile onaylayın. (Eski kayıtlar: kesim + dikim hattı + kalite seviyesi dolu ise geçerli sayılır.)'
-        : '';
-
-    const tabBtn = (id, label) => `<button type="button" onclick="uaSiparisFoySekmeSec('${id}')" class="btn-pro" style="padding:8px 14px;font-size:10px;border-radius:8px;border:1px solid ${sek===id?'transparent':'var(--border)'};background:${sek===id?'var(--accent2)':'var(--surface2)'};color:${sek===id?'#fff':'var(--text2)'};font-family:'DM Sans',sans-serif">${label}</button>`;
-
-    const blokKesim = `
-            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2)">Kesim iş emri hazırlama · ${siparis.sno}</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <button class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="uaKesimYazdir()">🖨️ Yazdır</button>
-                    <button class="btn-pro btn-primary-pro" style="padding:5px 10px;font-size:10px" onclick="uaKesimPdfOlustur()">📄 PDF</button>
-                </div>
-            </div>
-            <div style="font-size:10px;color:var(--text2);background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.24);padding:8px 10px;border-radius:9px;margin-bottom:10px">
-                Nevresim / pastal / farklı kesim gerektiren ürünlerde <b>kesim talimatı</b> yazın; <b>Pastal Aç</b> ile şekil çizin. Satır bazlı %3 fazla varsayılanır.
-            </div>
-            <div style="overflow-x:auto;width:100%;border:1px solid var(--border);border-radius:10px">
-                <table class="dt-table" style="min-width:1100px;width:100%">
-                    <thead>
-                        <tr>
-                            <th>Ürün</th>
-                            <th>Renk</th>
-                            <th>Ebat</th>
-                            <th style="text-align:right">Sip. Adet</th>
-                            <th>Birim uzunluk</th>
-                            <th>Fazla %</th>
-                            <th style="text-align:right">Kesilecek</th>
-                            <th style="min-width:200px">Not / kesim talimatı</th>
-                            <th>Pastal şekli</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows.map((r, i) => `
-                            <tr>
-                                <td>${r.urun_ad}</td>
-                                <td>${r.renk || '—'}</td>
-                                <td>${r.ebat || '—'}</td>
-                                <td style="text-align:right">${r.siparis_adet}</td>
-                                <td><input class="pro-input" style="padding:4px 6px;min-width:72px" value="${pdfEsc(r.birim_uzunluk || '')}" placeholder="2,85 m" oninput="uaKesimRowField(${i},'birim_uzunluk',this.value)"></td>
-                                <td><input class="pro-input" style="padding:4px 6px;width:72px" type="number" step="0.1" value="${r.fazla_pct}" oninput="uaKesimRowField(${i},'fazla_pct',this.value)"></td>
-                                <td style="text-align:right;font-weight:700">${r.kesilecek_adet}</td>
-                                <td><textarea class="pro-input" style="padding:6px 8px;font-size:10px;min-height:52px;resize:vertical;min-width:180px" rows="2" placeholder="Özel kesim, nevresim parça notu..." oninput="uaKesimRowTalimatGuncelle(${i},this.value)">${pdfEsc(r.kesim_talimat || '')}</textarea></td>
-                                <td><button type="button" class="btn-pro ${aktifPastalIndex===i?'btn-primary-pro':'btn-ghost-pro'}" style="padding:4px 8px;font-size:9px;white-space:nowrap" onclick="uaKesimPastalSec(${i})">${aktifPastalIndex===i?'Pastal kapat':'Pastal / şekil'}</button></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            ${aktifPastalRow ? `
-                <div style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface2);margin-top:12px">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-                        <div style="font-size:11px;font-weight:700;color:var(--text)">Pastal çizim · ${aktifPastalRow.urun_ad}</div>
-                        <div style="display:flex;gap:6px">
-                            <button type="button" class="btn-pro btn-ghost-pro" style="padding:6px 10px;font-size:9px" onclick="uaKesimPastalSekilEkle()">＋ Şekil</button>
-                            <button type="button" class="btn-pro btn-ghost-pro" style="padding:6px 10px;font-size:9px" onclick="uaKesimPastalKapat()">Kapat</button>
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
-                        <div><label class="pro-label">Izgara</label><input type="number" class="pro-input" value="${aktifPastalRow.pastal?.grid || 25}" oninput="uaKesimPastalAyar('grid',this.value)"></div>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text2);padding-top:22px"><input type="checkbox" ${aktifPastalRow.pastal?.snap!==false?'checked':''} onchange="uaKesimPastalAyar('snap',this.checked)" style="accent-color:var(--accent2)">Grid'e yapış</label>
-                    </div>
-                    <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-bottom:10px">
-                        ${(aktifPastalRow.pastal?.sekiller || []).map((s, si) => `
-                            <div style="display:grid;grid-template-columns:1fr .7fr .7fr .7fr .7fr auto;gap:6px;padding:6px;border-bottom:1px solid var(--border)">
-                                <select class="pro-input" style="padding:4px 6px" onchange="uaKesimPastalSekilField(${si},'tip',this.value)">
-                                    ${UA_PASTAL_SEKIL_TIPLERI.map(t => `<option value="${t.id}" ${s.tip===t.id?'selected':''}>${t.label}</option>`).join('')}
-                                </select>
-                                <input class="pro-input" style="padding:4px 6px" type="number" placeholder="W" value="${s.w||''}" oninput="uaKesimPastalSekilField(${si},'w',this.value)">
-                                <input class="pro-input" style="padding:4px 6px" type="number" placeholder="H" value="${s.h||''}" oninput="uaKesimPastalSekilField(${si},'h',this.value)">
-                                <input class="pro-input" style="padding:4px 6px" type="number" placeholder="X" value="${s.x||''}" oninput="uaKesimPastalSekilField(${si},'x',this.value)">
-                                <input class="pro-input" style="padding:4px 6px" type="number" placeholder="Y" value="${s.y||''}" oninput="uaKesimPastalSekilField(${si},'y',this.value)">
-                                <button type="button" class="btn-pro btn-danger-pro" style="padding:4px 6px;font-size:9px" onclick="uaKesimPastalSekilSil(${si})">Sil</button>
-                            </div>
-                        `).join('') || `<div style="padding:10px;font-size:10px;color:var(--text3)">Henüz şekil yok — «＋ Şekil» ile ekleyin.</div>`}
-                    </div>
-                    <div id="ua-kesim-pastal-preview">${renderUaPastalSvg(aktifPastalRow.pastal?.sekiller || [], aktifPastalRow.pastal || {}, { tall: true, dragStart: 'uaKesimRowPastalDragStart' })}</div>
-                </div>
-            ` : ''}
-            <div style="margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-                <span style="font-size:10px;color:var(--text3)">Kesim sekmesi ${so.kesim ? '<span class="pill pill-green" style="font-size:9px">Onaylı</span>' : 'onaysız'}</span>
-                <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="uaSiparisSekmeOnayla('kesim')">Sekmeyi onaylıyorum</button>
-            </div>`;
-
-    const blokDikim = `
-            <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:10px">Dikim iş emri · sipariş kalemlerine uygulanır</div>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-width:920px">
-                <div><label class="pro-label">Hat / Bant</label><input class="pro-input" value="${pdfEsc(dik.hat||'')}" placeholder="Hat-A" oninput="uaIsEmriFieldGuncelle('dikim','hat',this.value)"></div>
-                <div><label class="pro-label">Operasyon No</label><input class="pro-input" value="${pdfEsc(dik.operasyon_no||'')}" placeholder="OP-120" oninput="uaIsEmriFieldGuncelle('dikim','operasyon_no',this.value)"></div>
-                <div><label class="pro-label">Hedef Adet</label><input type="number" class="pro-input" value="${pdfEsc(dik.hedef_adet||'')}" placeholder="Toplam" oninput="uaIsEmriFieldGuncelle('dikim','hedef_adet',this.value)"></div>
-                <div><label class="pro-label">Standart Süre (dk/100)</label><input type="number" step="0.1" class="pro-input" value="${pdfEsc(dik.standart_sure||'')}" oninput="uaIsEmriFieldGuncelle('dikim','standart_sure',this.value)"></div>
-                <div><label class="pro-label">Etiket Dikimi (adet)</label><input type="number" class="pro-input" value="${pdfEsc(dik.etiket_dikim_adet||'')}" placeholder="0" oninput="uaIsEmriFieldGuncelle('dikim','etiket_dikim_adet',this.value)"></div>
-                <div><label class="pro-label">Yastık Dikimi (adet)</label><input type="number" class="pro-input" value="${pdfEsc(dik.yastik_dikim_adet||'')}" placeholder="0" oninput="uaIsEmriFieldGuncelle('dikim','yastik_dikim_adet',this.value)"></div>
-                <div style="grid-column:1/-1"><label class="pro-label">Dikim notu / özel işlem</label><textarea class="pro-input" style="min-height:56px;font-size:11px" rows="2" placeholder="Örn. gizli dikiş, lastik kanalı, pay bırakma..." oninput="uaIsEmriFieldGuncelle('dikim','dikim_not',this.value)">${pdfEsc(dik.dikim_not||'')}</textarea></div>
-                <div style="grid-column:1/-1"><label class="pro-label">Dikim operasyon adımları</label><textarea class="pro-input" style="min-height:56px;font-size:11px" rows="2" placeholder="Sıra: etiket dikimi → yastık dikimi → ana dikiş..." oninput="uaIsEmriFieldGuncelle('dikim','operasyon_adimlari',this.value)">${pdfEsc(dik.operasyon_adimlari||'')}</textarea></div>
-            </div>
-            <div style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface2);margin-top:14px;margin-bottom:12px">
-                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
-                    <div style="font-size:11px;font-weight:700;color:var(--text)">Ürün şekli çizimi</div>
-                    <button type="button" class="btn-pro btn-ghost-pro" style="padding:6px 10px;font-size:9px" onclick="uaDikimSekilEkle()">＋ Şekil ekle</button>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;margin-bottom:10px;max-width:480px">
-                    <div><label class="pro-label">Izgara (px)</label><input type="number" class="pro-input" value="${dSek.grid||25}" min="5" max="100" oninput="uaDikimSekilAyar('grid',this.value)"></div>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text2);padding-top:18px"><input type="checkbox" ${dSek.snap!==false?'checked':''} onchange="uaDikimSekilAyar('snap',this.checked)" style="accent-color:var(--accent2)">Grid'e yapış</label>
-                </div>
-                <div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:9px;background:var(--surface);margin-bottom:10px">
-                    ${dSekiller.length ? dSekiller.map((s, si) => `
-                        <div style="display:grid;grid-template-columns:1fr .65fr .65fr .65fr .65fr auto;gap:6px;padding:6px;border-bottom:1px solid var(--border)">
-                            <select class="pro-input" style="padding:4px 6px" onchange="uaDikimSekilField(${si},'tip',this.value)">
-                                ${UA_PASTAL_SEKIL_TIPLERI.map(t => `<option value="${t.id}" ${s.tip===t.id?'selected':''}>${t.label}</option>`).join('')}
-                            </select>
-                            <input class="pro-input" style="padding:4px 6px" type="number" placeholder="W" value="${s.w||''}" oninput="uaDikimSekilField(${si},'w',this.value)">
-                            <input class="pro-input" style="padding:4px 6px" type="number" placeholder="H" value="${s.h||''}" oninput="uaDikimSekilField(${si},'h',this.value)">
-                            <input class="pro-input" style="padding:4px 6px" type="number" placeholder="X" value="${s.x||''}" oninput="uaDikimSekilField(${si},'x',this.value)">
-                            <input class="pro-input" style="padding:4px 6px" type="number" placeholder="Y" value="${s.y||''}" oninput="uaDikimSekilField(${si},'y',this.value)">
-                            <button type="button" class="btn-pro btn-danger-pro" style="padding:4px 6px;font-size:9px" onclick="uaDikimSekilSil(${si})">Sil</button>
-                        </div>
-                    `).join('') : `<div style="padding:12px;font-size:10px;color:var(--text3)">Şekil ekleyerek ürün formunu tarif edin; SVG üzerinde sürükleyerek yerleştirebilirsiniz.</div>`}
-                </div>
-                <div id="ua-dikim-sekil-preview">${renderUaPastalSvg(dSekiller, dSek, { tall: true, dragStart: 'uaDikimSekilStartDrag' })}</div>
-            </div>
-            <div style="margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-                <span style="font-size:10px;color:var(--text3)">Dikim sekmesi ${so.dikim ? '<span class="pill pill-green" style="font-size:9px">Onaylı</span>' : 'onaysız'}</span>
-                <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="uaSiparisSekmeOnayla('dikim')">Sekmeyi onaylıyorum</button>
-            </div>`;
-
-    const koliIcAdet = Math.max(1, parseInt(kp.koli_ic_adet, 10) || 0);
-    const hedefKoliSayisi = koliIcAdet > 0 ? Math.ceil((parseInt(kp.kalite1_adet, 10) || sipTopAdet || 0) / koliIcAdet) : 0;
-    const sevkHedef = parseInt(kp.sevk_hedef_adet, 10) || 0;
-    const blokKalite = `
-            <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:10px">Kalite · paket · kolileme</div>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-width:920px">
-                <div><label class="pro-label">Kontrol Seviyesi</label><input class="pro-input" value="${pdfEsc(kp.kalite_seviye||'')}" placeholder="AQL 2.5" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite_seviye',this.value)"></div>
-                <div><label class="pro-label">Kontrol Oranı (%)</label><input type="number" step="0.1" class="pro-input" value="${pdfEsc(kp.kontrol_oran||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kontrol_oran',this.value)"></div>
-                <div><label class="pro-label">1. Kalite Adet</label><input type="number" class="pro-input" value="${pdfEsc(kp.kalite1_adet||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite1_adet',this.value)"></div>
-                <div><label class="pro-label">2. Kalite Adet</label><input type="number" class="pro-input" value="${pdfEsc(kp.kalite2_adet||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite2_adet',this.value)"></div>
-                <div><label class="pro-label">2. Kalite — Dokuma Hatası</label><input type="number" class="pro-input" value="${pdfEsc(kp.kalite2_dokuma_hatasi||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite2_dokuma_hatasi',this.value)"></div>
-                <div><label class="pro-label">2. Kalite — Leke</label><input type="number" class="pro-input" value="${pdfEsc(kp.kalite2_leke||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite2_leke',this.value)"></div>
-                <div><label class="pro-label">2. Kalite — Yırtık</label><input type="number" class="pro-input" value="${pdfEsc(kp.kalite2_yirtik||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite2_yirtik',this.value)"></div>
-                <div><label class="pro-label">2. Kalite — Diğer Sebepler</label><input class="pro-input" value="${pdfEsc(kp.kalite2_diger||'')}" placeholder="Örn: dikiş kaçığı, ölçü farkı..." oninput="uaIsEmriFieldGuncelle('kalite_paket','kalite2_diger',this.value)"></div>
-                <div><label class="pro-label">Paket Tipi / malzeme</label><input class="pro-input" value="${pdfEsc(kp.paket_tipi||'')}" placeholder="PE torba, karton tabaka..." oninput="uaIsEmriFieldGuncelle('kalite_paket','paket_tipi',this.value)"></div>
-                <div><label class="pro-label">Koli İçi Adet</label><input type="number" class="pro-input" value="${pdfEsc(kp.koli_ic_adet||'')}" oninput="uaIsEmriFieldGuncelle('kalite_paket','koli_ic_adet',this.value)"></div>
-                <div><label class="pro-label">Sevk Hedef Adet</label><input type="number" class="pro-input" value="${pdfEsc(kp.sevk_hedef_adet||'')}" placeholder="${sipTopAdet}" oninput="uaIsEmriFieldGuncelle('kalite_paket','sevk_hedef_adet',this.value)"></div>
-                <div><label class="pro-label">Sevk Notu</label><input class="pro-input" value="${pdfEsc(kp.sevk_notu||'')}" placeholder="Araç / yükleme / sevk planı..." oninput="uaIsEmriFieldGuncelle('kalite_paket','sevk_notu',this.value)"></div>
-                <div style="grid-column:1/-1"><label class="pro-label">İstenilen katlama şekli</label><textarea class="pro-input" style="min-height:52px;font-size:11px" rows="2" placeholder="Örn. üç kat, askılı, düz katlama..." oninput="uaIsEmriFieldGuncelle('kalite_paket','katlama_sekli',this.value)">${pdfEsc(kp.katlama_sekli||'')}</textarea></div>
-                <div style="grid-column:1/-1"><label class="pro-label">Nasıl paketlenecek</label><textarea class="pro-input" style="min-height:52px;font-size:11px" rows="2" placeholder="Sıra, adet / paket, etiket, bant..." oninput="uaIsEmriFieldGuncelle('kalite_paket','paketleme_tarzi',this.value)">${pdfEsc(kp.paketleme_tarzi||'')}</textarea></div>
-                <div style="grid-column:1/-1"><label class="pro-label">Nasıl kolilenecek</label><textarea class="pro-input" style="min-height:52px;font-size:11px" rows="2" placeholder="Koli boyutu, katman, maks. kg, palet..." oninput="uaIsEmriFieldGuncelle('kalite_paket','kolileme_tarzi',this.value)">${pdfEsc(kp.kolileme_tarzi||'')}</textarea></div>
-            </div>
-            <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--surface2)">
-                    <div style="font-size:9px;color:var(--text3)">Otomatik Koli Sayısı</div>
-                    <div style="font-size:17px;font-weight:700;color:var(--text)">${hedefKoliSayisi.toLocaleString('tr-TR')}</div>
-                    <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">Kalite-1 ${((parseInt(kp.kalite1_adet,10)||sipTopAdet)||0).toLocaleString('tr-TR')} / koli içi ${koliIcAdet}</div>
-                </div>
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--surface2)">
-                    <div style="font-size:9px;color:var(--text3)">Koli Etiketi Önizleme</div>
-                    <div style="font-size:10px;font-weight:600;color:var(--text);line-height:1.5">${pdfEsc(siparis.sno||'—')} · ${pdfEsc(siparis.firma||'—')} · ${koliIcAdet} Ad/Koli</div>
-                </div>
-            </div>
-            <div style="margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-                <span style="font-size:10px;color:var(--text3)">Kalite sekmesi ${so.kalite ? '<span class="pill pill-green" style="font-size:9px">Onaylı</span>' : 'onaysız'}</span>
-                <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="uaSiparisSekmeOnayla('kalite')">Sekmeyi onaylıyorum</button>
-            </div>`;
-
-    return `
-    <div class="panel-box" style="overflow:hidden">
-        <div class="panel-head">
-            <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>Sipariş Teknik Föyü — İş Emirleri</span>
-            <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${siparis.sno}</span>
-        </div>
-        ${uyariEksik ? `<div style="margin:12px 14px 0;padding:10px 12px;border-radius:10px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.12);font-size:10px;color:var(--amber-c);font-weight:600">${uyariEksik}</div>` : ''}
-        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--border)">
-            <div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace">Üretim özeti (sipariş)</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--surface2)">
-                    <div style="font-size:9px;color:var(--text3)">Dokuma (adet)</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--text)">${(dokTop.dokAd||0).toLocaleString('tr-TR')}</div>
-                </div>
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--surface2)">
-                    <div style="font-size:9px;color:var(--text3)">Yıkamaya Sevk</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--cyan-c)">${yikSevk.toLocaleString('tr-TR')}</div>
-                </div>
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:var(--surface2)">
-                    <div style="font-size:9px;color:var(--text3)">Yıkamadan Gelen</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--emerald-c)">${yikGel.toLocaleString('tr-TR')}</div>
-                </div>
-                <div style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;background:rgba(245,158,11,0.10)">
-                    <div style="font-size:9px;color:var(--text3)">Yıkamada Bekleyen</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--amber-c)">${yikBek.toLocaleString('tr-TR')}</div>
-                </div>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
-                    <input type="radio" name="ua-tg-yer" ${tg.uretim_yeri==='SIMTEKS_KONF'?'checked':''} onchange="uaTeknikGenelGuncelle('uretim_yeri','SIMTEKS_KONF')" style="accent-color:var(--accent2)"> Simteks konfeksiyon
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
-                    <input type="radio" name="ua-tg-yer" ${tg.uretim_yeri==='FASON_KONF'?'checked':''} onchange="uaTeknikGenelGuncelle('uretim_yeri','FASON_KONF')" style="accent-color:var(--accent2)"> Fason konfeksiyon
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
-                    <input type="radio" name="ua-tg-yer" ${tg.uretim_yeri==='DOGRUDAN_SEVK'?'checked':''} onchange="uaTeknikGenelGuncelle('uretim_yeri','DOGRUDAN_SEVK')" style="accent-color:var(--accent2)"> Doğrudan sevk
-                </label>
-            </div>
-            <div style="${tg.uretim_yeri==='FASON_KONF'?'':'display:none'}">
-                <label class="pro-label">Fason firma / atölye</label>
-                <input class="pro-input" placeholder="Örn. ABC Konfeksiyon" value="${pdfEsc(tg.fason_firma)}"
-                    oninput="uaTeknikGenelGuncelle('fason_firma', this.value, false)">
-            </div>
-            <div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-top:4px">Ağır konfeksiyon (nevresim, bornoz, havlu seti vb.)</div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer">
-                <input type="checkbox" ${tg.agir_konfeksiyon?'checked':''} onchange="uaTeknikGenelGuncelle('agir_konfeksiyon', this.checked)" style="accent-color:var(--amber-c);width:16px;height:16px">
-                Bu sipariş ağır konfeksiyon işi içeriyor
-            </label>
-            <div style="${tg.agir_konfeksiyon?'':'display:none'}">
-                <label class="pro-label">Ağır iş açıklaması</label>
-                <input class="pro-input" placeholder="Hangi ürün grupları / özel işlemler" value="${pdfEsc(tg.agir_aciklama)}"
-                    oninput="uaTeknikGenelGuncelle('agir_aciklama', this.value, false)">
-            </div>
-        </div>
-        <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);background:var(--surface2)">
-            ${tabBtn('KESIM','✂️ Kesim iş emri')}
-            ${tabBtn('DIKIM','🧵 Dikim iş emri')}
-            ${tabBtn('KALITE','🔍 Kalite / paket')}
-        </div>
-        <div style="padding:14px 16px;width:100%;box-sizing:border-box">
-            ${sek === 'DIKIM' ? blokDikim : sek === 'KALITE' ? blokKalite : blokKesim}
-        </div>
-        <div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2)">
-            <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:8px">Kapama Kontrol Özeti (Ürün Ağacı Adımları)</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
-                ${uaKapamaStageRows.map((r, idx) => {
-                    const meta = uaStageMetaById[r.stageId] || { label: r.stageId, ikon: '•' };
-                    const fromLabel = idx === 0 ? 'Sipariş' : ((uaStageMetaById[uaKapamaStageRows[idx - 1].stageId] || {}).label || uaKapamaStageRows[idx - 1].stageId);
-                    const toLabel = meta.label;
-                    const clr = r.diff === 0 ? 'var(--emerald-c)' : 'var(--amber-c)';
-                    return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--surface)">
-                        <div style="font-size:9px;color:var(--text3)">${meta.ikon} ${pdfEsc(fromLabel)} → ${pdfEsc(toLabel)}</div>
-                        <div style="font-size:14px;font-weight:700;color:${clr}">${r.diff >= 0 ? '+' : ''}${r.diff.toLocaleString('tr-TR')}</div>
-                        <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px">${pdfEsc(toLabel)} adet: ${r.qty.toLocaleString('tr-TR')}</div>
-                    </div>`;
-                }).join('')}
-            </div>
-            <div style="margin-top:8px;font-size:9px;color:var(--text3)">Hedef sevk: ${(sevkHedef||sipTopAdet).toLocaleString('tr-TR')} · Gerçek sevk: ${sevkTop.toLocaleString('tr-TR')} · Fark: ${((sevkTop-(sevkHedef||sipTopAdet))>=0?'+':'') + (sevkTop-(sevkHedef||sipTopAdet)).toLocaleString('tr-TR')}</div>
-        </div>
-    </div>`;
 }
 
 function renderUrunAgaciIcerik() {
@@ -16053,8 +15684,6 @@ function renderUrunAgaciIcerik() {
                 <span style="font-size:10px;color:var(--text3)">${siparis.firma||'—'} · ${kalemler.length} kalem</span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <button onclick="uaSetCalismaModu('URUN')" class="btn-pro ${uaCalismaModu==='URUN'?'btn-primary-pro':'btn-ghost-pro'}" style="padding:5px 10px;font-size:10px">Ürün Ağacı</button>
-                <button onclick="uaSetCalismaModu('SIPARIS')" class="btn-pro ${uaCalismaModu==='SIPARIS'?'btn-primary-pro':'btn-ghost-pro'}" style="padding:5px 10px;font-size:10px">Sipariş Teknik Föyü</button>
                 ${agac.tamamlandi ? `<button onclick="uaAgaciSifirla()" class="btn-pro btn-danger-pro" style="padding:5px 12px;font-size:10px">Sıfırla</button>` : ''}
             </div>
         </div>
@@ -16069,7 +15698,6 @@ function renderUrunAgaciIcerik() {
                     ${uaCalismaModu==='URUN' && kalemler.length ? `<span class="panel-head-action" onclick="uaUygulaSecilenlere()" style="cursor:pointer">Seçilenlere Uygula</span>` : ''}
                 </div>
                 <div>
-                    ${uaCalismaModu==='SIPARIS' ? `<div style="padding:9px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text2);background:rgba(109,113,255,0.08)">Sipariş teknik föyü modu aktif. Kaydettiğiniz föy tüm kalemlere uygulanır.</div>` : `<div style="padding:9px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text2);background:rgba(52,211,153,0.08)">Önce ürün ağacını tamamlayın, sonra sipariş teknik föyüne geçin.</div>`}
                     ${uaCalismaModu==='URUN' && kalemler.length ? `
                     <div style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface2)">
                         <button class="btn-pro btn-ghost-pro" style="padding:4px 8px;font-size:9px" onclick="uaKalemSecToplu(true, ${kalemler.length})">Tümünü Seç</button>
@@ -16104,20 +15732,18 @@ function renderUrunAgaciIcerik() {
 
             <!-- Sağ: Ağaç düzenleyici -->
             <div>
-                ${uaCalismaModu==='SIPARIS'
-                    ? renderUaSiparisTeknikFoy(siparis, kalemler)
-                    : (uaSeciliUrunIdx !== null ? renderUaEditor(kalemler[uaSeciliUrunIdx], uaSeciliUrunIdx) : `
+                ${uaSeciliUrunIdx !== null ? renderUaEditor(kalemler[uaSeciliUrunIdx], uaSeciliUrunIdx) : `
                 <div class="empty-pro" style="padding:60px 20px">
                     <div class="empty-pro-icon">←</div>
                     <div class="empty-pro-title">Ürün kalemi seçin</div>
                     <div class="empty-pro-sub">Soldan bir ürün kalemi seçerek ağacı tanımlayın</div>
-                </div>`)}
+                </div>`}
             </div>
 
         </div>
 
         <!-- Kaydet / Tamamla -->
-        ${(uaCalismaModu==='SIPARIS' || uaSeciliUrunIdx !== null) ? `
+        ${uaSeciliUrunIdx !== null ? `
         <div style="display:flex;gap:8px">
             <button onclick="uaKaydet()" class="btn-pro btn-primary-pro" style="flex:1;justify-content:center;padding:10px">
                 Ürün Ağacını Kaydet
@@ -16201,13 +15827,6 @@ function renderUaEditor(urun, idx) {
                         }).join('')}
                     </div>
                 </div>` : ''}
-            </div>
-
-            <div style="padding:14px 16px;border-radius:12px;border:1px solid rgba(109,113,255,0.35);background:rgba(109,113,255,0.07)">
-                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">Sipariş teknik föyü</div>
-                <div style="font-size:11px;color:var(--text3);line-height:1.45;margin-bottom:12px">Kesim, dikim ve kalite / paket detaylarını üstteki <b>Sipariş Teknik Föyü</b> sekmesinde, siparişin tüm kalemleri için tek yerden doldurursunuz.</div>
-                <button type="button" class="btn-pro btn-primary-pro" style="padding:10px 18px;font-size:11px;width:100%;max-width:320px;justify-content:center" onclick="uaSetCalismaModu('SIPARIS')" ${!tumUrunAgaciTamam ? 'disabled' : ''}>Sipariş teknik föyüne geç →</button>
-                ${!tumUrunAgaciTamam ? `<div style="font-size:10px;color:var(--amber-c);margin-top:10px;font-weight:600">Listedeki her ürün kalemi için en az bir üretim aşaması seçilmiş olmalı.</div>` : ''}
             </div>
 
             <!-- KUMAŞ TÜKETİM -->
@@ -16315,381 +15934,6 @@ async function uaIsEmriFieldGuncelle(kart, alan, deger) {
     await uaSetAgac(uaSeciliSiparisId, idx, ua);
 }
 
-async function uaDikimSekilEkle() {
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx) return;
-    ctx.meta.sekiller.push({ tip: 'DIKDORTGEN', w: 140, h: 100, x: 200, y: 160, rot: 0 });
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaDikimSekilSil(si) {
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx) return;
-    ctx.meta.sekiller = (ctx.meta.sekiller || []).filter((_, i) => i !== si);
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaDikimSekilField(si, field, value) {
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx || !ctx.meta.sekiller[si]) return;
-    const sayisal = ['w', 'h', 'x', 'y', 'rot'];
-    ctx.meta.sekiller[si][field] = sayisal.includes(field) ? (parseFloat(value) || 0) : value;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const preview = document.getElementById('ua-dikim-sekil-preview');
-    if (preview) preview.innerHTML = renderUaPastalSvg(ctx.meta.sekiller || [], ctx.meta, { tall: true, dragStart: 'uaDikimSekilStartDrag' });
-}
-
-async function uaDikimSekilAyar(alan, val) {
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx) return;
-    if (alan === 'snap') ctx.meta.snap = !!val;
-    if (alan === 'grid') ctx.meta.grid = Math.max(5, Math.min(100, parseInt(val) || 25));
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaTeknikGenelGuncelle(aln, val, doRefresh) {
-    if (!uaSeciliSiparisId) return;
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    uaEnsureTeknikGenel(ua);
-    if (aln === 'uretim_yeri') ua.teknik_genel.uretim_yeri = uaNormalizeUretimYeri(val);
-    else if (aln === 'fason_firma') ua.teknik_genel.fason_firma = String(val || '');
-    else if (aln === 'agir_konfeksiyon') ua.teknik_genel.agir_konfeksiyon = !!val;
-    else if (aln === 'agir_aciklama') ua.teknik_genel.agir_aciklama = String(val || '');
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-    const needRefresh = doRefresh !== false && (aln === 'uretim_yeri' || aln === 'agir_konfeksiyon');
-    if (needRefresh) {
-        const cont = document.getElementById('ua-content');
-        if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-    }
-}
-
-function uaGetSiparisKesimState() {
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    const isEmri = uaEnsureIsEmri(ua);
-    if (!isEmri.kesim) isEmri.kesim = {};
-    if (!Array.isArray(isEmri.kesim.rows) || !isEmri.kesim.rows.length) {
-        const siparis = (dataCache.siparisler || []).find(s => s.id == uaSeciliSiparisId);
-        const kalemler = uaSiparisKalemleriGetir(siparis);
-        isEmri.kesim.rows = uaBuildKesimRows(kalemler, isEmri.kesim.rows || []);
-    }
-    return { ua, isEmri, kesim: isEmri.kesim };
-}
-
-async function uaKesimRowField(rowIndex, field, value) {
-    if (!uaSeciliSiparisId) return;
-    const siparis = (dataCache.siparisler || []).find(s => s.id == uaSeciliSiparisId);
-    const kalemler = uaSiparisKalemleriGetir(siparis);
-    const { ua, isEmri, kesim } = uaGetSiparisKesimState();
-    const rows = uaBuildKesimRows(kalemler, kesim.rows || []);
-    if (!rows[rowIndex]) return;
-    rows[rowIndex][field] = field === 'fazla_pct' ? (parseFloat(value) || 0) : value;
-    rows[rowIndex].kesilecek_adet = Math.ceil((parseInt(rows[rowIndex].siparis_adet || 0)) * (1 + ((parseFloat(rows[rowIndex].fazla_pct || 0)) / 100)));
-    if (Array.isArray(rows[rowIndex].parcalar)) {
-        rows[rowIndex].parcalar = rows[rowIndex].parcalar.map(p => ({
-            ...p,
-            adet: p.tip === 'YASTIK' ? rows[rowIndex].kesilecek_adet * 2 : rows[rowIndex].kesilecek_adet,
-        }));
-    }
-    kesim.rows = rows;
-    ua.is_emri = isEmri;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-
-async function uaKesimPastalSec(rowIndex) {
-    if (!uaSeciliSiparisId) return;
-    const { ua, isEmri, kesim } = uaGetSiparisKesimState();
-    uaKesimAktifPastalIndex = (uaKesimAktifPastalIndex === rowIndex) ? -1 : rowIndex;
-    if (uaKesimAktifPastalIndex < 0) {
-        const cont = document.getElementById('ua-content');
-        if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-        return;
-    }
-    if (!kesim.rows[rowIndex].pastal) kesim.rows[rowIndex].pastal = { aktif: true, grid: 25, snap: true, sekiller: [] };
-    kesim.rows[rowIndex].pastal.aktif = true;
-    ua.is_emri = isEmri;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaKesimPastalKapat() {
-    uaKesimAktifPastalIndex = -1;
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-function uaGetAktifKesimPastal() {
-    const { ua, kesim } = uaGetSiparisKesimState();
-    const i = Number.isInteger(uaKesimAktifPastalIndex) ? uaKesimAktifPastalIndex : -1;
-    const row = kesim.rows?.[i];
-    if (!row) return null;
-    if (!row.pastal) row.pastal = { aktif: true, grid: 25, snap: true, sekiller: [] };
-    if (!Array.isArray(row.pastal.sekiller)) row.pastal.sekiller = [];
-    return { ua, kesim, row, idx: i };
-}
-
-async function uaKesimPastalAyar(alan, value) {
-    if (!uaSeciliSiparisId) return;
-    const ctx = uaGetAktifKesimPastal();
-    if (!ctx) return;
-    if (alan === 'snap') ctx.row.pastal.snap = !!value;
-    if (alan === 'grid') ctx.row.pastal.grid = Math.max(5, Math.min(100, parseInt(value) || 25));
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaKesimPastalSekilEkle() {
-    const ctx = uaGetAktifKesimPastal();
-    if (!ctx) return;
-    ctx.row.pastal.sekiller.push({ tip: 'DIKDORTGEN', w: 140, h: 80, x: 140, y: 90, rot: 0 });
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-async function uaKesimPastalSekilField(shapeIndex, field, value) {
-    const ctx = uaGetAktifKesimPastal();
-    if (!ctx || !ctx.row.pastal.sekiller?.[shapeIndex]) return;
-    const sayisal = ['w','h','x','y','rot'];
-    ctx.row.pastal.sekiller[shapeIndex][field] = sayisal.includes(field) ? (parseFloat(value) || 0) : value;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const preview = document.getElementById('ua-kesim-pastal-preview');
-    if (preview) preview.innerHTML = renderUaPastalSvg(ctx.row.pastal.sekiller || [], ctx.row.pastal || {}, { tall: true, dragStart: 'uaKesimRowPastalDragStart' });
-}
-
-async function uaKesimPastalSekilSil(shapeIndex) {
-    const ctx = uaGetAktifKesimPastal();
-    if (!ctx) return;
-    ctx.row.pastal.sekiller = (ctx.row.pastal.sekiller || []).filter((_, i) => i !== shapeIndex);
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-    const cont = document.getElementById('ua-content');
-    if (cont) cont.innerHTML = renderUrunAgaciIcerik();
-}
-
-function uaKesimYazdir() {
-    const siparis = (dataCache.siparisler || []).find(s => s.id == uaSeciliSiparisId);
-    if (!siparis) return;
-    const kalemler = uaSiparisKalemleriGetir(siparis);
-    const { kesim } = uaGetSiparisKesimState();
-    const rows = (kesim.rows && kesim.rows.length) ? kesim.rows : uaBuildKesimRows(kalemler, []);
-    const now = new Date().toLocaleString('tr-TR');
-    const satirlar = rows.map((r, i) => `
-        <tr>
-            <td>${i + 1}</td>
-            <td>${r.urun_ad || ''}</td>
-            <td>${r.renk || ''}</td>
-            <td>${r.ebat || ''}</td>
-            <td style="text-align:right">${r.siparis_adet || 0}</td>
-            <td style="text-align:right">${r.kesilecek_adet || 0}</td>
-            <td>${r.birim_uzunluk || ''}</td>
-        </tr>
-    `).join('');
-    const html = `
-    <html><head><meta charset="utf-8"><title>Kesim İş Emri</title>
-    <style>
-      @page { size: A4 landscape; margin: 14mm; }
-      body{font-family:'Segoe UI',Arial,sans-serif;color:#111;margin:0}
-      .page{border:1px solid #d9dee9;border-radius:10px;padding:14px}
-      .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;border-bottom:2px solid #e5e9f2;padding-bottom:10px}
-      .head-left{display:flex;align-items:center;gap:10px}
-      .logo{height:36px;max-width:220px;object-fit:contain}
-      h1{margin:0;font-size:18px;letter-spacing:.04em}
-      .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 12px}
-      .meta .box{border:1px solid #d9dee9;border-radius:7px;padding:6px 8px}
-      .meta .k{font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em}
-      .meta .v{font-size:12px;font-weight:600}
-      table{width:100%;border-collapse:collapse}
-      th,td{border:1px solid #d9d9d9;padding:6px 7px;font-size:11px}
-      th{background:#f4f6fb;text-transform:uppercase;font-size:9px;letter-spacing:.06em}
-      .footer{margin-top:14px;font-size:11px;color:#444;display:flex;justify-content:space-between}
-    </style></head><body>
-      <div class="page">
-        <div class="head">
-          <div class="head-left">
-            <img class="logo" src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks Logo" />
-            <div><h1>KESIM IS EMRI</h1><div style="font-size:11px;color:#667085">Teknik Foy Uretim Dokumani</div></div>
-          </div>
-          <div style="font-size:11px;color:#475467">Tarih: ${now}</div>
-        </div>
-        <div class="meta">
-          <div class="box"><div class="k">Siparis No</div><div class="v">${siparis.sno || '-'}</div></div>
-          <div class="box"><div class="k">Musteri</div><div class="v">${siparis.firma || '-'}</div></div>
-          <div class="box"><div class="k">Toplam Kalem</div><div class="v">${rows.length}</div></div>
-        </div>
-        <table><thead><tr><th>#</th><th>Urun</th><th>Renk</th><th>Ebat</th><th>Siparis Adet</th><th>Kesilecek Adet</th><th>Birim Uzunluk</th></tr></thead><tbody>${satirlar}</tbody></table>
-        <div class="footer"><span>Hazirlayan: __________________</span><span>Onay: __________________</span></div>
-      </div>
-      <script>window.onload=()=>window.print();<\/script>
-    </body></html>`;
-    const w = window.open('', '_blank', 'width=1200,height=900');
-    if (!w) return;
-    w.document.write(html);
-    w.document.close();
-}
-
-function uaKesimPdfOlustur() {
-    if (typeof html2pdf === 'undefined') { alert('PDF kütüphanesi yüklü değil.'); return; }
-    const siparis = (dataCache.siparisler || []).find(s => s.id == uaSeciliSiparisId);
-    if (!siparis) return;
-    const kalemler = uaSiparisKalemleriGetir(siparis);
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    const isEmri = uaEnsureIsEmri(ua);
-    const tg = uaEnsureTeknikGenel(ua);
-    const kesim = isEmri.kesim || {};
-    const dikim = isEmri.dikim || {};
-    const kalite = isEmri.kalite_paket || {};
-    const rows = (kesim.rows && kesim.rows.length) ? kesim.rows : uaBuildKesimRows(kalemler, []);
-    const toplamSiparisAdet = rows.reduce((s, r) => s + (parseInt(r.siparis_adet, 10) || 0), 0);
-    const toplamKesilecek = rows.reduce((s, r) => s + (parseInt(r.kesilecek_adet, 10) || 0), 0);
-    const uretimYeriLabel = tg.uretim_yeri === 'SIMTEKS_KONF'
-        ? 'Simteks konfeksiyon'
-        : (tg.uretim_yeri === 'FASON_KONF' ? 'Fason konfeksiyon' : (tg.uretim_yeri === 'DOGRUDAN_SEVK' ? 'Doğrudan sevk' : '-'));
-    const seciliSekiller = (isEmri.urun_sekli?.sekiller || []).length;
-    const satirNotuAdet = rows.filter(r => String(r.kesim_talimat || '').trim() !== '').length;
-
-    const satirlar = rows.map((r, i) => `
-        <tr>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9;text-align:center">${i + 1}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9">${pdfEsc(r.urun_ad || '')}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9">${pdfEsc(r.renk || '')}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9">${pdfEsc(r.ebat || '')}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9;text-align:right">${pdfEsc(r.siparis_adet || 0)}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9;text-align:right">${pdfEsc(r.kesilecek_adet || 0)}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9">${pdfEsc(r.birim_uzunluk || '')}</td>
-            <td style="padding:6px 7px;border:1px solid #d9d9d9">${pdfEsc(r.kesim_talimat || '-')}</td>
-        </tr>
-    `).join('');
-
-    const keyValRows = (obj, labelMap = {}) => {
-        const entries = Object.entries(obj || {}).filter(([k, v]) => {
-            if (Array.isArray(v)) return false;
-            if (v === null || v === undefined) return false;
-            if (typeof v === 'string' && !v.trim()) return false;
-            return true;
-        });
-        if (!entries.length) {
-            return `<tr><td colspan="2" style="padding:7px;border:1px solid #d9d9d9;color:#667085">Bilgi girilmedi.</td></tr>`;
-        }
-        return entries.map(([k, v]) => `
-            <tr>
-                <td style="padding:7px;border:1px solid #d9d9d9;width:38%;font-weight:600">${pdfEsc(labelMap[k] || k.replace(/_/g, ' '))}</td>
-                <td style="padding:7px;border:1px solid #d9d9d9">${pdfEsc(String(v))}</td>
-            </tr>
-        `).join('');
-    };
-
-    const bodyHtml = `
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Sipariş No</div><div style="font-size:12px;font-weight:600">${pdfEsc(siparis.sno || '-')}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Müşteri</div><div style="font-size:12px;font-weight:600">${pdfEsc(siparis.firma || '-')}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Toplam Kalem</div><div style="font-size:12px;font-weight:600">${rows.length}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Döküman Tarihi</div><div style="font-size:12px;font-weight:600">${pdfEsc(new Date().toLocaleDateString('tr-TR'))}</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Üretim Yeri</div><div style="font-size:12px;font-weight:600">${pdfEsc(uretimYeriLabel)}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Sipariş Adet</div><div style="font-size:12px;font-weight:600">${toplamSiparisAdet.toLocaleString('tr-TR')}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Kesilecek Toplam</div><div style="font-size:12px;font-weight:600">${toplamKesilecek.toLocaleString('tr-TR')}</div></div>
-            <div style="border:1px solid #d9dee9;border-radius:7px;padding:6px 8px"><div style="font-size:10px;color:#667085;text-transform:uppercase;letter-spacing:.06em">Notlu Satır / Şekil</div><div style="font-size:12px;font-weight:600">${satirNotuAdet} / ${seciliSekiller}</div></div>
-        </div>
-        <div style="margin-bottom:12px">
-            <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:#111827">Teknik Genel</div>
-            <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                <tbody>${keyValRows({
-                    uretim_yeri: uretimYeriLabel,
-                    fason_firma: tg.fason_firma || '',
-                    agir_konfeksiyon: tg.agir_konfeksiyon ? 'Evet' : 'Hayır',
-                    agir_aciklama: tg.agir_aciklama || ''
-                }, {
-                    uretim_yeri: 'Üretim Yeri',
-                    fason_firma: 'Fason Firma',
-                    agir_konfeksiyon: 'Ağır Konfeksiyon',
-                    agir_aciklama: 'Ağır İş Açıklaması'
-                })}</tbody>
-            </table>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px;">
-            <thead>
-                <tr style="background:#f4f6fb;">
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:center">#</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:left">Ürün</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:left">Renk</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:left">Ebat</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:right">Sipariş Adet</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:right">Kesilecek Adet</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:left">Birim Uzunluk</th>
-                    <th style="padding:7px;border:1px solid #d9d9d9;text-align:left">Kesim Talimatı / Not</th>
-                </tr>
-            </thead>
-            <tbody>${satirlar}</tbody>
-        </table>
-        <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>
-                <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:#111827">Dikim İş Emri</div>
-                <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                    <tbody>${keyValRows(dikim, {
-                        hat: 'Hat / Bant',
-                        operasyon_no: 'Operasyon No',
-                        hedef_adet: 'Hedef Adet',
-                        standart_sure: 'Standart Süre (dk/100)',
-                        etiket_dikim_adet: 'Etiket Dikim Adet',
-                        yastik_dikim_adet: 'Yastık Dikim Adet',
-                        dikim_not: 'Dikim Notu',
-                        operasyon_adimlari: 'Operasyon Adımları'
-                    })}</tbody>
-                </table>
-            </div>
-            <div>
-                <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:#111827">Kalite / Paket / Sevk</div>
-                <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                    <tbody>${keyValRows(kalite, {
-                        kalite_seviye: 'Kontrol Seviyesi',
-                        kontrol_oran: 'Kontrol Oranı (%)',
-                        kalite1_adet: '1. Kalite Adet',
-                        kalite2_adet: '2. Kalite Adet',
-                        kalite2_dokuma_hatasi: '2. Kalite Dokuma Hatası',
-                        kalite2_leke: '2. Kalite Leke',
-                        kalite2_yirtik: '2. Kalite Yırtık',
-                        kalite2_diger: '2. Kalite Diğer',
-                        paket_tipi: 'Paket Tipi',
-                        koli_ic_adet: 'Koli İçi Adet',
-                        sevk_hedef_adet: 'Sevk Hedef Adet',
-                        sevk_notu: 'Sevk Notu',
-                        katlama_sekli: 'Katlama Şekli',
-                        paketleme_tarzi: 'Paketleme Tarzı',
-                        kolileme_tarzi: 'Kolileme Tarzı'
-                    })}</tbody>
-                </table>
-            </div>
-        </div>
-    `;
-
-    const shell = buildPdfShellElement({
-        title: 'TEKNIK FOY VE IS EMRI',
-        subtitle: 'Kesim + dikim + kalite + notlar',
-        docNo: siparis.sno || 'TEKNIK-FOY',
-        bodyHtml,
-        note: 'Bu dokuman sipariş teknik föyündeki tüm girilen alanları (kesim, dikim, kalite-paket ve açıklamalar/notlar) bir arada sunar.'
-    });
-    const safeNo = String(siparis.sno || 'teknik_foy_is_emri').replace(/[\\/:*?"<>|]/g, '_');
-    html2pdf().set({
-        margin: [0, 0],
-        filename: `${safeNo}_teknik_foy_is_emri.pdf`,
-        image: { type: 'jpeg', quality: 1 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(shell).save();
-}
-
 function uaRefreshPastalPreview(ua) {
     const preview = document.getElementById('ua-pastal-preview');
     if (!preview) return;
@@ -16697,71 +15941,6 @@ function uaRefreshPastalPreview(ua) {
     const pastal = isEmri.pastal || {};
     const sekiller = pastal.sekiller || [];
     preview.innerHTML = renderUaPastalSvg(sekiller, pastal);
-}
-
-
-
-
-
-
-
-
-
-function uaDikimUrunSekliCtx() {
-    if (!uaSeciliSiparisId) return null;
-    const ua = uaGetCacheAgac(uaSeciliSiparisId, 'SIPARIS');
-    const isEmri = uaEnsureIsEmri(ua);
-    return { ua, isEmri, dik: isEmri.dikim, meta: isEmri.dikim.urun_sekli };
-}
-
-function uaKesimRowPastalDragStart(evt, index) {
-    const ctx = uaGetAktifKesimPastal();
-    if (!ctx || !ctx.row?.pastal) return;
-    const pastal = ctx.row.pastal;
-    const sekiller = pastal.sekiller || [];
-    const shape = sekiller[index];
-    if (!shape) return;
-    if (pastal.lock_all || shape.locked) return;
-    const svg = evt.target.closest('svg');
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    uaKesimRowPastalDragState = {
-        index,
-        ua: ctx.ua,
-        rowIndex: ctx.idx,
-        startX: evt.clientX,
-        startY: evt.clientY,
-        shapeStartX: parseFloat(shape.x) || 0,
-        shapeStartY: parseFloat(shape.y) || 0,
-        rectW: rect.width || 1,
-        rectH: rect.height || 1,
-        snap: pastal.snap !== false,
-        grid: Math.max(5, parseInt(pastal.grid) || 25),
-    };
-    evt.preventDefault();
-}
-
-function uaDikimSekilStartDrag(evt, index) {
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx) return;
-    const meta = ctx.meta;
-    const shape = meta.sekiller[index];
-    if (!shape) return;
-    const svg = evt.target.closest('svg');
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    uaDikimSekilDragState = {
-        index,
-        startX: evt.clientX,
-        startY: evt.clientY,
-        shapeStartX: parseFloat(shape.x) || 0,
-        shapeStartY: parseFloat(shape.y) || 0,
-        rectW: rect.width || 1,
-        rectH: rect.height || 1,
-        snap: meta.snap !== false,
-        grid: Math.max(5, parseInt(meta.grid) || 25),
-    };
-    evt.preventDefault();
 }
 
 function uaPastalStartDrag(evt, index) {
@@ -16791,50 +15970,7 @@ function uaPastalStartDrag(evt, index) {
     evt.preventDefault();
 }
 
-async function uaKesimRowPastalDragMove(evt) {
-    const st = uaKesimRowPastalDragState;
-    if (!st) return;
-    const isEmri = uaEnsureIsEmri(st.ua);
-    const row = isEmri.kesim?.rows?.[st.rowIndex];
-    if (!row?.pastal?.sekiller?.[st.index]) return;
-    const s = row.pastal.sekiller[st.index];
-    const dx = ((evt.clientX - st.startX) * 1000) / st.rectW;
-    const dy = ((evt.clientY - st.startY) * 420) / st.rectH;
-    let nx = st.shapeStartX + dx;
-    let ny = st.shapeStartY + dy;
-    if (st.snap) {
-        nx = Math.round(nx / st.grid) * st.grid;
-        ny = Math.round(ny / st.grid) * st.grid;
-    }
-    s.x = Math.max(0, Math.min(960, nx));
-    s.y = Math.max(0, Math.min(380, ny));
-    const preview = document.getElementById('ua-kesim-pastal-preview');
-    if (preview) preview.innerHTML = renderUaPastalSvg(row.pastal.sekiller || [], row.pastal || {}, { tall: true, dragStart: 'uaKesimRowPastalDragStart' });
-}
-
-async function uaDikimSekilDragMove(evt) {
-    const st = uaDikimSekilDragState;
-    if (!st) return;
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx || !ctx.meta.sekiller[st.index]) return;
-    const s = ctx.meta.sekiller[st.index];
-    const dx = ((evt.clientX - st.startX) * 1000) / st.rectW;
-    const dy = ((evt.clientY - st.startY) * 420) / st.rectH;
-    let nx = st.shapeStartX + dx;
-    let ny = st.shapeStartY + dy;
-    if (st.snap) {
-        nx = Math.round(nx / st.grid) * st.grid;
-        ny = Math.round(ny / st.grid) * st.grid;
-    }
-    s.x = Math.max(0, Math.min(960, nx));
-    s.y = Math.max(0, Math.min(380, ny));
-    const preview = document.getElementById('ua-dikim-sekil-preview');
-    if (preview) preview.innerHTML = renderUaPastalSvg(ctx.meta.sekiller || [], ctx.meta, { tall: true, dragStart: 'uaDikimSekilStartDrag' });
-}
-
 async function uaPastalDragMove(evt) {
-    if (uaKesimRowPastalDragState) return uaKesimRowPastalDragMove(evt);
-    if (uaDikimSekilDragState) return uaDikimSekilDragMove(evt);
     if (!uaPastalDragState) return;
     const ua = uaGetCacheAgac(uaSeciliSiparisId, uaSeciliUrunIdx);
     const isEmri = uaEnsureIsEmri(ua);
@@ -16854,24 +15990,7 @@ async function uaPastalDragMove(evt) {
     uaRefreshPastalPreview(ua);
 }
 
-async function uaKesimRowPastalDragEnd() {
-    if (!uaKesimRowPastalDragState) return;
-    const ua = uaKesimRowPastalDragState.ua;
-    uaKesimRowPastalDragState = null;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ua);
-}
-
-async function uaDikimSekilDragEnd() {
-    if (!uaDikimSekilDragState) return;
-    uaDikimSekilDragState = null;
-    const ctx = uaDikimUrunSekliCtx();
-    if (!ctx) return;
-    await uaSetAgac(uaSeciliSiparisId, 'SIPARIS', ctx.ua);
-}
-
 async function uaPastalDragEnd() {
-    if (uaKesimRowPastalDragState) return uaKesimRowPastalDragEnd();
-    if (uaDikimSekilDragState) return uaDikimSekilDragEnd();
     if (!uaPastalDragState) return;
     const ua = uaGetCacheAgac(uaSeciliSiparisId, uaSeciliUrunIdx);
     await uaSetAgac(uaSeciliSiparisId, uaSeciliUrunIdx, ua);
@@ -16896,8 +16015,6 @@ async function uaAksesuarGenelGuncelle(akId, deger) {
     const cont = document.getElementById('ua-content');
     if (cont) cont.innerHTML = renderUrunAgaciIcerik();
 }
-
-
 
 async function uaKaydet() {
     if (!uaSeciliSiparisId) return;
@@ -16999,7 +16116,6 @@ async function uaKaydet() {
     uaSeciliSiparisId = null;
     uaSeciliUrunIdx = null;
     uaCalismaModu = 'URUN';
-    uaKesimAktifPastalIndex = -1;
     await renderUrunAgaci();
 }
 
@@ -17014,8 +16130,6 @@ async function uaAgaciSifirla() {
     uaSeciliUrunIdx = null;
     renderUrunAgaci();
 }
-
-
 
 async function uaUygulaSecilenlere(withConfirm = true) {
     if (!uaSeciliSiparisId || uaSeciliUrunIdx === null || uaSeciliUrunIdx === 'SIPARIS') return;
@@ -17039,6 +16153,8 @@ async function uaUygulaSecilenlere(withConfirm = true) {
 // ── Fason Takip (ürün ağacında FASON_KONF — sipariş bazlı malzeme takibi) ──
 let fasonTakipFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
 let fasonTakipAcikSiparisId = null;
+let dokumaFasonFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
+let _dokumaFasonRenderGen = 0;
 const FASON_TAKIP_KOLON_BG = {
     kalem: 'rgba(99,102,241,0.07)',
     sip: 'rgba(100,116,139,0.09)',
@@ -17686,6 +16802,567 @@ async function renderFasonTakip() {
     fasonTakipListeYenile();
 }
 
+// ── DOKUMA FASON — kendi başına, ayrı tabloda dokuma sipariş kayıtları ──
+// Müşteri siparişinin (`siparisler` tablosu) kalemlerine hiç dokunmaz — ayrı
+// bir tabloda (dokuma_fason_siparisleri) yaşar, bu yüzden hiçbir sipariş
+// listesini/picker'ını etkilemez. Bir dokuma işi ("23.000 metre müslin
+// fason dokunacak" gibi) Dokuma Sipariş Formu'ndan tek kalem olarak girilir.
+let dokumaFasonAcikSiparisId = null;
+let dokumaFasonDraft = {};
+let dokumaSiparisEditId = null;
+let _dokumaFasonYuklendi = false;
+
+async function dokumaFasonSiparisleriYukle(force) {
+    if (_dokumaFasonYuklendi && !force) return;
+    try {
+        if (typeof sb === 'undefined' || !sb?.from) return;
+        const { data, error } = await sb.from('dokuma_fason_siparisleri').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        dataCache.dokumaFasonSiparisleri = data || [];
+        _dokumaFasonYuklendi = true;
+    } catch (e) {
+        console.error('dokumaFasonSiparisleriYukle', e);
+        if (!dataCache.dokumaFasonSiparisleri) dataCache.dokumaFasonSiparisleri = [];
+    }
+}
+
+function dokumaFasonKayitlari() {
+    const durumF = dokumaFasonFiltre?.siparisDurum || 'AKTIF';
+    let list = (dataCache.dokumaFasonSiparisleri || []).slice();
+    if (durumF === 'AKTIF') list = list.filter(s => s.durum !== 'TAMAMLANDI');
+    else if (durumF === 'TAMAMLANDI') list = list.filter(s => s.durum === 'TAMAMLANDI');
+    return list.sort((a, b) => {
+        const ta = a.ttarih ? new Date(a.ttarih).getTime() : Infinity;
+        const tb = b.ttarih ? new Date(b.ttarih).getTime() : Infinity;
+        if (ta !== tb) return ta - tb;
+        return String(a.sno || '').localeCompare(String(b.sno || ''), 'tr');
+    });
+}
+
+function dokumaFasonVarsayilan() {
+    return {
+        hasil_giden_iplik_kg: 0,
+        hasil_gelen_iplik_kg: 0,
+        levent_cozulen_m: 0,
+        dokunan_m: 0,
+        dokunan_harcanan_iplik_kg: 0
+    };
+}
+
+/** İplik metre/kg oranı — Ne (İngiliz numarası) ya da Nm (Metrik numara). */
+function dokumaFasonIplikMetrePerKg(sistem, ipNo) {
+    const no = parseFloat(ipNo) || 0;
+    if (no <= 0) return 0;
+    // Ne (İngiliz no): fabrikanın kendi Excel'iyle birebir eşleşen sabit — Gramaj = Sayı*60/İpNo*.../100000
+    // formülünden geriye çözüldü: 1 Ne = 100000/60 ≈ 1666,67 m/kg (ders kitabı 840yd/lb değeri 1693,98 değil).
+    return (String(sistem || 'NE').toUpperCase() === 'NM') ? no * 1000 : no * (100000 / 60);
+}
+
+/** Kumaş metrajı + teknik özelliklerden çözgü/atkı ipliği ihtiyacını hesaplar. */
+function dokumaFasonHesapla(spec) {
+    const metre = parseFloat(spec.metre) || 0;
+    const cozguFireOrani = (parseFloat(spec.cozgu_fire_payi) || 0) / 100;
+    const atkiFireOrani = (parseFloat(spec.atki_fire_payi) || 0) / 100;
+
+    const cozguUzunlukM = metre * (1 + cozguFireOrani);
+    const cozguTel = parseFloat(spec.cozgu_tel_sayisi) || 0;
+    const toplamCozguM = cozguTel * cozguUzunlukM;
+    const cozguMPerKg = dokumaFasonIplikMetrePerKg(spec.ip_no_sistemi, spec.cozgu_ip_no);
+    const cozguKg = cozguMPerKg > 0 ? toplamCozguM / cozguMPerKg : 0;
+
+    const atkiSiklik = parseFloat(spec.atki_sikligi) || 0;
+    const tarakEniM = parseFloat(spec.tarak_eni_m) || 0;
+    const toplamAtkiSayisiHam = atkiSiklik * metre * 100;
+    const toplamAtkiM = toplamAtkiSayisiHam * tarakEniM * (1 + atkiFireOrani);
+    const atkiMPerKg = dokumaFasonIplikMetrePerKg(spec.ip_no_sistemi, spec.atki_ip_no);
+    const atkiKg = atkiMPerKg > 0 ? toplamAtkiM / atkiMPerKg : 0;
+
+    return { cozguUzunlukM, cozguKg, atkiKg, toplamKg: cozguKg + atkiKg };
+}
+
+function dokumaFasonDraftGet(siparisId) {
+    const sid = String(siparisId);
+    if (!dokumaFasonDraft[sid]) {
+        const rec = (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === sid) || {};
+        dokumaFasonDraft[sid] = { ...dokumaFasonVarsayilan(), ...rec };
+    }
+    return dokumaFasonDraft[sid];
+}
+
+function dokumaFasonAlanDegistir(siparisId, alan, val) {
+    const draft = dokumaFasonDraftGet(siparisId);
+    draft[alan] = parseFloat(val) || 0;
+}
+
+function dokumaFasonFiltreGuncelle(key, val) {
+    if (!dokumaFasonFiltre) dokumaFasonFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
+    dokumaFasonFiltre[key] = val;
+    if (key === 'arama') debounce('dokuma-fason-arama', () => dokumaFasonListeYenile(), 200);
+    else dokumaFasonListeYenile();
+}
+
+function dokumaFasonToggleSiparis(siparisId) {
+    const sid = String(siparisId || '');
+    if (!sid) return;
+    dokumaFasonAcikSiparisId = (dokumaFasonAcikSiparisId === sid) ? null : sid;
+    if (dokumaFasonAcikSiparisId) dokumaFasonDraftGet(dokumaFasonAcikSiparisId);
+    dokumaFasonListeYenile();
+}
+
+async function dokumaFasonKaydet(siparisId) {
+    if (!siparisId) return;
+    const draft = dokumaFasonDraftGet(siparisId);
+    const patch = {
+        iplik_ihtiyaci_kg: draft.iplik_ihtiyaci_kg || 0,
+        cozgu_ihtiyaci_m: draft.cozgu_ihtiyaci_m || 0,
+        hasil_giden_iplik_kg: draft.hasil_giden_iplik_kg || 0,
+        hasil_gelen_iplik_kg: draft.hasil_gelen_iplik_kg || 0,
+        levent_cozulen_m: draft.levent_cozulen_m || 0,
+        dokunan_m: draft.dokunan_m || 0,
+        dokunan_harcanan_iplik_kg: draft.dokunan_harcanan_iplik_kg || 0,
+        updated_at: new Date().toISOString()
+    };
+    try {
+        if (typeof sb === 'undefined' || !sb?.from) throw new Error('Bağlantı yok');
+        const { error } = await sb.from('dokuma_fason_siparisleri').update(patch).eq('id', siparisId);
+        if (error) throw error;
+        const idx = (dataCache.dokumaFasonSiparisleri || []).findIndex(s => String(s.id) === String(siparisId));
+        if (idx >= 0) Object.assign(dataCache.dokumaFasonSiparisleri[idx], patch);
+        erpToast('Dokuma bilgileri kaydedildi.', 'success');
+        dokumaFasonListeYenile();
+    } catch (e) {
+        erpToast('Kaydedilemedi: ' + (e?.message || e), 'error');
+    }
+}
+
+function dokumaSiparisYeniAc() {
+    dokumaSiparisEditId = null;
+    setAppMode('DOKUMA_SIPARIS_GIRIS');
+}
+
+function dokumaSiparisDuzenle(siparisId) {
+    dokumaSiparisEditId = String(siparisId);
+    setAppMode('DOKUMA_SIPARIS_GIRIS');
+}
+
+function dokumaFasonDetayHtml(siparis) {
+    const sid = JSON.stringify(String(siparis.id));
+    const r = dokumaFasonDraftGet(siparis.id);
+    const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+    const alan = (key, label, val, renk) => `<div>
+        <label class="pro-label" style="${renk ? `color:${renk}` : ''}">${label}</label>
+        <input type="number" step="0.1" min="0" class="pro-input" value="${val || ''}" onchange="dokumaFasonAlanDegistir(${sid},'${key}',this.value)">
+    </div>`;
+    const tile = (label, val, renk) => `<div class="panel-box" style="padding:10px 12px;text-align:center">
+        <div style="font-size:8px;color:var(--text3)">${label}</div>
+        <div style="font-size:16px;font-weight:700;color:${renk || 'var(--text)'}">${fmt(val)} kg</div>
+    </div>`;
+    const hesapVar = (parseFloat(siparis.cozgu_ipligi_kg) || 0) > 0 || (parseFloat(siparis.atki_ipligi_kg) || 0) > 0;
+    const hasilHedef = parseFloat(siparis.cozgu_ipligi_kg) || 0;
+    const hasilSevk = parseFloat(r.hasil_giden_iplik_kg) || 0;
+    const hasilGelen = parseFloat(r.hasil_gelen_iplik_kg) || 0;
+    const hasilBekleyen = Math.max(0, hasilSevk - hasilGelen);
+    return `<div style="padding:14px 16px;background:rgba(99,102,241,0.04);border-top:2px solid var(--amber-c)" onclick="event.stopPropagation()">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="dokumaFasonKaydet(${sid})">💾 Kaydet</button>
+            <button type="button" class="btn-pro btn-ghost-pro" style="padding:6px 14px;font-size:10px" onclick="dokumaSiparisDuzenle(${sid})">✎ Siparişi düzenle (teknik özellikler)</button>
+        </div>
+        ${hesapVar ? `
+        <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;font-family:'DM Mono',monospace">Hesaplanan ihtiyaç (teknik özelliklerden)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+            <div class="panel-box" style="padding:10px 12px;text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü uzunluğu</div><div style="font-size:16px;font-weight:700;color:var(--text)">${fmt(siparis.cozgu_ihtiyaci_m)} m</div></div>
+            <div class="panel-box" style="padding:10px 12px;text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü ipliği</div><div style="font-size:16px;font-weight:700;color:var(--accent)">${fmt(siparis.cozgu_ipligi_kg)} kg</div></div>
+            <div class="panel-box" style="padding:10px 12px;text-align:center"><div style="font-size:8px;color:var(--text3)">Atkı ipliği</div><div style="font-size:16px;font-weight:700;color:var(--accent)">${fmt(siparis.atki_ipligi_kg)} kg</div></div>
+            <div class="panel-box" style="padding:10px 12px;text-align:center;background:rgba(245,158,11,0.08)"><div style="font-size:8px;color:var(--text3)">Toplam iplik</div><div style="font-size:16px;font-weight:700;color:var(--amber-c)">${fmt((parseFloat(siparis.cozgu_ipligi_kg)||0)+(parseFloat(siparis.atki_ipligi_kg)||0))} kg</div></div>
+        </div>
+        ` : `<div style="padding:10px 12px;border:1px dashed var(--border);border-radius:10px;font-size:10px;color:var(--text3);margin-bottom:16px">Teknik özellikler (sıklık/ip no/tarak eni) girilmemiş — "Siparişi düzenle" ile ekleyin, ihtiyaç otomatik hesaplansın.</div>`}
+        <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;font-family:'DM Mono',monospace">🧶 Haşıl takibi (çözgü ipliği)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+            ${tile('Hedef', hasilHedef, 'var(--accent)')}
+            ${alan('hasil_giden_iplik_kg', 'Haşıla sevk edilen (kg)', r.hasil_giden_iplik_kg, 'var(--amber-c)')}
+            ${alan('hasil_gelen_iplik_kg', 'Haşıldan gelen (kg)', r.hasil_gelen_iplik_kg, 'var(--emerald-c)')}
+            ${tile('Haşılda bekleyen', hasilBekleyen, 'var(--violet-c)')}
+        </div>
+        <div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;font-family:'DM Mono',monospace">🧵 Dokuma ilerlemesi (elle)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+            ${alan('levent_cozulen_m', 'Levent çözülen (m)', r.levent_cozulen_m)}
+            ${alan('dokunan_m', 'Dokunan (m)', r.dokunan_m)}
+            ${alan('dokunan_harcanan_iplik_kg', 'Dokunan için harcanan iplik (kg)', r.dokunan_harcanan_iplik_kg)}
+        </div>
+    </div>`;
+}
+
+function dokumaFasonListeYenile() {
+    if (appMode !== 'DOKUMA_FASON_TAKIP') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const kayitlar = dokumaFasonKayitlari();
+    const f = dokumaFasonFiltre || {};
+    const q = String(f.arama || '').trim().toLocaleLowerCase('tr-TR');
+    const firmaSet = [...new Set(kayitlar.map(s => String(s.dokuma_fason_firma || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const filtreli = kayitlar.filter(s => {
+        if (f.firma && f.firma !== 'HEPSI' && String(s.dokuma_fason_firma || '') !== f.firma) return false;
+        if (!q) return true;
+        const hay = [s.sno, s.hangi_is, s.dokuma_fason_firma, s.kumas_adi, s.notlar].join(' ').toLocaleLowerCase('tr-TR');
+        return hay.includes(q);
+    });
+    const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+    const toplamMetre = filtreli.reduce((a, s) => a + (parseFloat(s.metre) || 0), 0);
+    const listeHtml = filtreli.length ? filtreli.map(s => {
+        const sidAttr = pdfEsc(String(s.id));
+        const acik = String(dokumaFasonAcikSiparisId) === String(s.id);
+        const fasonMi = String(s.dokuma_uretim_yeri || '').toUpperCase() === 'FASON_DOKUMA';
+        return `<div class="panel-box" style="margin-bottom:8px;overflow:hidden;border:1px solid ${acik ? 'rgba(245,158,11,0.45)' : 'var(--border)'}">
+            <div role="button" tabindex="0" data-siparis-id="${sidAttr}" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:${acik ? 'rgba(245,158,11,0.08)' : 'var(--surface)'};user-select:none"
+                onclick="dokumaFasonToggleSiparis(this.getAttribute('data-siparis-id'))">
+                <span style="font-size:14px;color:var(--amber-c);width:20px">${acik ? '▼' : '▶'}</span>
+                <div style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;align-items:center">
+                    <div><div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--accent)">${pdfEsc(s.sno || '—')}</div><div style="font-size:10px;color:var(--text2)">${pdfEsc(s.kumas_adi)}</div></div>
+                    <div style="font-size:10px;font-family:'DM Mono',monospace;font-weight:700">${fmt(s.metre)} m</div>
+                    <div style="font-size:10px;color:var(--amber-c);font-weight:600">${fasonMi ? pdfEsc(s.dokuma_fason_firma || '—') : 'Simteks Dokuma'}</div>
+                    <div style="font-size:10px;color:var(--text2)">${pdfEsc(s.hangi_is || '—')}</div>
+                    <div style="font-size:10px;color:var(--text3)">${s.ttarih ? new Date(s.ttarih).toLocaleDateString('tr-TR') : '—'}</div>
+                </div>
+            </div>
+            ${acik ? dokumaFasonDetayHtml(s) : ''}
+        </div>`;
+    }).join('') : `<div class="empty-pro" style="padding:40px"><div class="empty-pro-icon">🧶</div><div class="empty-pro-title">Dokuma siparişi yok</div><div class="empty-pro-sub">"+ Yeni Dokuma Siparişi" ile ilk kaydı oluşturun.</div></div>`;
+    list.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--amber-c);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+                <div style="font-size:10px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.06em">Dokuma Fason</div>
+                <div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.5">Her satır kendi başına bir dokuma siparişi (tek kalem, metre bazlı) — müşteri sipariş kalemlerinden bağımsız, ayrı tabloda tutulur. Satıra tıklayın: iplik/çözgü/haşıl/levent/dokunan ilerlemesini girin.</div>
+            </div>
+            <button type="button" class="btn-pro btn-primary-pro" style="padding:8px 16px;font-size:11px;white-space:nowrap" onclick="dokumaSiparisYeniAc()">＋ Yeni Dokuma Siparişi</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+            <div class="panel-box" style="padding:12px 14px"><div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">DOKUMA SİPARİŞİ</div><div style="font-size:22px;font-weight:700;color:var(--amber-c);margin-top:4px">${filtreli.length}</div></div>
+            <div class="panel-box" style="padding:12px 14px"><div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">TOPLAM METRE</div><div style="font-size:22px;font-weight:700;color:var(--accent);margin-top:4px">${fmt(toplamMetre)}</div></div>
+        </div>
+        <div class="panel-box" style="padding:12px 16px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <input class="pro-input" placeholder="Ara: sipariş no, kumaş, firma…" value="${pdfEsc(dokumaFasonFiltre?.arama || '')}"
+                    oninput="dokumaFasonFiltreGuncelle('arama', this.value)" style="min-width:200px;flex:1;max-width:320px;padding:6px 10px">
+                <select class="pro-input" onchange="dokumaFasonFiltreGuncelle('firma', this.value)" style="min-width:160px;width:auto;padding:6px 10px">
+                    <option value="HEPSI" ${dokumaFasonFiltre?.firma==='HEPSI'?'selected':''}>Tüm fason firmalar</option>
+                    ${firmaSet.map(fv => `<option value="${pdfEsc(fv)}" ${dokumaFasonFiltre?.firma===fv?'selected':''}>${pdfEsc(fv)}</option>`).join('')}
+                </select>
+                <select class="pro-input" onchange="dokumaFasonFiltreGuncelle('siparisDurum', this.value)" style="min-width:130px;width:auto;padding:6px 10px">
+                    <option value="AKTIF" ${dokumaFasonFiltre?.siparisDurum==='AKTIF'?'selected':''}>Aktif siparişler</option>
+                    <option value="TAMAMLANDI" ${dokumaFasonFiltre?.siparisDurum==='TAMAMLANDI'?'selected':''}>Tamamlanan</option>
+                    <option value="HEPSI" ${dokumaFasonFiltre?.siparisDurum==='HEPSI'?'selected':''}>Tümü</option>
+                </select>
+            </div>
+        </div>
+        ${listeHtml}
+    </div>`;
+}
+
+async function renderDokumaFasonTakip() {
+    if (appMode !== 'DOKUMA_FASON_TAKIP') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    if (!(list.innerHTML || '').trim()) {
+        list.innerHTML = `<div class="panel-box" style="padding:40px 20px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">⏳</div><div style="font-size:13px;font-weight:600">Dokuma fason siparişleri yükleniyor…</div></div>`;
+    }
+    await dokumaFasonSiparisleriYukle();
+    if (appMode !== 'DOKUMA_FASON_TAKIP') return;
+    dokumaFasonListeYenile();
+}
+
+// ── Dokuma Sipariş Formu — yeni dokuma siparişi girişi/düzenlemesi ──
+function dokumaSiparisYeriDegisti() {
+    const fasonSecili = !!document.getElementById('dsp-yer-fason')?.checked;
+    const wrap = document.getElementById('dsp-fason-firma-wrap');
+    if (wrap) wrap.style.display = fasonSecili ? '' : 'none';
+}
+
+function renderDokumaSiparisGiris() {
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const editing = dokumaSiparisEditId ? (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === String(dokumaSiparisEditId)) : null;
+    const fasonMi = String(editing?.dokuma_uretim_yeri || '').toUpperCase() === 'FASON_DOKUMA';
+    list.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;max-width:640px">
+        <div class="panel-box" style="padding:20px">
+            <div style="font-size:9px;font-weight:700;color:var(--amber-c);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-bottom:16px">${editing ? '✎ Dokuma Siparişini Düzenle' : '＋ Yeni Dokuma Siparişi'}</div>
+
+            <div class="field-req" style="margin-bottom:14px">
+                <label class="pro-label" style="color:var(--accent)">KUMAŞ TÜRÜ / AÇIKLAMA <span class="req-star">★</span></label>
+                <input id="dsp-kumas-ad" class="pro-input" placeholder="Örn. 4 Kat Müslin" value="${pdfEsc(editing?.kumas_adi || '')}" autofocus>
+            </div>
+            <div class="field-req" style="margin-bottom:14px">
+                <label class="pro-label" style="color:var(--accent)">TOPLAM METRE İHTİYACI <span class="req-star">★</span></label>
+                <input id="dsp-metre" type="number" min="0" step="0.1" class="pro-input" placeholder="Örn. 23000" value="${editing?.metre || ''}" oninput="dokumaSiparisHesaplaGuncelle()">
+            </div>
+
+            <div style="padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-bottom:14px">
+                <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace;margin-bottom:10px">Teknik özellikler <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">— doğru hesap için gerekli</span></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                    <div><label class="pro-label">Çözgü sıklığı (tel/cm)</label><input id="dsp-cozgu-sikligi" type="number" min="0" step="0.1" class="pro-input" value="${editing?.cozgu_sikligi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Atkı sıklığı (atkı/cm)</label><input id="dsp-atki-sikligi" type="number" min="0" step="0.1" class="pro-input" value="${editing?.atki_sikligi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Çözgü tel sayısı (toplam)</label><input id="dsp-cozgu-tel" type="number" min="0" step="1" class="pro-input" value="${editing?.cozgu_tel_sayisi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Tarak eni / pis kenar (m)</label><input id="dsp-tarak-eni" type="number" min="0" step="0.01" class="pro-input" value="${editing?.tarak_eni_m || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                    <div><label class="pro-label">İplik no sistemi</label>
+                        <select id="dsp-ip-sistemi" class="pro-input" onchange="dokumaSiparisHesaplaGuncelle()">
+                            <option value="NE" ${(editing?.ip_no_sistemi || 'NE') === 'NE' ? 'selected' : ''}>Ne (İngiliz no)</option>
+                            <option value="NM" ${editing?.ip_no_sistemi === 'NM' ? 'selected' : ''}>Nm (Metrik no)</option>
+                        </select>
+                    </div>
+                    <div><label class="pro-label">Çözgü ip no</label><input id="dsp-cozgu-ipno" type="number" min="0" step="1" class="pro-input" value="${editing?.cozgu_ip_no || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Atkı ip no</label><input id="dsp-atki-ipno" type="number" min="0" step="1" class="pro-input" value="${editing?.atki_ip_no || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;max-width:340px">
+                    <div><label class="pro-label">Çözgü firesi (%)</label>
+                        <input id="dsp-cozgu-fire" type="number" min="0" step="0.5" class="pro-input" value="${editing?.cozgu_fire_payi ?? 10}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Atkı firesi (%)</label>
+                        <input id="dsp-atki-fire" type="number" min="0" step="0.5" class="pro-input" value="${editing?.atki_fire_payi ?? 3}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                </div>
+                <div id="dsp-hesap-sonuc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding-top:10px;border-top:1px dashed var(--border)"></div>
+            </div>
+
+            <div style="margin-bottom:14px">
+                <label class="pro-label">DOKUMA YERİ</label>
+                <div style="display:flex;gap:14px;padding-top:6px">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+                        <input type="radio" name="dsp-yer" id="dsp-yer-simteks" ${!fasonMi ? 'checked' : ''} onchange="dokumaSiparisYeriDegisti()" style="accent-color:var(--accent2)"> Simteks Dokuma
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+                        <input type="radio" name="dsp-yer" id="dsp-yer-fason" ${fasonMi ? 'checked' : ''} onchange="dokumaSiparisYeriDegisti()" style="accent-color:var(--accent2)"> Fason Dokuma
+                    </label>
+                </div>
+                <div id="dsp-fason-firma-wrap" style="${fasonMi ? '' : 'display:none'};margin-top:10px">
+                    <label class="pro-label">Fason dokumacı firma</label>
+                    <input id="dsp-fason-firma" class="pro-input" placeholder="Hangi dokumacıda dokunuyor" value="${pdfEsc(editing?.dokuma_fason_firma || '')}">
+                </div>
+            </div>
+            <div style="margin-bottom:14px">
+                <label class="pro-label">HANGİ İŞ / MÜŞTERİ SİPARİŞİ İÇİN</label>
+                <input id="dsp-hangi-is" class="pro-input" placeholder="Örn. SP650 — Dormeo" value="${pdfEsc(editing?.hangi_is || '')}">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+                <div>
+                    <label class="pro-label">SİPARİŞ TARİHİ</label>
+                    <input id="dsp-starih" type="date" class="pro-input" value="${editing?.starih || new Date().toISOString().slice(0, 10)}">
+                </div>
+                <div>
+                    <label class="pro-label" style="color:var(--rose-c)">TERMİN</label>
+                    <input id="dsp-ttarih" type="date" class="pro-input" value="${editing?.ttarih || ''}">
+                </div>
+            </div>
+            <div style="margin-bottom:18px">
+                <label class="pro-label">NOT</label>
+                <textarea id="dsp-not" class="pro-input" rows="2" placeholder="Ek not…">${pdfEsc(editing?.notlar || '')}</textarea>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button type="button" onclick="dokumaSiparisKaydet()" class="btn-pro btn-primary-pro" style="flex:1;justify-content:center;padding:10px">${editing ? 'Güncelle' : 'Kaydet'}</button>
+                <button type="button" onclick="setAppMode('DOKUMA_FASON_TAKIP')" class="btn-pro btn-ghost-pro" style="padding:10px 18px">İptal</button>
+            </div>
+        </div>
+    </div>`;
+    dokumaSiparisHesaplaGuncelle();
+}
+
+function dokumaSiparisFormDegerleriniOku() {
+    return {
+        metre: document.getElementById('dsp-metre')?.value,
+        cozgu_tel_sayisi: document.getElementById('dsp-cozgu-tel')?.value,
+        atki_sikligi: document.getElementById('dsp-atki-sikligi')?.value,
+        tarak_eni_m: document.getElementById('dsp-tarak-eni')?.value,
+        ip_no_sistemi: document.getElementById('dsp-ip-sistemi')?.value,
+        cozgu_ip_no: document.getElementById('dsp-cozgu-ipno')?.value,
+        atki_ip_no: document.getElementById('dsp-atki-ipno')?.value,
+        cozgu_fire_payi: document.getElementById('dsp-cozgu-fire')?.value,
+        atki_fire_payi: document.getElementById('dsp-atki-fire')?.value
+    };
+}
+
+function dokumaSiparisHesaplaGuncelle() {
+    const kutu = document.getElementById('dsp-hesap-sonuc');
+    if (!kutu) return;
+    const spec = dokumaSiparisFormDegerleriniOku();
+    const h = dokumaFasonHesapla(spec);
+    const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+    kutu.innerHTML = `
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü uzunluğu</div><div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(h.cozguUzunlukM)} m</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü ipliği</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${fmt(h.cozguKg)} kg</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Atkı ipliği</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${fmt(h.atkiKg)} kg</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Toplam iplik</div><div style="font-size:15px;font-weight:700;color:var(--amber-c)">${fmt(h.toplamKg)} kg</div></div>
+    `;
+}
+
+async function dokumaSiparisKaydet() {
+    const ad = String(document.getElementById('dsp-kumas-ad')?.value || '').trim();
+    const metre = parseFloat(document.getElementById('dsp-metre')?.value || 0) || 0;
+    if (!ad) { erpToast('Kumaş türü / açıklama girin.', 'error'); return; }
+    if (metre <= 0) { erpToast('Toplam metre 0\'dan büyük olmalı.', 'error'); return; }
+    const fasonMi = !!document.getElementById('dsp-yer-fason')?.checked;
+    const fasonFirma = fasonMi ? String(document.getElementById('dsp-fason-firma')?.value || '').trim() : '';
+    const hangiIs = String(document.getElementById('dsp-hangi-is')?.value || '').trim();
+    const starih = document.getElementById('dsp-starih')?.value || null;
+    const ttarih = document.getElementById('dsp-ttarih')?.value || null;
+    const notVal = String(document.getElementById('dsp-not')?.value || '').trim();
+    const spec = dokumaSiparisFormDegerleriniOku();
+    const hesap = dokumaFasonHesapla({ ...spec, metre });
+
+    const kayit = {
+        kumas_adi: ad,
+        metre,
+        dokuma_uretim_yeri: fasonMi ? 'FASON_DOKUMA' : 'SIMTEKS_DOKUMA',
+        dokuma_fason_firma: fasonFirma,
+        hangi_is: hangiIs,
+        starih,
+        ttarih,
+        cozgu_sikligi: parseFloat(document.getElementById('dsp-cozgu-sikligi')?.value || 0) || 0,
+        atki_sikligi: parseFloat(spec.atki_sikligi) || 0,
+        cozgu_tel_sayisi: parseFloat(spec.cozgu_tel_sayisi) || 0,
+        tarak_eni_m: parseFloat(spec.tarak_eni_m) || 0,
+        ip_no_sistemi: spec.ip_no_sistemi || 'NE',
+        cozgu_ip_no: parseFloat(spec.cozgu_ip_no) || 0,
+        atki_ip_no: parseFloat(spec.atki_ip_no) || 0,
+        cozgu_fire_payi: parseFloat(spec.cozgu_fire_payi) || 0,
+        atki_fire_payi: parseFloat(spec.atki_fire_payi) || 0,
+        cozgu_ihtiyaci_m: hesap.cozguUzunlukM,
+        cozgu_ipligi_kg: hesap.cozguKg,
+        atki_ipligi_kg: hesap.atkiKg,
+        notlar: notVal
+    };
+    try {
+        if (typeof sb === 'undefined' || !sb?.from) throw new Error('Bağlantı yok');
+        if (dokumaSiparisEditId) {
+            kayit.updated_at = new Date().toISOString();
+            const { error } = await sb.from('dokuma_fason_siparisleri').update(kayit).eq('id', dokumaSiparisEditId);
+            if (error) throw error;
+            const idx = (dataCache.dokumaFasonSiparisleri || []).findIndex(s => String(s.id) === String(dokumaSiparisEditId));
+            if (idx >= 0) Object.assign(dataCache.dokumaFasonSiparisleri[idx], kayit);
+            erpToast('Dokuma siparişi güncellendi.', 'success');
+        } else {
+            kayit.durum = 'BEKLEMEDE';
+            kayit.sno = 'DK' + Date.now().toString().slice(-8);
+            const ins = await sb.from('dokuma_fason_siparisleri').insert([kayit]).select('*');
+            if (ins.error) throw ins.error;
+            const newRow = ins.data?.[0];
+            if (!dataCache.dokumaFasonSiparisleri) dataCache.dokumaFasonSiparisleri = [];
+            if (newRow) dataCache.dokumaFasonSiparisleri.unshift(newRow);
+            erpToast('Dokuma siparişi oluşturuldu.', 'success');
+        }
+        dokumaSiparisEditId = null;
+        await setAppMode('DOKUMA_FASON_TAKIP');
+    } catch (e) {
+        erpToast('Kaydedilemedi: ' + (e?.message || e), 'error');
+    }
+}
+
+// ── Haşıl Takip — çözgü ipliğinin haşıllanıp dokumaya hazır hale gelmesi ──
+// Konfeksiyon Yıkama ekranıyla aynı basit desen: sipariş seç, sevk/gelen
+// miktarını gir, bekleyen otomatik hesaplanır. KD_DOKUMA blob'unda saklanır.
+let hasilSeciliSiparisId = null;
+
+async function renderHasilTakip() {
+    if (appMode !== 'HASIL_TAKIP') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const siparisler = (dataCache.siparisler || []).filter(s => s.durum !== 'TAMAMLANDI');
+    if (hasilSeciliSiparisId && !siparisler.some(s => String(s.id) === String(hasilSeciliSiparisId))) {
+        hasilSeciliSiparisId = null;
+    }
+    if (hasilSeciliSiparisId) {
+        try { await sbKdGet(hasilSeciliSiparisId, 'KD_DOKUMA', true); } catch (e) {}
+    }
+    hasilTakipListeYenile(siparisler);
+}
+
+function hasilSelectSiparis(id) {
+    hasilSeciliSiparisId = id || null;
+    renderHasilTakip();
+}
+
+function hasilTakipListeYenile(siparislerParam) {
+    if (appMode !== 'HASIL_TAKIP') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const siparisler = siparislerParam || (dataCache.siparisler || []).filter(s => s.durum !== 'TAMAMLANDI');
+    const seciliSiparis = siparisler.find(s => String(s.id) === String(hasilSeciliSiparisId));
+    const kd = seciliSiparis ? (_kdCache[`KD_DOKUMA_${seciliSiparis.id}`] || {}) : {};
+    const hSevk = parseFloat(kd.hasil_sevk || 0) || 0;
+    const hGel = parseFloat(kd.hasil_gelen || 0) || 0;
+    const hBek = Math.max(0, hSevk - hGel);
+    const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+    const detayHtml = seciliSiparis ? `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div class="panel-box" style="padding:14px 16px;text-align:center">
+                <div style="font-size:8px;color:var(--amber-c);font-family:'DM Mono',monospace;text-transform:uppercase">Haşıla sevk</div>
+                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--amber-c)">${fmt(hSevk)}</div>
+            </div>
+            <div class="panel-box" style="padding:14px 16px;text-align:center">
+                <div style="font-size:8px;color:var(--emerald-c);font-family:'DM Mono',monospace;text-transform:uppercase">Haşıldan gelen</div>
+                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--emerald-c)">${fmt(hGel)}</div>
+            </div>
+            <div class="panel-box" style="padding:14px 16px;text-align:center">
+                <div style="font-size:8px;color:var(--violet-c);font-family:'DM Mono',monospace;text-transform:uppercase">Bekleyen</div>
+                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--violet-c)">${fmt(hBek)}</div>
+            </div>
+        </div>
+        <div class="panel-box" style="padding:16px 20px">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin-bottom:12px">🧶 Haşıl Durumu · ${pdfEsc(seciliSiparis.sno)}</div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+                <input type="checkbox" id="hasil-yapildi" ${kd.hasil_yapildi ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent2)">
+                <span style="font-size:11px;font-weight:700;color:var(--text)">Haşıla gönderildi</span>
+            </label>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+                <div><label class="pro-label">Haşıla sevk (kg/m)</label>
+                    <input id="hasil-sevk" type="number" min="0" step="0.1" class="pro-input" value="${kd.hasil_sevk || ''}"></div>
+                <div><label class="pro-label">Haşıldan gelen (kg/m)</label>
+                    <input id="hasil-gelen" type="number" min="0" step="0.1" class="pro-input" value="${kd.hasil_gelen || ''}"></div>
+            </div>
+            <div style="margin-top:10px"><label class="pro-label">Haşılcı firma (fason ise)</label>
+                <input id="hasil-firma" class="pro-input" placeholder="İç haşıl ise boş bırakın" value="${pdfEsc(kd.hasil_firma || '')}"></div>
+            <div style="margin-top:10px"><label class="pro-label">Not</label>
+                <textarea id="hasil-not" class="pro-input" rows="2" placeholder="Not…">${pdfEsc(kd.hasil_not || '')}</textarea></div>
+            <button onclick="hasilKaydet()" class="btn-pro btn-primary-pro" style="width:100%;justify-content:center;padding:10px;margin-top:14px">💾 HAŞIL BİLGİLERİNİ KAYDET</button>
+        </div>
+    ` : `<div class="empty-pro" style="padding:60px 20px">
+        <div class="empty-pro-icon">🧶</div>
+        <div class="empty-pro-title">Haşıl Takip</div>
+        <div class="empty-pro-sub">Üstten bir sipariş seçin</div>
+    </div>`;
+    list.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--accent2)">
+            <div style="font-size:10px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.06em">Haşıl Takip</div>
+            <div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.5">Çözgü ipliğinin haşıla (kendi bölümünüz ya da fason haşılcı) sevk edilen ve dokumaya hazır dönen miktarını sipariş bazında kaydedin.</div>
+        </div>
+        <div class="panel-box" style="padding:12px 16px">
+            <select id="hasil-siparis-sel" onchange="hasilSelectSiparis(this.value)" class="pro-input" style="min-width:240px;width:auto;padding:6px 10px">
+                <option value="">— Sipariş seçin —</option>
+                ${siparisler.map(s => `<option value="${s.id}" ${hasilSeciliSiparisId==s.id?'selected':''}>${pdfEsc(s.sno)} — ${pdfEsc(s.firma||'?')}</option>`).join('')}
+            </select>
+        </div>
+        ${detayHtml}
+    </div>`;
+}
+
+async function hasilKaydet() {
+    if (!hasilSeciliSiparisId) return;
+    const kd = await sbKdGet(hasilSeciliSiparisId, 'KD_DOKUMA');
+    const yEl = document.getElementById('hasil-yapildi');
+    const sEl = document.getElementById('hasil-sevk');
+    const gEl = document.getElementById('hasil-gelen');
+    const fEl = document.getElementById('hasil-firma');
+    const nEl = document.getElementById('hasil-not');
+    if (yEl) kd.hasil_yapildi = yEl.checked;
+    if (sEl) kd.hasil_sevk = parseFloat(sEl.value || 0) || 0;
+    if (gEl) kd.hasil_gelen = parseFloat(gEl.value || 0) || 0;
+    if (fEl) kd.hasil_firma = String(fEl.value || '').trim();
+    if (nEl) kd.hasil_not = nEl.value;
+    await sbKdSet(hasilSeciliSiparisId, 'KD_DOKUMA', kd);
+    erpToast('Haşıl bilgileri kaydedildi.', 'success');
+    hasilTakipListeYenile();
+}
+
 // ── Yıkama Takip (Terbiye — gönderilen / yıkamada / gelen) ──
 const YIKAMA_KD_TIP = 'KD_YIKAMA';
 /** Gelen > giden sayım farkı için üst tolerans (örn. 0.10 = %10). */
@@ -18231,6 +17908,80 @@ function yikamaTakipDraftAlan(alan, val) {
    görünmüyordu. Aşağıdaki iki fonksiyon mobili de aynı tabloya bağlar. */
 const MOBIL_KY_TABLO = 'konf_kesim_yikama';
 
+/* Kesim adetlerinin asıl kaynağı artık konf_kesim_yikama (Konfeksiyon Panel'in
+   "Ürün Ara" ekranı ve masaüstünün manuel kesimi buraya yazıyor — bkz.
+   konf_kesim_yikama.sql). Mobil bu tabloyu hiç okumuyordu, sadece
+   KD_KONFEKSIYON.kalem_N.kesilen'i gösteriyordu; panelden/masaüstünden
+   girilen güncel kesim mobilde 0/eski görünüyordu. Sipariş açılışında bu
+   tabloyu da çekip konfGetKd() içinde Math.max ile birleştiriyoruz. */
+let _mobilKonfKyCache = { siparisId: null, rows: [], ts: 0 };
+async function mobilKonfKyYukle(siparisId, force) {
+    if (!siparisId) return [];
+    if (!force && _mobilKonfKyCache.siparisId === String(siparisId) && (Date.now() - _mobilKonfKyCache.ts) < 20000) {
+        return _mobilKonfKyCache.rows;
+    }
+    try {
+        const { data, error } = await sb.from(MOBIL_KY_TABLO)
+            .select('kalem_idx,kesilen_adet,aktif')
+            .eq('siparis_id', siparisId)
+            .eq('aktif', true)
+            .limit(500);
+        if (error) throw error;
+        _mobilKonfKyCache = { siparisId: String(siparisId), rows: data || [], ts: Date.now() };
+    } catch (e) { console.warn('mobilKonfKyYukle', e?.message || e); }
+    return _mobilKonfKyCache.rows;
+}
+function mobilKonfKyKesilenToplam(siparisId, kalemIdx) {
+    if (_mobilKonfKyCache.siparisId !== String(siparisId)) return 0;
+    return (_mobilKonfKyCache.rows || [])
+        .filter(r => Number(r.kalem_idx) === Number(kalemIdx))
+        .reduce((s, r) => s + (parseInt(r.kesilen_adet, 10) || 0), 0);
+}
+
+/* Dokuma Depo pipeline + masaüstü "Manuel Kalite" girişleri kalem bazlı
+   kesilen/yıkama-sevk/yıkama-gelen/kalite-geçen/sevk-edilen adetlerini
+   KUMAS_GELIS tipli siparis_akis satırlarının notlar alanında kümülatif tutar
+   (bkz. masaüstü konfPipelineSiparisDurumSenkron, 04-live-sync.js). Masaüstü
+   bu satırları okuyup KD_KONFEKSIYON'a geri yazıyor; mobil hiç okumadığı için
+   o yoldan girilen kalite/kesim/yıkama/sevk mobilde 0/eski görünüyordu.
+   Salt-okunur (DB'ye yazılmaz), kalem eşleştirmesi doğrudan kalem_idx ile —
+   masaüstünün eşleşme bulamayan satırlar için kullandığı bulanık arama
+   burada yok, ama pratikte satırların büyük çoğunluğu kalem_idx taşıyor.
+   Sevk girişi burada değişmiyor — sevkiyat hâlâ yalnızca Sevkiyat ekranından
+   yapılır, bu yalnızca oradan yazılanın Konfeksiyon ekranında da görünmesini
+   sağlar (Math.max ile, asla düşürmeden). */
+let _mobilKonfPipelineCache = { siparisId: null, per: {}, ts: 0 };
+async function mobilKonfPipelineYukle(siparisId, force) {
+    if (!siparisId) return {};
+    if (!force && _mobilKonfPipelineCache.siparisId === String(siparisId) && (Date.now() - _mobilKonfPipelineCache.ts) < 20000) {
+        return _mobilKonfPipelineCache.per;
+    }
+    const per = {};
+    try {
+        const { data, error } = await sb.from('siparis_akis')
+            .select('islem,kalem_ad,miktar,notlar')
+            .eq('siparis_id', siparisId)
+            .eq('islem', 'KUMAS_GELIS')
+            .limit(500);
+        if (error) throw error;
+        (data || []).forEach(r => {
+            let j = {};
+            try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
+            if (j.panel_silindi || j.silindi) return;
+            const ki = parseInt(j.kalem_idx, 10);
+            if (!Number.isFinite(ki) || ki < 0) return;
+            if (!per[ki]) per[ki] = { kesilen: 0, yikSevk: 0, yikGel: 0, kkGec: 0, sevk: 0 };
+            per[ki].kesilen += parseInt(j.kesilen_adet || 0, 10) || 0;
+            per[ki].yikSevk += parseInt((j.yikama_sevk_adet ?? j.yikama_bekleyen_adet) || 0, 10) || 0;
+            per[ki].yikGel += parseInt(j.yikama_gelen_adet || 0, 10) || 0;
+            per[ki].kkGec += parseInt(j.kalite_gecen_adet || 0, 10) || 0;
+            per[ki].sevk += parseInt(j.sevk_edilen_adet || 0, 10) || 0;
+        });
+        _mobilKonfPipelineCache = { siparisId: String(siparisId), per, ts: Date.now() };
+    } catch (e) { console.warn('mobilKonfPipelineYukle', e?.message || e); }
+    return _mobilKonfPipelineCache.per;
+}
+
 /** Yıkamaya gönderim: yıkama önündeki kesim kaydından düşer; kayıt yoksa açar. */
 async function mobilYikamaOrtakGonder(sid, kayit) {
     const adet = Math.round(parseFloat(kayit.miktar_gonder) || 0);
@@ -18761,7 +18512,6 @@ async function renderYikamaTakip() {
     yikamaTakipListeYenile();
 }
 
-
 async function renderKonfeksiyon() {
     const list = document.getElementById('main-list');
     if (!list) return;
@@ -18969,6 +18719,8 @@ async function konfSelectSiparis(id) {
         await sbKdGet(konfeksiyonSiparisId, 'KD_DOKUMA', true);
         await sbKdGet(konfeksiyonSiparisId, 'KD_URUN_AGACI', true);
         await konfLoadIslemLog(konfeksiyonSiparisId);
+        await mobilKonfKyYukle(konfeksiyonSiparisId, true);
+        await mobilKonfPipelineYukle(konfeksiyonSiparisId, true);
     }
     if (appMode === 'KONFEKSIYON_PLANLAMA') renderKonfeksiyonPlanlama();
     else renderKonfeksiyon();
@@ -19036,7 +18788,40 @@ function konfTab(tab) {
 
 function konfGetKd() {
     if (!konfeksiyonSiparisId) return {};
-    return konfGetKdForSiparis(konfeksiyonSiparisId);
+    const kd = konfGetKdForSiparis(konfeksiyonSiparisId);
+    const sid = String(konfeksiyonSiparisId);
+    const kyVar = _mobilKonfKyCache.siparisId === sid;
+    const pipeVar = _mobilKonfPipelineCache.siparisId === sid;
+    if (!kyVar && !pipeVar) return kd;
+    /* konf_kesim_yikama (kesim) ve KUMAS_GELIS pipeline satırları (kesim/yıkama
+       sevk-gelen/kalite geçen/sevk edilen), bloktaki değerlerden yüksekse
+       gösterimde Math.max ile birleştirilir — bkz. mobilKonfKyYukle /
+       mobilKonfPipelineYukle üstteki notlar. Salt gösterim: sevk girişi hâlâ
+       yalnızca Sevkiyat ekranından yapılır, burada yalnızca görünürlüğü
+       sağlanıyor. Kayıt yolu (konfKaydet) ham bloğu ayrıca okur, bu
+       birleştirmeden etkilenmez — çifte sayım riski yok. */
+    let degisti = false;
+    const merged = { ...kd };
+    konfGetKalemler().forEach((_, i) => {
+        const key = `kalem_${i}`;
+        const satir = { ...(kd[key] || {}) };
+        let satirDegisti = false;
+        const kyKes = kyVar ? mobilKonfKyKesilenToplam(sid, i) : 0;
+        const pipe = pipeVar ? (_mobilKonfPipelineCache.per[i] || {}) : {};
+        [
+            ['kesilen', Math.max(kyKes, pipe.kesilen || 0)],
+            ['yikama_sevk', pipe.yikSevk || 0],
+            ['yikama_gelen', pipe.yikGel || 0],
+            ['kk_gecen', pipe.kkGec || 0],
+            ['sevk_edilen', pipe.sevk || 0],
+            ['sevk_adet', pipe.sevk || 0]
+        ].forEach(([alan, aday]) => {
+            const mevcut = parseInt(satir[alan] || 0, 10) || 0;
+            if (aday > mevcut) { satir[alan] = aday; satirDegisti = true; }
+        });
+        if (satirDegisti) { merged[key] = satir; degisti = true; }
+    });
+    return degisti ? merged : kd;
 }
 
 function konfGetKalemler() {
@@ -20687,8 +20472,6 @@ async function siparisKapamaRaporPdf(siparisIdOpt) {
     }).from(shell).save();
 }
 
-
-
 function konfMiktarOku(val, birim) {
     const b = String(birim || 'ADET').toUpperCase();
     if (b === 'MT' || b === 'KG') {
@@ -21215,8 +20998,6 @@ async function konfKapama() {
     renderKonfeksiyon();
 }
 
-
-
 // --- SİDEBAR ---
 function toggleTheme() {
     const isLight = document.body.classList.toggle('light-mode');
@@ -21249,7 +21030,6 @@ function erpApplySkinFromStorage() {
     if (sel) sel.value = v === 'workcube' ? 'workcube' : 'simteks';
 }
 
-
 function toggleChicSub(id) {
     const sub = document.getElementById('sub-' + id);
     if (!sub) return;
@@ -21269,7 +21049,6 @@ function closeAllSubs() {
     document.querySelectorAll('.nav-pro-sub-area').forEach(m => m.classList.remove('open'));
     document.querySelectorAll('.nav-pro-chevron').forEach(c => c.style.transform = '');
 }
-
 
 function erpToggleMobileSidebar(forceOpen) {
     // Mobil ERP'de sidebar her zaman çekmece (geniş tablet dahil)
@@ -21335,7 +21114,6 @@ if (document.readyState === 'loading') {
 } else {
     erpBindMobileNavAutoClose();
 }
-
 
 function erpMobileTabbarSync(mode) {
     const bar = document.getElementById('erp-mobile-tabbar');
@@ -21457,7 +21235,6 @@ function sidebarFilterNav(term) {
     });
     flushLabel();
 }
-
 
 function closeAllFlyouts() {
     document.querySelectorAll('.flyout-prestige').forEach(panel => panel.style.display = 'none');
@@ -21635,7 +21412,10 @@ async function setAppMode(mode, keepEditingId = false) {
         'MAMUL_KART_GIRIS': 'Mamül Stok Kartı',
         'RAPOR': 'Analiz',
         'KONFEKSIYON': 'Konfeksiyon',
-        'FASON_TAKIP': 'Fason Takip',
+        'FASON_TAKIP': 'Konfeksiyon Fason',
+        'DOKUMA_FASON_TAKIP': 'Dokuma Fason',
+        'DOKUMA_SIPARIS_GIRIS': 'Dokuma Siparişi',
+        'HASIL_TAKIP': 'Haşıl Takip',
         'YIKAMA_TAKIP': 'Yıkama',
         'KONFEKSIYON_PLANLAMA': 'Konfeksiyon Planlama',
         'TEKNIK_FOY': 'Teknik Föy / İş Emirleri',
@@ -21662,7 +21442,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
 
     if (toggleArea) {
-        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM', 'MUHASEBE_FIS'];
+        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'HASIL_TAKIP', 'YIKAMA_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM', 'MUHASEBE_FIS'];
         const depoListeModes = ['IPLIK', 'HAM_KUMAS', 'MAMUL_KUMAS', 'KUMAS', 'MAMUL_DEPO'];
         if (staticModes.includes(mode) || depoListeModes.includes(mode) || mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE') {
             toggleArea.style.display = 'none';
@@ -21791,7 +21571,6 @@ async function setAppMode(mode, keepEditingId = false) {
         return;
     }
 
-
     if (mode === 'TEKNIK_FOY') {
         if (formContainer) formContainer.style.display = 'none';
         if (listTitle) listTitle.innerText = "TEKNİK FÖY / İŞ EMRİ HAZIRLAMA";
@@ -21829,8 +21608,29 @@ async function setAppMode(mode, keepEditingId = false) {
 
     if (mode === 'FASON_TAKIP') {
         if (formContainer) formContainer.style.display = 'none';
-        if (listTitle) listTitle.innerText = "FASON TAKİP";
+        if (listTitle) listTitle.innerText = "KONFEKSİYON FASON";
         renderFasonTakip();
+        return;
+    }
+
+    if (mode === 'DOKUMA_FASON_TAKIP') {
+        if (formContainer) formContainer.style.display = 'none';
+        if (listTitle) listTitle.innerText = "DOKUMA FASON";
+        renderDokumaFasonTakip();
+        return;
+    }
+
+    if (mode === 'DOKUMA_SIPARIS_GIRIS') {
+        if (formContainer) formContainer.style.display = 'none';
+        if (listTitle) listTitle.innerText = dokumaSiparisEditId ? "DOKUMA SİPARİŞİNİ DÜZENLE" : "YENİ DOKUMA SİPARİŞİ";
+        renderDokumaSiparisGiris();
+        return;
+    }
+
+    if (mode === 'HASIL_TAKIP') {
+        if (formContainer) formContainer.style.display = 'none';
+        if (listTitle) listTitle.innerText = "HAŞIL TAKİP";
+        renderHasilTakip();
         return;
     }
 
@@ -21921,7 +21721,6 @@ async function setAppMode(mode, keepEditingId = false) {
     else erpStopListeDataPoll();
     try { syncMamulMobilFab(); } catch (e) {}
 }
-
 
 // ============================================================
 // renderInputs — Tüm if/else if zinciri doğru kapatıldı
@@ -22469,7 +22268,6 @@ function renderInputs() {
             });
         }, 100);
     }
-
 
     // --- KUMAŞ DEPO (komuta merkezi) ---
     else if (depoHareketFormGrubu() && kumasFormGrubuMu(depoHareketFormGrubu())) {
@@ -23594,8 +23392,6 @@ function loadData(opts) {
     }
 }
 
-
-
 // ============================================================
 // showKumasGroupDetail — Kumaş stok kodu bazlı hareket detayı
 // ============================================================
@@ -23710,7 +23506,6 @@ function showKumasGroupDetail(idx) {
     if (lu) lu.innerText = 'Sistem';
     if (lt) lt.innerText = `${hareketler.length} hareket`;
 }
-
 
 window.iplikCikisSecim = function(secim) {
     // hidden input'a yaz
@@ -24820,7 +24615,6 @@ function siparisListePanelFiltreAlan(key, value) {
     debounce('siparisFilterInput', () => siparisListeAramaYenile(), 160);
 }
 
-
 function siparisListeSatirHtml(i, idx) {
     const kritik = siparisTerminEnKritikDurum(i);
     const gecikti = kritik === 'gecikti';
@@ -24908,7 +24702,6 @@ function siparisListeAramaYenile() {
     list.insertAdjacentHTML('beforeend', rowsHtml);
     if (scrollHost) scrollHost.scrollTop = prevScroll;
 }
-
 
 function siparisListeToggleSiralama(key) {
     const gecerli = ['sno', 'firma', 'ozet', 'adet', 'termin', 'grup'];
@@ -26371,7 +26164,6 @@ async function siparisNotDurumDegistir(siparisId, notId, yapildi) {
         siparisNotlarPanelYenile(siparisId);
     }
 }
-
 
 async function siparisNotSil(siparisId, notId) {
     if (!erpIsAdmin()) {
@@ -28018,7 +27810,6 @@ async function prepareNewKumasCard(inputVal) {
 
 // --- KUMAŞ ÇIKIŞ KONTROLÜ ---
 
-
 function checkKumasExit(el) {
     const wrap = document.getElementById('wrap-gidecegi-firma');
     if (!wrap) return;
@@ -28263,7 +28054,6 @@ function selectIplikCard(no, cins, lot, marka, kalite, stokKodu) {
         </span>
         <input type="hidden" id="val-stok-kodu" value="${stokKodu || ''}">`;
 }
-
 
 // Arama'dan Kart Girişine yönlendirme
 function openKartGirisFromSearch(tip, arananKod) {
@@ -28717,7 +28507,6 @@ function closeModal(e) {
     if (!e || (e.target && e.target.id === 'detail-modal')) hideDetailModal();
 }
 
-
 function openStokExcelImport() {
     const el = document.getElementById('stok-excel-input');
     if (el) el.click();
@@ -28789,7 +28578,6 @@ function kumasMetaDecode(txt) {
         return null;
     }
 }
-
 
 function kartFotografNormalizeAday(v) {
     if (v == null || v === '') return '';
@@ -29090,7 +28878,6 @@ function mamulStokListeFiltreleriSifirla() {
     mamulStokListeFiltreYenile();
 }
 window.mamulStokListeFiltreleriSifirla = mamulStokListeFiltreleriSifirla;
-
 
 function kumasNotlarOlustur(userNot, meta) {
     const clean = kumasNotlarTemizle(userNot);
@@ -29416,7 +29203,6 @@ function mamulDokumaTalimatDetayPanelHtml(record) {
     </div>`;
 }
 
-
 function mamulVaryantDoluMu(v) {
     if (!v) return false;
     if (String(v.renk_etiket || '').trim()) return true;
@@ -29587,7 +29373,6 @@ function mamulUretimKartiGrupBul(kayit) {
     return mamulKartListeGruplariOlustur(records).find(g => g.anaKod === anaKod) || null;
 }
 
-
 function exportAktifModalExcel() {
     exportAktifSiparisFormuExcel();
 }
@@ -29686,7 +29471,6 @@ function mamulKartListeToggle(anaKod, ev) {
     else window._mamulKartExpanded.add(ana);
     if (typeof loadData === 'function') loadData();
 }
-
 
 function mamulStokListeGrupSatirHtml(grup) {
     const parent = grup.parent?.record;
@@ -30215,8 +29999,6 @@ function siparisFormuExcelBirimNumFmt(birim, mevcutFmt) {
     if (b === 'KG') return '#,##0.00" kg"';
     return '#,##0" adet"';
 }
-
-
 
 function siparisFormuKalemGecerli(k) {
     if (!k) return false;
@@ -31824,7 +31606,6 @@ function erpFotoOnizleGuncelle(src) {
     if (ph) ph.style.display = has ? 'none' : 'flex';
 }
 
-
 function siparisFotoNormalizeItem(x) {
     if (typeof x === 'string') {
         const src = x.trim();
@@ -31856,7 +31637,6 @@ function siparisFotoLsKaydet(siparisId, list) {
         localStorage.setItem(SIPARIS_FOTO_LS_KEY, JSON.stringify(all));
     } catch (e) { console.warn('siparisFotoLsKaydet', e); }
 }
-
 
 function siparisFotoLightboxEnsure() {
     if (document.getElementById('siparis-foto-lightbox')) return;
@@ -32156,7 +31936,6 @@ async function siparisKayitFotolarLazyYukle(siparisId) {
         return kayit;
     }
 }
-
 
 function siparisFotografHtmlGrid(rawOrList, opts) {
     opts = opts || {};
@@ -32818,7 +32597,6 @@ function siparisMamulSeciciSecKayit(kod) {
     siparisMamulSeciciKapat();
 }
 
-
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         const modal = document.getElementById('siparis-mamul-sec-modal');
@@ -33112,7 +32890,6 @@ function selectProductForWeaving(el) {
 
 // --- İŞ AKIŞI ---
 
-
 async function loadWorkflowHistory() {
     const item = currentData[selectedIndex];
     const urunSelect = document.getElementById('wf-urun-secimi');
@@ -33152,7 +32929,6 @@ async function loadWorkflowHistory() {
             </table>`;
     }
 }
-
 
 function showIplikGroupDetailByObject(idx) {
     const group = (window._iplikGroups || currentData)[idx];
@@ -33257,7 +33033,6 @@ function showIplikGroupDetailByObject(idx) {
     document.getElementById('modal-delete-btn').style.display = 'none';
     modal.style.display = 'flex';
 }
-
 
 window.startEditingFromArchive = function(idx) {
     const record = currentData[idx];
@@ -33447,9 +33222,6 @@ window.mamulKartAramaFiltreSifirla = mamulKartAramaFiltreSifirla;
 window.mamulKartListeHizliFiltreSet = mamulKartListeHizliFiltreSet;
 window.mamulKartAramaDetayToggle = mamulKartAramaDetayToggle;
 window.editMamulKartFromListe = editMamulKartFromListe;
-
-
-
 
 /* ══════════════════════════════════════════════════════════════════
  * SEVKİYAT GENEL MERKEZİ — masaüstünden (stok.html) birebir taşındı
@@ -34886,7 +34658,6 @@ function planlamaIhtiyacSatirlariGetir() {
     return satirlar;
 }
 
-
 // ════════════════════════════════════════════════════════
 //  SEVKİYAT — mamul sevk adedi tek giriş ekranı
 // ════════════════════════════════════════════════════════
@@ -35595,7 +35366,6 @@ function sevkiyatMerkezKapat() {
     if (typeof renderSevkiyat === 'function') renderSevkiyat(true);
 }
 try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
-
 
 function depoKomutaGrupEtiket(grup) {
     return { IPLIK: 'İplik', KUMAS: 'Kumaş', MAMUL_DEPO: 'Mamül' }[grup] || grup;

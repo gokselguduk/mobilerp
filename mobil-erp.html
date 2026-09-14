@@ -5318,6 +5318,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
           <div onclick="setAppMode('DOKUMA_TAKIP')" class="nav-pro-sub" id="nav-DOKUMA_TAKIP">Dokuma Takip</div>
           <div onclick="setAppMode('DOKUMA_DEPO')" class="nav-pro-sub" id="nav-DOKUMA_DEPO">Dokuma Depo</div>
           <div onclick="setAppMode('DOKUMA_SEVK_GECMIS')" class="nav-pro-sub" id="nav-DOKUMA_SEVK_GECMIS">Sevk Geçmişi</div>
+          <div onclick="setAppMode('HASIL_TAKIP')" class="nav-pro-sub" id="nav-HASIL_TAKIP">Haşıl Takip</div>
         </div>
 
         <div onclick="toggleChicSub('terbiye')" class="nav-pro" id="nav-terbiye-toggle">
@@ -5340,6 +5341,15 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
           <div onclick="openKonfIslemRaporu('hafta')" class="nav-pro-sub" id="nav-KONF_ISLEM_RAPOR">İşlem Raporu</div>
         </div>
 
+        <div onclick="toggleChicSub('fason')" class="nav-pro" id="nav-fason-toggle">
+          <span class="nav-pro-icon">🤝</span> Fason
+          <span class="nav-pro-chevron" id="chev-fason">▾</span>
+        </div>
+        <div id="sub-fason" class="nav-pro-sub-area">
+          <div onclick="erpToast('Dokuma Fason takibi hazırlanıyor — yakında burada olacak.', 'info', 3000)" class="nav-pro-sub" id="nav-DOKUMA_FASON_TAKIP">Dokuma Fason</div>
+          <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">Konfeksiyon Fason</div>
+        </div>
+
       </div>
     </div>
 
@@ -5352,7 +5362,6 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
     <div id="sub-planlama" class="nav-pro-sub-area">
       <div onclick="setAppMode('PLANLAMA')" class="nav-pro-sub" id="nav-PLANLAMA">Üretim Planlama</div>
       <div onclick="setAppMode('TEKNIK_FOY')" class="nav-pro-sub" id="nav-TEKNIK_FOY">Teknik Föy</div>
-      <div onclick="setAppMode('FASON_TAKIP')" class="nav-pro-sub" id="nav-FASON_TAKIP">Fason Takip</div>
       <div onclick="openKonfeksiyonPlanlama()" class="nav-pro-sub" id="nav-KONFEKSIYON_PLANLAMA">Konfeksiyon Planlama</div>
     </div>
 
@@ -5567,7 +5576,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
     });
   }
 
-  var v = '20260911-e4fb3a';
+  var v = '20260914-3c4ec6';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
