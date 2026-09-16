@@ -3259,6 +3259,29 @@
             border-color: var(--accent);
             color: var(--accent);
         }
+        .sevkiyat-form-modal-x-btn {
+            display: inline-flex;
+            width: 32px;
+            height: 32px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text2);
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 1;
+            padding: 0;
+            cursor: pointer;
+            font-family: system-ui, sans-serif;
+            flex-shrink: 0;
+            transition: border-color 0.12s, color 0.12s;
+        }
+        .sevkiyat-form-modal-x-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
 
         /* Konfeksiyon veri vurgusu */
         .konf-data-banner {
@@ -5438,7 +5461,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
                 <div id="cikis-rapor-ozet" class="hidden mt-6 pt-6 border-t grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"></div>
             </div>
 
-            <section id="form-container" class="main-card" style="margin-bottom:1.5rem">
+            <section id="form-container" class="main-card" style="margin-bottom:1.5rem" onclick="sevkiyatFormModalOverlayClick(event)">
                 <div id="depo-list-only-bar" style="display:none;margin-bottom:1rem;padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
                     <div>
                         <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace">Stok özeti</div>
@@ -5453,6 +5476,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
                         <div class="depo-form-top__sub" id="depo-form-subtitle">Stok hareketi kaydı</div>
                     </div>
                     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <button type="button" id="sevkiyat-form-modal-x" class="sevkiyat-form-modal-x-btn" onclick="sevkiyatMerkezKapat()" title="Kapat" style="display:none">✕</button>
                     <button type="button" id="depo-form-close-btn" class="depo-form-close-btn" onclick="depoHareketFormunuKapat()" style="display:none">◂ Listeye dön</button>
                     <div id="toggle-area" class="depo-type-toggle" style="display:none">
                         <div class="depo-type-toggle__lbl">İşlem tipi</div>
@@ -5576,7 +5600,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
     });
   }
 
-  var v = '20260914-9c3319';
+  var v = '20260916-c94c5c';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
