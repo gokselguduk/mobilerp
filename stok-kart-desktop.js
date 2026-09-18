@@ -5502,6 +5502,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     /**
      * Depo stok hesabı: karttaki açılış lot kg + gerçek giriş/çıkış.
      * Kart lotu, yalnızca [KART_AKTARIM] ile kalıcı depoya yazıldıysa tekrar eklenmez.
+     * Aynı lota sonradan yapılan GİRİŞ (iade, yeni parti, sayım fazlası) kart stoğunun
+     * yerine geçmez, üstüne eklenir — yerine geçseydi lot bakiyesi girişten sonra düşerdi.
      */
     function iplikDepoStokHareketleriHazirla(allRows) {
         const src = allRows || [];
@@ -5511,19 +5513,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             const m = String(r.notlar || '').match(/\[KART_AKTARIM:([^\]]+)\]/);
             if (m) aktarilmis.add(String(m[1]).toLowerCase());
         });
-        /* Manuel girişi olan lot anahtarları — sentetik satır başına tarama yapmamak için */
-        const manuelGirisKeys = new Set();
-        real.forEach(r => {
-            const tip = String(r.islem_turu || '').toUpperCase();
-            if (tip !== 'GİRİŞ' && tip !== 'GIRIS') return;
-            if (!((parseFloat(r.miktar_kg) || 0) > 0)) return;
-            manuelGirisKeys.add(iplikDepoLotAnahtar(r.stok_kodu, r.lot_no, r.marka));
-        });
-        const syn = iplikKartlardanSentetikHareketler().filter(s => {
-            const tag = `${s._kart_id || ''}:${s.lot_no}`.toLowerCase();
-            if (aktarilmis.has(tag)) return false;
-            return !manuelGirisKeys.has(iplikDepoLotAnahtar(s.stok_kodu, s.lot_no, s.marka));
-        });
+        const syn = iplikKartlardanSentetikHareketler().filter(s =>
+            !aktarilmis.has(`${s._kart_id || ''}:${s.lot_no}`.toLowerCase()));
         return real.concat(syn);
     }
     window.iplikDepoStokHareketleriHazirla = iplikDepoStokHareketleriHazirla;

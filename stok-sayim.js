@@ -1,5 +1,5 @@
 /* ============================================================
-   Stok Sayım Modülü  v20260821sayim11
+   Stok Sayım Modülü  v20260918sayim13
    Sayılan adet = yeni stok. Fark hareket olarak yazılır,
    sayım raporu arşivlenir. Kayıt toplu + zaman aşımı ile gider.
    Telefonda kart düzeni; masaüstünde tablo.
@@ -104,13 +104,28 @@ function sayimSayilanAdet() {
 
 /* ---- Mamül / kumaş / iplik satırları ---- */
 
-function sayimMamulSatirlariniOlustur() {
+/**
+ * Mamül mevcut = Mamül Depo listesinin gösterdiği bakiyenin aynısı (depoMamulBakiyeHesapla):
+ * siparişe bağlı hareketler (müşteri siparişinin sevki, siparis_id dolu) Simteks stoğundan
+ * düşmez. 18.09.2026: sayım bunları da düşüyordu — stokta 0 görünen Deve Tabanı İndigo
+ * sayımda −42 görünüyordu (SP658'e sevk edilen 30 + 12 adet).
+ */
+function sayimMamulBakiyeOkuyucu() {
+    if (typeof depoMamulBakiyeHesapla === 'function') {
+        return (kod) => parseInt(depoMamulBakiyeHesapla(kod).adet, 10) || 0;
+    }
     const bakiyeMap = {};
     (dataCache.kumas_stok || []).filter(kumasStokHareketiMamulDepoMu).forEach(r => {
-        const k = (r.stok_kodu || '').trim();
+        if (r.siparis_id != null && r.siparis_id !== '') return;
+        const k = String(r.stok_kodu || '').trim().toUpperCase();
         if (!k) return;
         bakiyeMap[k] = (bakiyeMap[k] || 0) + (parseInt(r.cuval_sayisi || 0, 10) || 0);
     });
+    return (kod) => bakiyeMap[String(kod || '').trim().toUpperCase()] || 0;
+}
+
+function sayimMamulSatirlariniOlustur() {
+    const bakiye = sayimMamulBakiyeOkuyucu();
 
     const kutup = dataCache.kumas_kutuphanesi || [];
     const mamulKartlar = kutup.filter(k => typeof kumasKutuphanesiKartiMamulMu === 'function' && kumasKutuphanesiKartiMamulMu(k));
@@ -139,7 +154,7 @@ function sayimMamulSatirlariniOlustur() {
                 label: detay?.ad || kart.urun_adi || kart.desen_adi || '',
                 renk: detay?.renk || kart.renk || '—',
                 ebat: detay?.ebat || '—',
-                mevcut: bakiyeMap[kod] || 0,
+                mevcut: bakiye(kod),
                 kart
             });
         } else {
@@ -155,7 +170,7 @@ function sayimMamulSatirlariniOlustur() {
                     label: detay?.ad || vKart.urun_adi || kart.urun_adi || '',
                     renk: detay?.renk || vKart.renk || '—',
                     ebat: detay?.ebat || '—',
-                    mevcut: bakiyeMap[vKod] || 0,
+                    mevcut: vKod ? bakiye(vKod) : 0,
                     kart: vKart
                 });
             });
@@ -1428,15 +1443,19 @@ function sayimHareketPayload(f) {
         const kod = f.kayit_kodu || f.stok_kodu;
         const ipKart = typeof iplikKartlariListe === 'function'
             ? iplikKartlariListe().find(k => k.stok_kodu === kod) : null;
+        /* Listenin yer tutucuları (BİLİNMEYEN, ---, LOTSUZ) veritabanına yazılmaz. Lotsuz sayılan
+           satır lotsuz kalır — kartın lot numarası yazılırsa fark başka bir lota düşer. */
+        const gercek = (v, yerTutucu) => (v && v !== yerTutucu ? v : '');
         return {
             ...base,
             stok_kodu: kod,
-            iplik_no: f.iplik_no || ipKart?.iplik_no || '',
+            iplik_no: gercek(f.iplik_no, 'BİLİNMEYEN') || ipKart?.iplik_no || '',
             marka: f.marka || ipKart?.marka || '',
-            cins: f.cins || ipKart?.cins || '',
-            lot_no: f.lot_no && f.lot_no !== 'LOTSUZ' ? f.lot_no : (ipKart?.lot_no || ''),
+            cins: gercek(f.cins, '---') || ipKart?.cins || '',
+            lot_no: gercek(f.lot_no, 'LOTSUZ'),
             miktar_kg: isGiris ? Math.abs(f.fark) : -Math.abs(f.fark),
-            kaynak_birim: 'IPLIK'
+            /* Gerçek iplik depo hareketleriyle aynı kaynak — mobil bakiye 'IPLIK' kaynağını saymaz */
+            kaynak_birim: 'DEPO_HAREKET_IPLIK'
         };
     }
     if (_sayimTip === 'MAMUL') {
@@ -1475,7 +1494,9 @@ async function sayimHareketleriYaz(table, payloads, onIlerleme) {
         const triedCols = new Set();
         let ok = false;
         for (let deneme = 0; deneme < 12 && !ok; deneme++) {
-            const q = sb.from(table).insert(insertPayload).select('id,stok_kodu,created_at,cuval_sayisi,miktar_kg,miktar_mt,islem_turu,kaynak_birim,notlar');
+            /* Geri okunan kolonlar iki tabloda da bulunmalı: iplik_stok'ta miktar_mt yok ve
+               istendiğinde kayıt tümden reddediliyordu (column iplik_stok.miktar_mt does not exist). */
+            const q = sb.from(table).insert(insertPayload).select('id,stok_kodu,created_at,notlar');
             let ins;
             try {
                 ins = typeof erpWithTimeout === 'function'
@@ -1486,6 +1507,9 @@ async function sayimHareketleriYaz(table, payloads, onIlerleme) {
             }
             if (!ins.error) {
                 inserted.push(...(ins.data || []));
+                /* Sonraki parça hata verirse yazılanlar bakiyede görünsün — tekrar denemede
+                   farkları yeniden hesaplanır ve aynı düzeltme ikinci kez yazılmaz. */
+                sayimCacheHareketEkle(table, chunk, ins.data || []);
                 ok = true;
                 break;
             }
@@ -1509,13 +1533,16 @@ async function sayimHareketleriYaz(table, payloads, onIlerleme) {
 
 function sayimCacheHareketEkle(table, payloads, inserted) {
     if (!dataCache[table]) dataCache[table] = [];
-    const byKod = {};
+    /* Aynı iplik kodunun birden çok lotu sayılabilir: satır kod + not ile eşlenir,
+       yalnız koda göre eşlenince hepsi aynı id'yi alıyordu. */
+    const anahtar = (r) => String(r.stok_kodu) + '\n' + String(r.notlar || '');
+    const kuyruk = {};
     (inserted || []).forEach(r => {
-        if (r?.stok_kodu) byKod[String(r.stok_kodu)] = r;
+        if (r?.stok_kodu) (kuyruk[anahtar(r)] = kuyruk[anahtar(r)] || []).push(r);
     });
     const now = new Date().toISOString();
     payloads.forEach(p => {
-        const db = byKod[String(p.stok_kodu)] || {};
+        const db = (kuyruk[anahtar(p)] || []).shift() || {};
         dataCache[table].unshift({
             ...p,
             id: db.id || p.id,
@@ -1557,12 +1584,12 @@ async function stokSayimKaydet() {
         fark_adet: farkN
     };
 
+    const table = _sayimTip === 'IPLIK' ? 'iplik_stok' : 'kumas_stok';
+    let yazilan = 0;
     try {
         if (farkN) {
-            const table = _sayimTip === 'IPLIK' ? 'iplik_stok' : 'kumas_stok';
             const payloads = paket.farklar.map(sayimHareketPayload);
-            const inserted = await sayimHareketleriYaz(table, payloads, (a, b) => btnYazi(`Kaydediliyor ${a}/${b}…`));
-            sayimCacheHareketEkle(table, payloads, inserted);
+            await sayimHareketleriYaz(table, payloads, (a, b) => { yazilan = a; btnYazi(`Kaydediliyor ${a}/${b}…`); });
             if (typeof erpSyncTablesBackground === 'function') erpSyncTablesBackground([table]);
         }
         sayimRaporKaydet(rapor);
@@ -1581,7 +1608,11 @@ async function stokSayimKaydet() {
         renderStokSayim();
     } catch (e) {
         const msg = e && e.message ? e.message : String(e);
-        erpToast('Sayım kaydı tamamlanamadı: ' + msg, 'error', 8000);
+        erpToast(yazilan
+            ? `Sayım yarım kaldı: ${yazilan}/${farkN} kalemin farkı stoğa yazıldı. Tekrar "Sayım tamamlandı"ya basınca yalnız kalanlar yazılır. Hata: ${msg}`
+            : 'Sayım kaydı tamamlanamadı: ' + msg, 'error', 12000);
+        /* Zaman aşımında sunucu yazmış olabilir — tekrar denemeden önce bakiye sunucudan tazelenir */
+        if (farkN && typeof erpSyncTablesBackground === 'function') erpSyncTablesBackground([table]);
         console.error('stokSayimKaydet', e);
     } finally {
         _sayimKaydediliyor = false;
