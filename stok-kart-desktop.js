@@ -15,8 +15,8 @@
     function yeniKartGirisBaslikMetin() {
         if (archiveTab === 'IPLIK') return { etiket: 'iplik stok kartı', buton: '🧶 + Yeni iplik kartı' };
         if (archiveTab === 'MAMUL') return { etiket: 'mamül stok kartı', buton: '🧥 + Yeni mamül kartı' };
-        const hamMu = kumasKartListeFiltre === 'MAMUL' ? 'mamül kumaş' : 'ham kumaş';
-        return { etiket: `${hamMu} stok kartı`, buton: `🏁 + Yeni ${hamMu} kartı` };
+        /* Kumaş kartı tek tür: ham/mamül ayrımı kaldırıldı (bkz. kumasKartListeShellBaslikHtml). */
+        return { etiket: 'kumaş stok kartı', buton: '🏁 + Yeni kumaş kartı' };
     }
     window.yeniKartGirisBaslikMetin = yeniKartGirisBaslikMetin;
 
@@ -4922,16 +4922,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function kumasKartListeShellBaslikHtml(opts) {
         opts = opts || {};
-        const filtre = String(opts.filtre || window.kumasKartListeFiltre || 'HAM').toUpperCase() === 'MAMUL' ? 'MAMUL' : 'HAM';
-        const segBtn = (id, lbl, ikon) => {
-            const on = filtre === id;
-            return `<button type="button" data-kumas-liste-filtre="${id}" onclick="kumasKartListeFiltreSet('${id}')" class="sk-kart-seg-btn${on ? ' is-on' : ''}">${ikon} ${lbl}</button>`;
-        };
-        const segHtml = `<span class="sk-kart-seg__lbl">Tür</span>${segBtn('HAM', 'Ham kumaş', '🧵')}${segBtn('MAMUL', 'Mamül kumaş', '🏁')}`;
+        /* TÜR (ham / mamül kumaş) seçimi KALDIRILDI (kullanıcı, 20.09.2026:
+           "kumaş stok kartları hepsi bir yerde olacak, mamül kumaş ham kumaş aynı olacak,
+            ama mamül ürün deyince o ayrı olacak").
+           Seçim zaten listeyi süzmüyordu (liste ignoreTipFiltre ile kuruluyor) ve kartta
+           ham/mamül bilgisi hiç saklanmıyor: bakılan ana_grup sütunu kumas_kutuphanesi'nde yok.
+           Kumaş kartlarının tamamı tek listede; mamül ÜRÜN kartları ayrı sekmede (MAMÜL ANA KART). */
         return stokKartListeShellBaslikHtml({
             variant: 'kumas',
             grupSayisi: opts.grupSayisi,
-            segHtml,
+            segHtml: '',
         });
     }
     window.kumasKartListeShellBaslikHtml = kumasKartListeShellBaslikHtml;
