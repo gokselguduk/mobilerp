@@ -8162,6 +8162,14 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             const grup = kumasStokListeAnaGrup(g);
             const metaParca = [];
             if (cins && !baslik.toLocaleLowerCase('tr-TR').includes(cins.toLocaleLowerCase('tr-TR'))) metaParca.push(cins);
+            /* Masaüstü tablosunda ayrı sütun olan terbiye / renk / renk kodu telefonda hiç
+               görünmüyordu (kullanıcı, 20.09.2026: "ana programda görülüp mobilde görülmeyen veri").
+               Kart tek satır olduğu için bunlar teknik satırın önüne eklenir. */
+            const terbiyeTur = typeof kumasStokListeTerbiyeTur === 'function' ? kumasStokListeTerbiyeTur(g) : '';
+            const renkAd = typeof kumasStokListeRenkOku === 'function' ? kumasStokListeRenkOku(g) : '';
+            const renkKod = typeof kumasStokListeRenkKoduOku === 'function' ? kumasStokListeRenkKoduOku(g) : '';
+            if (terbiyeTur) metaParca.push(terbiyeTur);
+            if (renkAd || renkKod) metaParca.push([renkAd, renkKod].filter(Boolean).join(' · '));
             metaParca.push(kumasKartTeknikSatir(tek));
             const meta = metaParca.filter(Boolean).join(' · ');
             const qtyCls = mt < 0 ? ' is-neg' : (mt === 0 ? ' is-zero' : '');

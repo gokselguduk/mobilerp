@@ -6484,7 +6484,14 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     });
   }
 
-  var v = '20260920-49d4f2';
+  /* Mobil bayrakları ÇEKİRDEKTEN ÖNCE kurulur: assets/erp-core.js (ana programın kodu)
+     bazı ayarları buna göre seçer (yoklama sıklığı, önbellek ömrü, sorgu zaman aşımı).
+     Aynı bayraklar mobil-app.js'te de var; orası çekirdekten sonra çalışıyor. */
+  window.ERP_MOBIL_LITE = true;
+  window.ERP_MOBIL_NO_CHARTS = true;
+  window.ERP_MOBIL_NO_EXCEL = true;
+
+  var v = '20260920-699117';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
@@ -6492,6 +6499,9 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     ['stok-kart-desktop.js?v=' + v, 'assets/stok-kart-desktop.js?v=' + v, 'mobil/assets/stok-kart-desktop.js?v=' + v],
     ['mamul-depo-toplu.js?v=' + v, 'assets/mamul-depo-toplu.js?v=' + v, 'mobil/assets/mamul-depo-toplu.js?v=' + v],
     ['stok-sayim.js?v=' + v, 'assets/stok-sayim.js?v=' + v, 'mobil/assets/stok-sayim.js?v=' + v],
+    /* ORTAK ÇEKİRDEK — ana programın KENDİ kodu (src/stok/js → npm run build:stok).
+       Masaüstündeki sırayla aynı: ortak dosyalar önce, çekirdek sonra, mobil kabuk en son. */
+    ['erp-core.js?v=' + v, 'assets/erp-core.js?v=' + v, 'mobil/assets/erp-core.js?v=' + v],
     ['mobil-app.js?v=' + v, 'assets/mobil/mobil-app.js?v=' + v, 'mobil/assets/mobil/mobil-app.js?v=' + v]
   ];
 

@@ -1557,6 +1557,12 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
         const grup = detay?.grup || '';
         const meta = [detay?.ebat, detay?.renk, detay?.musteri].filter(Boolean).join(' · ');
         const qtyCls = adet < 0 ? ' is-neg' : (adet === 0 ? ' is-zero' : '');
+        /* Masaüstü tablosundaki "Son hareket" sütunu telefonda hiç görünmüyordu
+           (kullanıcı, 20.09.2026). Kartta ikinci satır olarak gösterilir. */
+        const sonTsK = Math.max(g.son_giris_at || 0, g.son_cikis_at || 0);
+        const sonTxtK = sonTsK
+            ? `Son hareket ${fmtTs(sonTsK)}${g.son_cikis_at === sonTsK && g.son_cikis_firma ? ' · ' + g.son_cikis_firma : ''}`
+            : '';
         return `<article class="ms-row">
             <button type="button" class="ms-row-main" onclick="${rowFn}(${idx})">
                 <div class="ms-row-top">
@@ -1565,6 +1571,7 @@ function mamulStokListeDynamicHtml(grps, ozet, opts) {
                 </div>
                 <div class="ms-name">${esc(ad)}</div>
                 ${meta ? `<div class="ms-meta">${esc(meta)}</div>` : ''}
+                ${sonTxtK ? `<div class="ms-meta ms-meta--son">${esc(sonTxtK)}</div>` : ''}
             </button>
             <div class="ms-qty${qtyCls}">${adet.toLocaleString('tr-TR')}<em>ad</em></div>
         </article>`;
