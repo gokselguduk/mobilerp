@@ -6121,6 +6121,46 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     .stok-kart-grup-bolum .mamul-stok-grup { min-width: 0 !important; width: auto !important; }
     .stok-kart-grup-bolum .mamul-stok-liste-grid { width: 100% !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   TELEFONDA GENİŞ TABLO → KART (kullanıcı, 20.09.2026 görsel çalışması)
+   Sipariş detayı kalem tablosu, Sevkiyat ve Depo hareketleri telefonda
+   ekrana sığmıyordu (1.170–1.655 px) ve yana kaydırmak gerekiyordu.
+   Sütun GİZLENMEZ: her satır "başlık: değer" listesine döner, tüm veri kalır.
+   İşaretlemeyi mobilTabloKartlastir (mobil-app.js) yapar: yalnız sığmayan
+   tabloya .mobil-kart-tablo sınıfı ve hücrelere data-mobil-etiket konur.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 560px) {
+    table.mobil-kart-tablo { display: block !important; width: 100% !important; min-width: 0 !important; border-collapse: separate !important; }
+    table.mobil-kart-tablo thead { display: none !important; }
+    table.mobil-kart-tablo tbody,
+    table.mobil-kart-tablo tfoot { display: block !important; width: 100% !important; }
+    table.mobil-kart-tablo tr {
+        display: block !important; width: auto !important;
+        border: 1px solid var(--border) !important; border-radius: 10px !important;
+        background: var(--surface2) !important; margin: 0 0 8px !important; padding: 6px 10px !important;
+    }
+    table.mobil-kart-tablo td {
+        display: flex !important; justify-content: space-between !important; align-items: baseline !important;
+        gap: 12px !important; width: auto !important; max-width: none !important;
+        padding: 3px 0 !important; border: none !important; text-align: right !important;
+        white-space: normal !important; word-break: break-word !important; font-size: 12px !important;
+    }
+    table.mobil-kart-tablo td + td { border-top: 1px dashed var(--border) !important; }
+    /* Başlık: hücrenin solunda soluk etiket */
+    table.mobil-kart-tablo td[data-mobil-etiket]::before {
+        content: attr(data-mobil-etiket);
+        flex: 0 0 auto; max-width: 48%;
+        text-align: left; color: var(--text3);
+        font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+        font-family: 'DM Mono', monospace;
+    }
+    /* Değeri olmayan alan (—) kartı uzatmasın — işaretlemeyi mobilTabloKartlastir yapar */
+    table.mobil-kart-tablo td:empty,
+    table.mobil-kart-tablo td[data-mobil-bos] { display: none !important; }
+    /* Sarmalayıcıdaki yatay kaydırma artık gereksiz */
+    .mobil-kart-tablo-sar { overflow-x: visible !important; }
+}
 </style>
 </head>
 <body class="erp-mobil-lite">
@@ -6491,7 +6531,7 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
   window.ERP_MOBIL_NO_CHARTS = true;
   window.ERP_MOBIL_NO_EXCEL = true;
 
-  var v = '20260920-699117';
+  var v = '20260924-6342b3';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],

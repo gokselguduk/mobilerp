@@ -5969,7 +5969,13 @@ async function erpAdminOlustur() {
         p_allowed_modes: modlar
     });
     if (error || !data?.ok) {
-        erpAdminDurumYaz('kya-y-durum', 'Hata: ' + (error?.message || data?.err || 'bilinmiyor'), true);
+        /* PGRST203: veritabanında fonksiyonun iki sürümü var (24.09.2026'da yaşandı) —
+           ham İngilizce mesaj yerine ne yapılacağını söyle. */
+        const ikiSurum = error && (error.code === 'PGRST203' || /could not choose the best candidate/i.test(error.message || ''));
+        const mesaj = ikiSurum
+            ? 'Veritabanında kullanıcı oluşturma fonksiyonunun iki sürümü var. Supabase SQL Editor\'da supabase/migrations/erp_admin_user_create_tek_surum.sql çalıştırılmalı.'
+            : (error?.message || data?.err || 'bilinmiyor');
+        erpAdminDurumYaz('kya-y-durum', 'Hata: ' + mesaj, true);
         return;
     }
 

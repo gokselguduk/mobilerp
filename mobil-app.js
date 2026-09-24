@@ -207,6 +207,59 @@ function mobilSayimYazmasiMi(tablo, payload) {
     return satirlar.length > 0 && satirlar.every(r => r && r.islem === 'STOK_SAYIM_RAPOR');
 }
 
+/* ── TELEFONDA GENİŞ TABLO → KART ──────────────────────────────────────────
+   Ana programın tabloları telefonda ekrana sığmıyor (sipariş detayı kalem tablosu
+   1.180 px, Sevkiyat 1.170 px, Depo hareketleri 1.655 px); kullanıcı yana kaydırmak
+   zorunda kalıyordu (20.09.2026 görsel çalışması). Sütun GİZLEMİYORUZ — veri kaybı
+   olmasın diye her hücre "başlık: değer" satırına dönüşür.
+   Burada yalnız etiket işlenir (data-mobil-etiket); görünümü mobil-erp.css yapar.
+   Yalnız ekrana SIĞMAYAN tablolar işaretlenir, dar tablolar tablo olarak kalır. */
+const MOBIL_TABLO_ESIK = 560;
+function mobilTabloKartlastir(kok) {
+    try {
+        if (window.innerWidth > MOBIL_TABLO_ESIK) return;
+        const alan = kok || document;
+        alan.querySelectorAll('table').forEach((t) => {
+            const sar = t.parentElement;
+            const sigmiyor = t.scrollWidth > (sar ? sar.clientWidth : window.innerWidth) + 8;
+            if (!sigmiyor) { t.classList.remove('mobil-kart-tablo'); return; }
+            const basliklar = [...t.querySelectorAll('thead th')].map((th) => th.innerText.trim());
+            if (!basliklar.length) return;
+            t.querySelectorAll('tbody tr').forEach((tr) => {
+                [...tr.children].forEach((td, i) => {
+                    const et = basliklar[i] || '';
+                    if (et && td.getAttribute('data-mobil-etiket') !== et) td.setAttribute('data-mobil-etiket', et);
+                    /* Değeri olmayan alan (—) kartı uzatmasın; dolu bilgiler görünür kalır. */
+                    const bos = !td.querySelector('input,select,button,img,svg')
+                        && ['', '—', '-', '–'].includes(td.innerText.trim());
+                    if (bos) td.setAttribute('data-mobil-bos', '1');
+                    else td.removeAttribute('data-mobil-bos');
+                });
+            });
+            t.classList.add('mobil-kart-tablo');
+        });
+    } catch (e) { console.warn('mobilTabloKartlastir', e && e.message); }
+}
+
+/* Ekran her yeniden çizildiğinde yeni tablolar gelir; izleyici onları da yakalar. */
+function mobilTabloIzleyiciKur() {
+    if (window.__mobilTabloIzleyici || window.innerWidth > MOBIL_TABLO_ESIK) return;
+    let bekleyen = null;
+    const gozlemci = new MutationObserver(() => {
+        clearTimeout(bekleyen);
+        bekleyen = setTimeout(() => mobilTabloKartlastir(document), 120);
+    });
+    const hedefler = ['main-list', 'detail-modal', 'form-container']
+        .map((id) => document.getElementById(id)).filter(Boolean);
+    hedefler.forEach((h) => gozlemci.observe(h, { childList: true, subtree: true }));
+    window.__mobilTabloIzleyici = gozlemci;
+    mobilTabloKartlastir(document);
+}
+try {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mobilTabloIzleyiciKur);
+    else setTimeout(mobilTabloIzleyiciKur, 0);
+} catch (e) {}
+
 function mobilSaltOkunurKapisiKur(client) {
     if (!client || client.__mobilSaltOkunur) return;
     client.__mobilSaltOkunur = true;
@@ -8502,7 +8555,13 @@ async function setAppMode(mode, keepEditingId = false) {
         return;
     }
 
-    const hideFormModes = ['KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'DEPO_HAREKET_LISTE'];
+    /* Mobil SALT OKUNUR: stok ekranlarında işlem girişi formu hiç çizilmez.
+       Eskiden çiziliyordu; telefonda 850 piksellik boş form listenin üstünü kaplıyor,
+       kullanıcı stoğu görmek için ekranı aşağı kaydırmak zorunda kalıyordu
+       (kullanıcı, 20.09.2026: "stoklarda çok rahatsız edici bir görsel var").
+       Tek yazma ekranı STOK_SAYIM'dır ve o yukarıda kendi dalında döner. */
+    const hideFormModes = ['KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'DEPO_HAREKET_LISTE',
+        'IPLIK', 'KUMAS', 'HAM_KUMAS', 'MAMUL_KUMAS', 'MAMUL_DEPO'];
     if (formContainer) {
         formContainer.style.display = hideFormModes.includes(mode) ? 'none' : 'block';
     }

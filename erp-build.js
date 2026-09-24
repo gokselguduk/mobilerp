@@ -6,7 +6,7 @@ window.__ERP_BUILD = {
 
     label: '',
 
-    version: '1.1.18',
+    version: '1.1.20',
 
     supabase: {
 
