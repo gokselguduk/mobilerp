@@ -175,6 +175,8 @@ function erpInitSupabaseClient() {
  * doğru verisini bozabiliyordu.
  * İzin verilen: STOK_SAYIM ekranındayken iplik_stok / kumas_stok hareketi ve
  * siparis_akis'e yalnız sayım raporu (islem = STOK_SAYIM_RAPOR); giriş/oturum RPC'leri.
+ * 24.09.2026 ikinci istisna: SIPARIS_FOTO_EKLE yetkilisi siparişe açıklamalı fotoğraf
+ * ekleyebilir (bkz. mobilFotoYazmasiMi) — sipariş bilgisi yine değiştirilemez.
  */
 const MOBIL_SAYIM_TABLOLARI = ['iplik_stok', 'kumas_stok', 'siparis_akis'];
 const MOBIL_OKUMA_RPC = /^(erp_login|erp_session_me|erp_logout|erp_session_[a-z_]*|erp_admin_users_list)$/;
@@ -199,6 +201,23 @@ function mobilSaltOkunurEngelSonucu(neden) {
     return zincir;
 }
 
+/* İKİNCİ İSTİSNA — siparişe açıklamalı fotoğraf (kullanıcı, 24.09.2026). Üç şartın
+   ÜÇÜ de gerekir: (1) SIPARIS_FOTO_EKLE yetkisi, (2) ortak koddaki siparisFotoEkleKaydet
+   o an çalışıyor (window.__erpSiparisFotoYazma), (3) yazılan şey yalnız fotoğraf:
+   siparis-fotograflar kovasına yükleme ya da siparisler'de yalnız fotoğraf/geçmiş alanları. */
+const MOBIL_FOTO_KOVASI = 'siparis-fotograflar';
+const MOBIL_FOTO_ALANLARI = ['siparis_fotograflar', 'islem_gecmisi', 'updated_by', 'updated_at'];
+function mobilFotoYazmaAcikMi() {
+    return window.__erpSiparisFotoYazma === true
+        && typeof erpUserCan === 'function' && erpUserCan('SIPARIS_FOTO_EKLE');
+}
+function mobilFotoYazmasiMi(tablo, yontem, payload) {
+    if (tablo !== 'siparisler' || yontem !== 'update' || !mobilFotoYazmaAcikMi()) return false;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+    const alanlar = Object.keys(payload);
+    return alanlar.includes('siparis_fotograflar') && alanlar.every(a => MOBIL_FOTO_ALANLARI.includes(a));
+}
+
 function mobilSayimYazmasiMi(tablo, payload) {
     if (typeof appMode === 'undefined' || appMode !== 'STOK_SAYIM') return false;
     if (!MOBIL_SAYIM_TABLOLARI.includes(tablo)) return false;
@@ -220,9 +239,13 @@ function mobilTabloKartlastir(kok) {
         if (window.innerWidth > MOBIL_TABLO_ESIK) return;
         const alan = kok || document;
         alan.querySelectorAll('table').forEach((t) => {
-            const sar = t.parentElement;
-            const sigmiyor = t.scrollWidth > (sar ? sar.clientWidth : window.innerWidth) + 8;
-            if (!sigmiyor) { t.classList.remove('mobil-kart-tablo'); return; }
+            /* Karta dönmüş tablo artık sığar — yeniden ölçüp geri almak "aç-kapa" döngüsü yapıyordu
+               (her çalışmada kart ↔ tablo). Kart kalır; yalnız yeni satırların etiketi tazelenir. */
+            if (!t.classList.contains('mobil-kart-tablo')) {
+                const sar = t.parentElement;
+                const sigmiyor = t.scrollWidth > (sar ? sar.clientWidth : window.innerWidth) + 8;
+                if (!sigmiyor) return;
+            }
             const basliklar = [...t.querySelectorAll('thead th')].map((th) => th.innerText.trim());
             if (!basliklar.length) return;
             t.querySelectorAll('tbody tr').forEach((tr) => {
@@ -241,19 +264,192 @@ function mobilTabloKartlastir(kok) {
     } catch (e) { console.warn('mobilTabloKartlastir', e && e.message); }
 }
 
-/* Ekran her yeniden çizildiğinde yeni tablolar gelir; izleyici onları da yakalar. */
+/* ── TELEFON UYARLAYICISI ──────────────────────────────────────────────────
+   Kullanıcı, 24.09.2026: "mobilde ciddi anlamda telefonda kullanamama sorunu var,
+   sığmıyor, her şey birbirine giriyor — kökten ve sağlam bir çözüm bulmamız lazım".
+   Mobil ana programın ekranlarını çalıştırır; o ekranlar masaüstü için çizilmiş:
+   satır içi 8–9 px yazı (~800 yerde), 6'lı/5'li sabit ızgaralar, iç içe kaydırma
+   kutuları. Ekran ekran yama yerine, telefonda çizilen HER ekran/pencere gerçek
+   ölçüsüne bakılarak uyarlanır — yeni eklenen ekranlar da kendiliğinden uyar.
+   Sıra önemli: önce yazı büyür (genişlikler değişir), sonra ızgara/dizi yeniden
+   dizilir, iç kaydırmalar açılır, en son sığmayan tablo karta döner.
+   Yalnız GÖRÜNÜM değişir (satır içi stil); veri, hesap, olay kodu değişmez.
+   Denetim: scripts/mobil-duzen/ (her ekranı ölçer, çakışma/taşma sıfır olmalı). */
+const MOBIL_TEL_ESIK = 600;       // bu genişlik ve altı telefon sayılır
+const MOBIL_MIN_YAZI = 12;        // normal yazı alt sınırı (px)
+const MOBIL_MIN_ETIKET = 11;      // BÜYÜK HARF / aralıklı etiket alt sınırı (görsel olarak daha iri)
+const MOBIL_MIN_SUTUN = 132;      // ızgara sütunu bundan darsa yeniden dizilir (px)
+
+function mobilTelefonMu() { return window.innerWidth <= MOBIL_TEL_ESIK; }
+const mobilOnemli = (el, ozellik, deger) => el.style.setProperty(ozellik, deger, 'important');
+
+/** Uyarlanacak kökler: ana alan + açık pencereler (sabit konumlu katmanlar). */
+function mobilUyarlaKokleri() {
+    const out = [];
+    const main = document.querySelector('main');
+    if (main) out.push(main);
+    for (const el of document.body.children) {
+        if (el === main || el.contains(main) || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+        const s = getComputedStyle(el);
+        if (s.display !== 'none' && (s.position === 'fixed' || s.position === 'absolute')) out.push(el);
+    }
+    return out;
+}
+
+/** 1) Yazı: okunamayacak kadar küçük yazıyı alt sınıra çeker; sıkışık satır aralığını açar. */
+function mobilYaziBuyut(kok) {
+    const kume = kok.querySelectorAll('*');
+    for (const el of kume) {
+        if (el.dataset.mobY === '1') continue;
+        if (el.closest('svg')) continue;
+        let yaziVar = /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName);
+        if (!yaziVar) {
+            for (const n of el.childNodes) {
+                if (n.nodeType === 3 && n.nodeValue.trim()) { yaziVar = true; break; }
+            }
+        }
+        if (!yaziVar) continue;
+        el.dataset.mobY = '1';
+        const s = getComputedStyle(el);
+        const boy = parseFloat(s.fontSize) || 0;
+        const etiket = s.textTransform === 'uppercase' || parseFloat(s.letterSpacing) >= 0.6;
+        const alt = etiket ? MOBIL_MIN_ETIKET : MOBIL_MIN_YAZI;
+        if (boy && boy < alt) {
+            /* "transition: all" olan düğmelerde boy animasyonla büyür; uyarlayıcının sonraki
+               adımları (ızgara/dizi ölçümü) o an ESKİ boyu görür ve yanlış karar verir.
+               Telefonda üzerine gelme efekti yok — geçişi kapatmak bir şey kaybettirmez. */
+            mobilOnemli(el, 'transition', 'none');
+            mobilOnemli(el, 'font-size', alt + 'px');
+            const la = parseFloat(s.lineHeight);
+            if (s.lineHeight.endsWith('px') && la < alt * 1.15) mobilOnemli(el, 'line-height', '1.25');
+        }
+    }
+}
+
+/** 2) Izgara: sütunları MOBIL_MIN_SUTUN'dan dar düşen ızgarayı sığan sütun sayısına indirir. */
+function mobilIzgaraUyarla(kok) {
+    for (const el of kok.querySelectorAll('*')) {
+        const s = getComputedStyle(el);
+        if (s.display !== 'grid' && s.display !== 'inline-grid') continue;
+        if (s.gridTemplateAreas && s.gridTemplateAreas !== 'none') continue;
+        const izler = s.gridTemplateColumns.split(' ').map(parseFloat).filter((x) => x > 0);
+        if (izler.length < 2) continue;
+        const genislik = el.clientWidth - (parseFloat(s.paddingLeft) || 0) - (parseFloat(s.paddingRight) || 0);
+        const bosluk = parseFloat(s.columnGap) || 0;
+        const dar = Math.min(...izler) < MOBIL_MIN_SUTUN;
+        /* Uyarlandıktan sonra hâlâ içerik taşıyorsa bir sütun daha azalt. */
+        const tasiyor = [...el.children].some((c) => c.scrollWidth > c.clientWidth + 3 && c.clientWidth > 0);
+        if (!dar && !tasiyor) continue;
+        let n = Math.max(1, Math.floor((genislik + bosluk) / (MOBIL_MIN_SUTUN + bosluk)));
+        if (el.dataset.mobIzgara) n = Math.min(n, Math.max(1, Number(el.dataset.mobIzgara) - (tasiyor ? 1 : 0)));
+        if (n >= izler.length && !tasiyor) continue;
+        el.dataset.mobIzgara = String(n);
+        mobilOnemli(el, 'grid-template-columns', `repeat(${n}, minmax(0, 1fr))`);
+        /* Sabit sütun konumu (grid-column: 3) yeni sütun sayısını aşarsa satır başına alınır. */
+        for (const c of el.children) {
+            const gc = getComputedStyle(c).gridColumnStart;
+            if (/^\d+$/.test(gc) && Number(gc) > n) mobilOnemli(c, 'grid-column', 'auto');
+        }
+    }
+}
+
+/** 3) Yatay dizi: içeriği sığmayan tek satırlık esnek diziyi alt satıra kaydırır. */
+function mobilDiziUyarla(kok) {
+    for (const el of kok.querySelectorAll('*')) {
+        const s = getComputedStyle(el);
+        if (s.display !== 'flex' && s.display !== 'inline-flex') continue;
+        if (!s.flexDirection.startsWith('row') || s.flexWrap !== 'nowrap') continue;
+        if (/(auto|scroll)/.test(s.overflowX)) continue;          // bilerek kaydırılan çip şeridi
+        if (el.closest('table')) continue;
+        const tasiyor = el.scrollWidth > el.clientWidth + 2
+            || [...el.children].some((c) => c.children.length === 0 && c.scrollWidth > c.clientWidth + 3 && c.clientWidth > 0);
+        if (!tasiyor) continue;
+        mobilOnemli(el, 'flex-wrap', 'wrap');
+        if (!(parseFloat(s.rowGap) > 0)) mobilOnemli(el, 'row-gap', '6px');
+    }
+}
+
+/** 3b) Kesik yazı: tek satıra sığmayıp "…" ile kesilen bilgi telefonda alt satıra akar
+    (Kumaş kartında "ARMÜR · Tarak eni 270 · Atkı…" yarıdan fazlası görünmüyordu). */
+function mobilKesikYaziAc(kok) {
+    for (const el of kok.querySelectorAll('*')) {
+        if (el.children.length > 2 || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName)) continue;
+        if (el.closest('.top-header, .erp-sidebar, table:not(.mobil-kart-tablo)')) continue;
+        const s = getComputedStyle(el);
+        if (s.whiteSpace !== 'nowrap' || !/(hidden|clip)/.test(s.overflowX)) continue;
+        if (el.scrollWidth <= el.clientWidth + 3 || !el.clientWidth) continue;
+        mobilOnemli(el, 'white-space', 'normal');
+        mobilOnemli(el, 'overflow-wrap', 'anywhere');
+        mobilOnemli(el, 'text-overflow', 'clip');
+    }
+}
+
+/** Öğe, sabit/mutlak bir katmanın (pencere, açılır liste) ASIL kaydırıcısı mı? */
+function mobilKatmanKaydiricisiMi(el) {
+    for (let p = el; p && p !== document.body; p = p.parentElement) {
+        const s = getComputedStyle(p);
+        if (p !== el && /(auto|scroll)/.test(s.overflowY)) return false; // arada başka kaydırıcı var
+        if (s.position === 'fixed' || s.position === 'absolute') return true;
+    }
+    return false;
+}
+
+/** 4) İç kaydırma: sayfa içindeki küçük kaydırma kutularını açar — telefonda tek, doğal kaydırma. */
+function mobilIcKaydirmaAc(kok) {
+    for (const el of kok.querySelectorAll('*')) {
+        if (el.matches('.content-scroll, #modal-body, [role="listbox"], [class*="dropdown"], [class*="suggest"], [class*="autocomplete"], [class*="oneri"]')) continue;
+        const s = getComputedStyle(el);
+        if (!/(auto|scroll)/.test(s.overflowY)) continue;
+        if (el.scrollHeight <= el.clientHeight + 8) continue;
+        if (mobilKatmanKaydiricisiMi(el)) continue;
+        mobilOnemli(el, 'max-height', 'none');
+        mobilOnemli(el, 'height', 'auto');
+        mobilOnemli(el, 'overflow-y', 'visible');
+    }
+}
+
+let _mobilUyarlaCalisiyor = false;
+function mobilTelefonaUyarla() {
+    if (!mobilTelefonMu() || _mobilUyarlaCalisiyor) return;
+    _mobilUyarlaCalisiyor = true;
+    try {
+        const kokler = mobilUyarlaKokleri();
+        for (const k of kokler) { try { mobilYaziBuyut(k); } catch (e) { console.warn('mobilYaziBuyut', e && e.message); } }
+        for (const k of kokler) { try { mobilIzgaraUyarla(k); mobilIzgaraUyarla(k); } catch (e) { console.warn('mobilIzgaraUyarla', e && e.message); } }
+        for (const k of kokler) { try { mobilDiziUyarla(k); } catch (e) { console.warn('mobilDiziUyarla', e && e.message); } }
+        for (const k of kokler) { try { mobilKesikYaziAc(k); } catch (e) { console.warn('mobilKesikYaziAc', e && e.message); } }
+        for (const k of kokler) { try { mobilIcKaydirmaAc(k); } catch (e) { console.warn('mobilIcKaydirmaAc', e && e.message); } }
+        mobilTabloKartlastir(document);
+    } finally {
+        _mobilUyarlaCalisiyor = false;
+    }
+}
+window.mobilTelefonaUyarla = mobilTelefonaUyarla;
+
+/* Ekran/pencere her çizildiğinde yeniden uygulanır. Uyarlayıcının kendi stil yazımları
+   (attributes) izlenmez → kendi kendini tetiklemez. */
 function mobilTabloIzleyiciKur() {
-    if (window.__mobilTabloIzleyici || window.innerWidth > MOBIL_TABLO_ESIK) return;
+    if (window.__mobilTabloIzleyici || !mobilTelefonMu()) return;
     let bekleyen = null;
-    const gozlemci = new MutationObserver(() => {
-        clearTimeout(bekleyen);
-        bekleyen = setTimeout(() => mobilTabloKartlastir(document), 120);
-    });
-    const hedefler = ['main-list', 'detail-modal', 'form-container']
-        .map((id) => document.getElementById(id)).filter(Boolean);
-    hedefler.forEach((h) => gozlemci.observe(h, { childList: true, subtree: true }));
+    const planla = () => { clearTimeout(bekleyen); bekleyen = setTimeout(mobilTelefonaUyarla, 90); };
+    const gozlemci = new MutationObserver(planla);
+    const main = document.querySelector('main');
+    if (main) gozlemci.observe(main, { childList: true, subtree: true });
+    /* Yeni açılan pencereler body'ye eklenir; içleri de izlenir. */
+    gozlemci.observe(document.body, { childList: true });
+    ['detail-modal'].map((id) => document.getElementById(id)).filter(Boolean)
+        .forEach((h) => { if (!main || !main.contains(h)) gozlemci.observe(h, { childList: true, subtree: true }); });
+    new MutationObserver((kayitlar) => {
+        for (const k of kayitlar) for (const n of k.addedNodes) {
+            if (n.nodeType === 1 && n !== main) gozlemci.observe(n, { childList: true, subtree: true });
+        }
+    }).observe(document.body, { childList: true });
+    /* Pencere açılıp kapanması (display değişimi) childList değildir — stil değişimini de dinle. */
+    const modal = document.getElementById('detail-modal');
+    if (modal) new MutationObserver(planla).observe(modal, { attributes: true, attributeFilter: ['style', 'class'] });
+    window.addEventListener('orientationchange', () => setTimeout(mobilTelefonaUyarla, 250));
     window.__mobilTabloIzleyici = gozlemci;
-    mobilTabloKartlastir(document);
+    mobilTelefonaUyarla();
 }
 try {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mobilTabloIzleyiciKur);
@@ -270,7 +466,8 @@ function mobilSaltOkunurKapisiKur(client) {
             const asil = q[yontem] && q[yontem].bind(q);
             if (!asil) continue;
             q[yontem] = (payload, ...rest) => {
-                const izin = (yontem === 'insert' || yontem === 'upsert') && mobilSayimYazmasiMi(tablo, payload);
+                const izin = ((yontem === 'insert' || yontem === 'upsert') && mobilSayimYazmasiMi(tablo, payload))
+                    || mobilFotoYazmasiMi(tablo, yontem, payload);
                 return izin ? asil(payload, ...rest) : mobilSaltOkunurEngelSonucu(tablo + '.' + yontem);
             };
         }
@@ -285,7 +482,13 @@ function mobilSaltOkunurKapisiKur(client) {
         client.storage.from = (kova) => {
             const s = asilStorage(kova);
             for (const yontem of ['upload', 'update', 'remove', 'move', 'copy']) {
-                if (s[yontem]) s[yontem] = () => mobilSaltOkunurEngelSonucu('storage ' + kova + '.' + yontem);
+                if (!s[yontem]) continue;
+                const asil = s[yontem].bind(s);
+                /* Yalnız siparişe fotoğraf eklerken, yalnız o kovaya YENİ dosya (upload) —
+                   silme/taşıma/üzerine yazma hiçbir durumda yok. */
+                s[yontem] = (...args) => ((yontem === 'upload' && kova === MOBIL_FOTO_KOVASI && mobilFotoYazmaAcikMi())
+                    ? asil(...args)
+                    : mobilSaltOkunurEngelSonucu('storage ' + kova + '.' + yontem));
             }
             return s;
         };
@@ -8154,7 +8357,12 @@ function mobilKisitEngelMetni(mode, duzenleme) {
 // --- APP MOD YÖNETİMİ ---
 async function setAppMode(mode, keepEditingId = false) {
     if (mode === 'TEZGAH_YONETIMI' || mode === 'TEZGAH_GIRIS') mode = 'DOKUMA_TAKIP';
+    /* Ana programla aynı (06-reports.js setAppMode): Depo girişi merkezi açılmaz, İplik
+       stoğuna gider. Mobilde bu yönlendirme yoktu — merkez liste bölümünü gizliyor ve
+       sonraki TÜM ekranlar sayfa yenilenene kadar boş kalıyordu (24.09.2026). */
+    if (mode === 'DEPO_HAREKET') mode = 'IPLIK';
     erpScheduleMobileSidebarClose();
+    { const lsBolum = document.getElementById('list-section'); if (lsBolum) lsBolum.style.display = ''; }
     if (mode === 'RAPOR') mode = 'RAPORLAR';
     if (mode === 'SIPARIS_TERMIN_PLAN') mode = 'PLANLAMA';
     if (mode === 'HAM_KUMAS' || mode === 'MAMUL_KUMAS') mode = 'KUMAS';

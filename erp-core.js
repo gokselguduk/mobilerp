@@ -693,6 +693,9 @@ const ERP_PERM_MODES = [
     ['SIPARIS_GIRIS', 'Yeni sipariş'],
     ['SIPARIS_LISTE', 'Siparişler'],
     ['SIPARIS_KAPANAN', 'Kapanan siparişler'],
+    /* Ekran değil, işlem yetkisi: siparişe açıklamalı fotoğraf ekler. Mobil salt okunur
+       olsa da bu yetkisi olan kullanıcı mobilden de ekleyebilir (kullanıcı, 24.09.2026). */
+    ['SIPARIS_FOTO_EKLE', 'Siparişe fotoğraf ekle'],
     ['IPLIK', 'İplik stoğu'],
     ['KUMAS', 'Kumaş stoğu'],
     ['MAMUL_DEPO', 'Mamül stoğu'],
@@ -727,7 +730,7 @@ const ERP_PERM_MODES = [
 /** Yetki ekranındaki gruplar — ERP_PERM_MODES'daki tüm modları kapsar. */
 const ERP_PERM_GROUP_DEFS = [
     { id: 'genel', ad: 'Genel', ikon: '🏠', kodlar: ['DASHBOARD', 'PLANLAMA', 'SEVKIYAT', 'YAPILACAKLAR', 'RAPORLAR'] },
-    { id: 'siparis', ad: 'Sipariş', ikon: '📋', kodlar: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN'] },
+    { id: 'siparis', ad: 'Sipariş', ikon: '📋', kodlar: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'SIPARIS_FOTO_EKLE'] },
     { id: 'depo', ad: 'Stok & Depo', ikon: '📦', kodlar: ['KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'MUHASEBE_FIS', 'STOK_SAYIM'] },
     { id: 'dokuma', ad: 'Dokuma', ikon: '🧶', kodlar: ['TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_SEVK_GECMIS', 'DOKUMA_FASON_TAKIP', 'HASIL_TAKIP', 'IPLIK'] },
     { id: 'terbiye', ad: 'Terbiye', ikon: '🎨', kodlar: ['BOYAHANE_URETIM', 'KONFEKSIYON_YIKAMA'] },
@@ -866,14 +869,21 @@ function erpUpdateSidebarUser() {
 async function erpSidebarVersionGuncelle() {
     const el = document.getElementById('erp-sidebar-version');
     if (!el) return;
-    let v = String(window.__ERP_BUILD?.version || '1.0.4').trim();
+    /* Gösterilen sürüm = programın ÇALIŞTIRDIĞI ekranların sürümü (erp-build.js, içerik
+       güncellemesiyle gelir). Eskiden EXE sürümü (getAppVersion) gösteriliyordu: EXE 10.09'dan
+       beri 1.1.15'te kaldığı için fabrika bilgisayarları 1.1.20 ekranlarını çalıştırırken
+       menüde "1.1.15" yazıyor, güncelleme gelmemiş sanılıyordu (24.09.2026). EXE sürümü
+       farklıysa üzerine gelince görünür. */
+    const icerik = String(window.__ERP_BUILD?.version || '').trim();
+    let program = '';
     if (window.erpDesktop?.getAppVersion) {
-        try {
-            const ev = await window.erpDesktop.getAppVersion();
-            if (ev) v = String(ev).trim();
-        } catch (e) {}
+        try { program = String((await window.erpDesktop.getAppVersion()) || '').trim(); } catch (e) {}
     }
+    const v = icerik || program || '1.0.4';
     el.textContent = `sürüm ${v} GG`;
+    el.title = program && program !== v
+        ? `Ekranlar: sürüm ${v} · program dosyası (EXE): sürüm ${program}`
+        : `sürüm ${v}`;
 }
 
 function erpToast(message, type = 'success', ms = 2600) {
@@ -10861,6 +10871,9 @@ function erpOrphanAramaDropTemizle() {
 }
 try { window.erpOrphanAramaDropTemizle = erpOrphanAramaDropTemizle; } catch (e) {}
 
+/* Sevkiyat Genel Merkezi başlık logosu: kamyon simgesi yerine fotoğraf (kullanıcı, 24.09.2026). 96×96 JPEG, 44×44 kutuda gösterilir. */
+const SVK_HERO_LOGO = 'data:image/jpeg;base64,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';
+
 function sevkiyatRender(opts = {}) {
     try { erpOrphanAramaDropTemizle(); } catch (e) {}
     const out = document.getElementById('sevkiyat-out');
@@ -11092,7 +11105,7 @@ function sevkiyatRender(opts = {}) {
             <div class="svk-hero">
                 <div class="svk-hero__top">
                     <div class="svk-hero__brand">
-                        <div class="svk-hero__icon" aria-hidden="true">🚚</div>
+                        <div class="svk-hero__icon svk-hero__icon--foto" aria-hidden="true"><img src="${SVK_HERO_LOGO}" alt="" width="44" height="44"></div>
                         <div>
                             <div class="svk-hero__eyebrow">Operasyon · Sevkiyat</div>
                             <div class="svk-hero__title">Sevkiyat Genel Merkezi <span class="svk-hero__sign">kadir'in yeri</span></div>
@@ -14132,6 +14145,9 @@ let _konfYikamaFisGecmisCache = [];
 let _konfYikamaFisGecmisAt = 0;
 const KONF_YIKAMA_FIS_GECMIS_TTL_MS = 60000;
 let _konfYikamaFisSeciliGecmisId = '';
+/* Kayıtlı yıkama fişleri: önce son 10 fiş, "Daha fazla" ile 10'ar artar (kullanıcı, 24.09.2026). */
+const KONF_YIKAMA_FIS_GECMIS_ADIM = 10;
+let _konfYikamaFisGecmisLimit = KONF_YIKAMA_FIS_GECMIS_ADIM;
 let _konfMygArama = '';
 
 function konfYikamaFisGecmisBul(fisId) {
@@ -14161,17 +14177,69 @@ function konfYikamaFisGecmisToPdfData(f) {
     };
 }
 
+/* Fişi görüntüle — ekranın altına değil, ekranın ortasında açılır pencere olarak açılır.
+   Pencere sayfanın yeniden çizilen kısmının DIŞINDA (document.body) durur; dışarıya
+   tıklayınca, ✕ Kapat'a ya da Esc'ye basınca kapanır. Mobil aynı kodu çalıştırır. */
 function konfYikamaFisGecmisGoster(fisId) {
-    const id = String(fisId || '');
-    _konfYikamaFisSeciliGecmisId = _konfYikamaFisSeciliGecmisId === id ? '' : id;
-    if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
+    const f = konfYikamaFisGecmisBul(fisId);
+    if (!f) return;
+    _konfYikamaFisSeciliGecmisId = String(fisId || '');
+    konfYikamaFisGecmisModalAc(f);
 }
 window.konfYikamaFisGecmisGoster = konfYikamaFisGecmisGoster;
 
+function konfYikamaFisGecmisEsc(e) {
+    if (e && e.key === 'Escape') konfYikamaFisGecmisKapat();
+}
+
+function konfYikamaFisGecmisModalKaldir() {
+    const eski = document.getElementById('kyf-gecmis-modal');
+    if (eski) eski.remove();
+    document.removeEventListener('keydown', konfYikamaFisGecmisEsc);
+    document.body.style.overflow = '';
+}
+
+function konfYikamaFisGecmisModalAc(f) {
+    konfYikamaFisGecmisModalKaldir();
+    const data = konfYikamaFisGecmisToPdfData(f);
+    if (!data) return;
+    const ov = document.createElement('div');
+    ov.id = 'kyf-gecmis-modal';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(2,6,23,0.62);display:flex;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top)) 12px';
+    /* Dışarıya (karartılmış alana) tıklayınca kapanır; pencerenin içine tıklamak kapatmaz. */
+    ov.addEventListener('click', (e) => { if (e.target === ov) konfYikamaFisGecmisKapat(); });
+    ov.innerHTML = `<div style="background:var(--surface);border:1px solid rgba(6,182,212,0.45);border-radius:12px;width:min(920px,100%);max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.45)">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface2)">
+            <span style="font-size:12px;font-weight:700;color:var(--cyan-c);font-family:'DM Mono',monospace">📋 ${pdfEsc(f.fis_no)}</span>
+            <span style="font-size:11px;color:var(--text2)">${pdfEsc(f.firma)}</span>
+            <span class="pill pill-cyan" style="font-size:8px">${data.satirlar.length} kalem · ${Number(f.toplam_ad || 0).toLocaleString('tr-TR')} ad</span>
+            <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+                <button type="button" onclick="konfYikamaFisGecmisPdfIndir('${f.id}')" class="btn-pro btn-danger-pro" style="padding:5px 12px;font-size:10px">📄 PDF indir</button>
+                <button type="button" onclick="konfYikamaFisGecmisYazdir('${f.id}')" class="btn-pro btn-ghost-pro" style="padding:5px 12px;font-size:10px">🖨 Yazdır</button>
+                <button type="button" onclick="konfYikamaFisGecmisKapat()" class="btn-pro btn-ghost-pro" style="padding:5px 12px;font-size:10px;font-weight:700">✕ Kapat</button>
+            </div>
+        </div>
+        <div style="overflow:auto;background:#fff;color:#1e293b;padding:12px;-webkit-overflow-scrolling:touch">
+            ${konfYikamaFisPdfBodyHtml(data.satirlar, data.meta)}
+        </div>
+    </div>`;
+    document.body.appendChild(ov);
+    document.body.style.overflow = 'hidden';   // arka sayfa kaymasın
+    document.addEventListener('keydown', konfYikamaFisGecmisEsc);
+}
+
 function konfYikamaFisGecmisKapat() {
     _konfYikamaFisSeciliGecmisId = '';
+    konfYikamaFisGecmisModalKaldir();
+}
+
+function konfYikamaFisGecmisDahaFazla() {
+    _konfYikamaFisGecmisLimit += KONF_YIKAMA_FIS_GECMIS_ADIM;
     if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
 }
+window.konfYikamaFisGecmisDahaFazla = konfYikamaFisGecmisDahaFazla;
 window.konfYikamaFisGecmisKapat = konfYikamaFisGecmisKapat;
 
 async function konfYikamaFisPdfKaydet(meta, satirlar) {
@@ -14799,22 +14867,8 @@ function renderKonfYikamaFisPanel(filtreSiparisId) {
     const seciliGecmis = _konfYikamaFisSeciliGecmisId
         ? gecmisListe.find((f) => String(f.id) === String(_konfYikamaFisSeciliGecmisId))
         : null;
-    const seciliGecmisData = seciliGecmis ? konfYikamaFisGecmisToPdfData(seciliGecmis) : null;
-    const gecmisOnizleme = seciliGecmis && seciliGecmisData ? `<div style="margin-top:10px;padding:12px 14px;border:1px solid rgba(6,182,212,0.45);border-radius:8px;background:rgba(6,182,212,0.06)">
-        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:11px;font-weight:700;color:var(--cyan-c)">📋 ${pdfEsc(seciliGecmis.fis_no)}</span>
-            <span style="font-size:10px;color:var(--text2)">${pdfEsc(seciliGecmis.firma)}</span>
-            <span class="pill pill-cyan" style="font-size:8px">${seciliGecmisData.satirlar.length} kalem · ${seciliGecmis.toplam_ad.toLocaleString('tr-TR')} ad</span>
-            <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
-                <button type="button" onclick="event.stopPropagation();konfYikamaFisGecmisPdfIndir('${seciliGecmis.id}')" class="btn-pro btn-danger-pro" style="padding:5px 12px;font-size:10px">📄 PDF indir</button>
-                <button type="button" onclick="event.stopPropagation();konfYikamaFisGecmisYazdir('${seciliGecmis.id}')" class="btn-pro btn-ghost-pro" style="padding:5px 12px;font-size:10px">🖨 Yazdır</button>
-                <button type="button" onclick="konfYikamaFisGecmisKapat()" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px">✕ Kapat</button>
-            </div>
-        </div>
-        <div style="overflow:auto;background:#fff;border-radius:8px;padding:12px;border:1px solid var(--border2)">
-            ${konfYikamaFisPdfBodyHtml(seciliGecmisData.satirlar, seciliGecmisData.meta)}
-        </div>
-    </div>` : '';
+    /* Fiş önizlemesi artık açılır pencerede (konfYikamaFisGecmisModalAc) — burada çizilmez. */
+
     const gecmisTablo = gecmisListe.length ? `<div style="overflow:auto;border:1px solid rgba(100,116,139,0.25);border-radius:8px">
         <table class="dt-table" style="min-width:960px;margin:0">
             <thead><tr>
@@ -14822,7 +14876,7 @@ function renderKonfYikamaFisPanel(filtreSiparisId) {
                 <th style="font-size:9px;text-align:right">Kalem</th><th style="font-size:9px;text-align:right">Toplam ad</th>
                 <th style="font-size:9px">Not</th><th style="font-size:9px">İşlem</th>
             </tr></thead>
-            <tbody>${gecmisListe.slice(0, 50).map((f) => {
+            <tbody>${gecmisListe.slice(0, _konfYikamaFisGecmisLimit).map((f) => {
                 const dt = f.tarih ? new Date(f.tarih) : null;
                 const tarihStr = dt && !Number.isNaN(dt.getTime()) ? dt.toLocaleDateString('tr-TR') : '—';
                 const secili = String(_konfYikamaFisSeciliGecmisId) === String(f.id);
@@ -14834,14 +14888,16 @@ function renderKonfYikamaFisPanel(filtreSiparisId) {
                     <td class="mono" style="text-align:right;font-size:11px;font-weight:700;color:var(--cyan-c);padding:6px 8px">${f.toplam_ad.toLocaleString('tr-TR')} ad</td>
                     <td style="font-size:9px;color:var(--text3);padding:6px 8px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${pdfEsc(f.not || '')}">${pdfEsc(f.not || '—')}</td>
                     <td style="padding:4px 8px;white-space:nowrap" onclick="event.stopPropagation()">
-                        <button type="button" onclick="konfYikamaFisGecmisGoster('${f.id}')" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px">${secili ? 'Gizle' : 'Görüntüle'}</button>
+                        <button type="button" onclick="konfYikamaFisGecmisGoster('${f.id}')" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px">Görüntüle</button>
                         <button type="button" onclick="konfYikamaFisGecmisPdfIndir('${f.id}')" class="btn-pro btn-danger-pro" style="padding:3px 8px;font-size:9px;margin-left:2px">PDF</button>
                         <button type="button" onclick="konfYikamaFisGecmisYazdir('${f.id}')" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px;margin-left:2px">🖨</button>
                     </td>
                 </tr>`;
             }).join('')}</tbody>
         </table>
-    </div>${gecmisOnizleme}` : `<div style="padding:12px;border:1px dashed rgba(100,116,139,0.3);border-radius:8px;text-align:center;font-size:10px;color:var(--text3)">Henüz kayıtlı yıkama fişi yok.</div>`;
+    </div>${gecmisListe.length > _konfYikamaFisGecmisLimit ? `<div style="text-align:center;margin-top:8px">
+        <button type="button" onclick="konfYikamaFisGecmisDahaFazla()" class="btn-pro btn-ghost-pro" style="padding:6px 16px;font-size:10px">▾ Daha fazla göster (+${Math.min(KONF_YIKAMA_FIS_GECMIS_ADIM, gecmisListe.length - _konfYikamaFisGecmisLimit)})</button>
+    </div>` : ''}` : `<div style="padding:12px;border:1px dashed rgba(100,116,139,0.3);border-radius:8px;text-align:center;font-size:10px;color:var(--text3)">Henüz kayıtlı yıkama fişi yok.</div>`;
 
     return `<div class="panel-box" style="margin-bottom:12px;border:1px solid rgba(139,92,246,0.45);background:rgba(139,92,246,0.05)">
         <div class="panel-head">
@@ -14886,7 +14942,7 @@ function renderKonfYikamaFisPanel(filtreSiparisId) {
         <div style="padding:0 16px 14px;border-top:1px solid rgba(100,116,139,0.15);margin-top:4px">
             <div style="display:flex;align-items:center;gap:8px;margin:12px 0 8px">
                 <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace">3 · Kayıtlı yıkama fişleri</div>
-                <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${gecmisListe.length} fiş · satıra tıklayın</span>
+                <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${Math.min(_konfYikamaFisGecmisLimit, gecmisListe.length)} / ${gecmisListe.length} fiş · satıra tıklayın</span>
                 <button type="button" onclick="konfYikamaFisGecmisYenile()" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px;margin-left:auto">↻ Yenile</button>
             </div>
             ${gecmisTablo}
@@ -32244,6 +32300,9 @@ async function setAppMode(mode, keepEditingId = false) {
     /* Sokulen eski modulden kalan mod adlari — yeni ekrana yonlendirilir. */
     if (mode === 'TEZGAH_YONETIMI' || mode === 'TEZGAH_GIRIS') mode = 'TEZGAH_PLANLAMA';
     if (mode === 'DEPO_HAREKET') mode = 'IPLIK';
+    /* Depo merkezi (render) liste bölümünü satır içi gizler; başka ekrana geçince hiçbir
+       şey geri açmıyordu → ekran boş kalıyordu. Her geçişte açılır, gerekiyorsa ekran yine gizler. */
+    { const lsBolum = document.getElementById('list-section'); if (lsBolum) lsBolum.style.display = ''; }
     if (erpCurrentUser && typeof erpUserCan === 'function' && !erpUserCan(mode)) {
         mode = 'DASHBOARD';
     }
@@ -36619,17 +36678,21 @@ function buildSiparisDetailModalHtml(i, opts) {
         </div>
     </div>`;
 
-    if (String(i.notlar || '').trim() || siparisFotografListesiAl(i).length) {
+    const fotoEkleyebilir = i.id != null && typeof siparisFotoEkleYetkiliMi === 'function' && siparisFotoEkleYetkiliMi();
+    if (String(i.notlar || '').trim() || siparisFotografListesiAl(i).length || fotoEkleyebilir) {
         const fotoList = siparisFotografListesiAl(i);
         html += `
         <div class="siparis-not-kutu" style="border-color:rgba(34,211,238,0.35)">
-            <div class="siparis-not-lbl" style="color:var(--cyan-c)">📝 Sipariş notları</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                <div class="siparis-not-lbl" style="color:var(--cyan-c)">📝 Sipariş notları</div>
+                ${fotoEkleyebilir ? `<button type="button" class="btn-pro btn-ghost-pro" onclick="siparisFotoEkleAc('${pdfEsc(String(i.id))}')" style="padding:5px 10px;font-size:10px;font-weight:700;color:var(--cyan-c);border-color:rgba(34,211,238,0.45)">📷 Fotoğraf ekle</button>` : ''}
+            </div>
             ${String(i.notlar || '').trim() ? `<div class="siparis-not-body" style="white-space:pre-wrap;margin-bottom:${fotoList.length ? '12px' : '0'}">${pdfEsc(i.notlar)}</div>` : `<div class="siparis-not-body" style="color:var(--text3);font-size:10px;margin-bottom:${fotoList.length ? '12px' : '0'}">Yazılı not yok</div>`}
             ${fotoList.length ? `
             <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace;margin-bottom:8px">${fotoList.length} görsel</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
                 ${fotoList.map(f => `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface2)">
-                    <img src="${f.src}" alt="Not görseli" style="width:100%;height:130px;object-fit:cover;display:block">
+                    <img src="${f.src}" alt="Not görseli" onclick="kartFotoBuyut(this.src)" title="Büyüt" style="width:100%;height:130px;object-fit:cover;display:block;cursor:zoom-in">
                     ${String(f.aciklama || '').trim() ? `<div style="padding:8px 10px;font-size:10px;color:var(--text2);line-height:1.35">${pdfEsc(f.aciklama)}</div>` : ''}
                 </div>`).join('')}
             </div>` : ''}
@@ -40784,6 +40847,175 @@ function siparisFotoKayitSonrasiOnbellek(siparisId, fotolar) {
     if (!siparisId || !fotolar?.length) return;
     const idx = (dataCache.siparisler || []).findIndex(s => String(s.id) === String(siparisId));
     if (idx !== -1) dataCache.siparisler[idx][SIPARIS_FOTO_DB_COL] = fotolar;
+}
+
+/* ── SİPARİŞE FOTOĞRAF EKLE (açıklamalı) ─────────────────────────────────
+   Kullanıcı, 24.09.2026: "mobilden siparişe foto ekleyebilelim, açıklamasıyla
+   birlikte — ama yalnız izin verilen kullanıcılar". Yetki: SIPARIS_FOTO_EKLE
+   (yönetici her zaman). Masaüstü ve mobil AYNI fonksiyonu kullanır.
+   - Fotoğraf önce Storage'a (siparis-fotograflar) yüklenir; yüklenemezse KAYIT
+     YAPILMAZ (veritabanına base64 gömülmez).
+   - Mevcut fotoğraflar veritabanından TAZE okunur ve yenisi SONA eklenir —
+     başka cihazın az önce eklediği fotoğraf silinmez.
+   - Kim / ne zaman / hangi açıklamayla eklediği sipariş geçmişine (islem_gecmisi) yazılır.
+   Mobil salt okunur kapısı yalnız bu işlem sürerken (window.__erpSiparisFotoYazma)
+   ve yalnız bu alanları yazan güncellemeye izin verir (assets/mobil/mobil-app.js). */
+const SIPARIS_FOTO_EKLE_ALANLAR = ['siparis_fotograflar', 'islem_gecmisi', 'updated_by', 'updated_at'];
+let _siparisFotoEkleSecilen = [];
+let _siparisFotoEkleSid = null;
+let _siparisFotoEkleDetaydan = false;
+
+function siparisFotoEkleYetkiliMi() {
+    return typeof erpUserCan === 'function' && erpUserCan('SIPARIS_FOTO_EKLE');
+}
+
+function siparisFotoEkleKaldir() {
+    const ov = document.getElementById('siparis-foto-ekle-modal');
+    if (ov) ov.remove();
+    document.removeEventListener('keydown', siparisFotoEkleEsc);
+    _siparisFotoEkleSecilen.forEach(x => { try { URL.revokeObjectURL(x.onizleme); } catch (e) {} });
+    _siparisFotoEkleSecilen = [];
+    _siparisFotoEkleSid = null;
+}
+function siparisFotoEkleEsc(e) { if (e && e.key === 'Escape') siparisFotoEkleKaldir(); }
+
+function siparisFotoEkleAc(siparisId) {
+    if (!siparisFotoEkleYetkiliMi()) { erpToast('Siparişe fotoğraf ekleme yetkiniz yok.', 'error'); return; }
+    const sip = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
+    if (!sip) { erpToast('Sipariş bulunamadı.', 'error'); return; }
+    siparisFotoEkleKaldir();
+    _siparisFotoEkleSid = sip.id;
+    _siparisFotoEkleDetaydan = document.getElementById('detail-modal')?.style.display === 'flex';
+    const ov = document.createElement('div');
+    ov.id = 'siparis-foto-ekle-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9100;background:rgba(2,6,23,0.62);display:flex;align-items:center;justify-content:center;padding:12px';
+    ov.addEventListener('click', (e) => { if (e.target === ov) siparisFotoEkleKaldir(); });
+    ov.innerHTML = `
+    <div style="width:100%;max-width:520px;max-height:92vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35)">
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:800;color:var(--text)">📷 Fotoğraf ekle</div>
+                <div style="font-size:10px;color:var(--text3)">${pdfEsc(sip.sno || '')} · ${pdfEsc(sip.firma || '')}</div>
+            </div>
+            <button type="button" class="btn-pro btn-ghost-pro" onclick="siparisFotoEkleKaldir()" style="padding:6px 10px;font-size:11px">✕ Kapat</button>
+        </div>
+        <div style="padding:12px 14px;overflow:auto;-webkit-overflow-scrolling:touch;flex:1">
+            <label style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;font-size:12px;font-weight:700;color:var(--cyan-c)">
+                ➕ Fotoğraf seç / çek
+                <input id="siparis-foto-ekle-input" type="file" accept="image/*" multiple style="display:none" onchange="siparisFotoEkleSecildi(this)">
+            </label>
+            <div style="font-size:10px;color:var(--text3);margin:8px 2px 10px;line-height:1.4">Her fotoğrafın altına ne olduğunu yazın (ör. "etiket yeri", "renk farkı"). Fotoğraflar siparişe eklenir, mevcutlar silinmez.</div>
+            <div id="siparis-foto-ekle-liste" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)">
+            <button type="button" class="btn-pro btn-ghost-pro" onclick="siparisFotoEkleKaldir()" style="flex:1;justify-content:center">Vazgeç</button>
+            <button type="button" id="siparis-foto-ekle-kaydet" class="btn-pro btn-primary-pro" onclick="siparisFotoEkleKaydet()" style="flex:2;justify-content:center" disabled>Kaydet</button>
+        </div>
+    </div>`;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', siparisFotoEkleEsc);
+}
+
+function siparisFotoEkleListeCiz() {
+    const host = document.getElementById('siparis-foto-ekle-liste');
+    const btn = document.getElementById('siparis-foto-ekle-kaydet');
+    if (btn) {
+        btn.disabled = !_siparisFotoEkleSecilen.length;
+        btn.textContent = _siparisFotoEkleSecilen.length ? `Kaydet (${_siparisFotoEkleSecilen.length} fotoğraf)` : 'Kaydet';
+    }
+    if (!host) return;
+    host.innerHTML = _siparisFotoEkleSecilen.map((x, n) => `
+        <div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--surface2)">
+            <img src="${x.onizleme}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0">
+            <textarea rows="3" placeholder="Açıklama" oninput="siparisFotoEkleAciklama(${n}, this.value)" style="flex:1;min-width:0;resize:vertical;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:12px;color:var(--text)">${pdfEsc(x.aciklama)}</textarea>
+            <button type="button" onclick="siparisFotoEkleCikar(${n})" title="Çıkar" style="border:none;background:none;color:var(--rose-c);font-size:16px;cursor:pointer;padding:2px 4px">✕</button>
+        </div>`).join('');
+}
+
+function siparisFotoEkleSecildi(input) {
+    const dosyalar = [...(input?.files || [])].filter(f => /^image\//.test(f.type || '') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name || ''));
+    dosyalar.forEach(f => _siparisFotoEkleSecilen.push({ dosya: f, onizleme: URL.createObjectURL(f), aciklama: '' }));
+    if (input) input.value = '';
+    siparisFotoEkleListeCiz();
+}
+function siparisFotoEkleAciklama(n, deger) {
+    if (_siparisFotoEkleSecilen[n]) _siparisFotoEkleSecilen[n].aciklama = String(deger || '');
+}
+function siparisFotoEkleCikar(n) {
+    const x = _siparisFotoEkleSecilen[n];
+    if (x) { try { URL.revokeObjectURL(x.onizleme); } catch (e) {} }
+    _siparisFotoEkleSecilen.splice(n, 1);
+    siparisFotoEkleListeCiz();
+}
+
+async function siparisFotoEkleKaydet() {
+    if (!siparisFotoEkleYetkiliMi()) { erpToast('Siparişe fotoğraf ekleme yetkiniz yok.', 'error'); return; }
+    const sid = _siparisFotoEkleSid;
+    const secilen = _siparisFotoEkleSecilen.slice();
+    if (!sid || !secilen.length) return;
+    const btn = document.getElementById('siparis-foto-ekle-kaydet');
+    const btnYaz = (t) => { if (btn) { btn.disabled = true; btn.textContent = t; } };
+    const user = String((typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || '').trim() || '—';
+    window.__erpSiparisFotoYazma = true;
+    try {
+        const eklenenler = [];
+        for (let n = 0; n < secilen.length; n++) {
+            btnYaz(`Yükleniyor ${n + 1}/${secilen.length}…`);
+            const dataUrl = await siparisFotoDosyaSikistir(secilen[n].dosya);
+            if (!dataUrl) throw new Error(`${n + 1}. dosya okunamadı (resim değil ya da bozuk).`);
+            const url = await siparisFotoStorageYukle(dataUrl, `siparis/${sid}`);
+            if (!url) throw new Error(`${n + 1}. fotoğraf sunucuya yüklenemedi — bağlantıyı kontrol edip tekrar deneyin.`);
+            eklenenler.push({ src: url, aciklama: String(secilen[n].aciklama || '').trim() });
+        }
+        btnYaz('Kaydediliyor…');
+        const { data: sip, error: e0 } = await sb.from('siparisler')
+            .select('id,sno,siparis_fotograflar,islem_gecmisi').eq('id', sid).single();
+        if (e0) throw e0;
+        const tumu = siparisFotograflarFromRaw(sip.siparis_fotograflar).concat(eklenenler);
+        const dbDeger = siparisFotografDbDeger(tumu);
+        if (!dbDeger) throw new Error('Fotoğraf listesi kaydedilemedi.');
+        const zaman = new Date().toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const yer = window.ERP_MOBIL_LITE ? 'Mobil' : 'Masaüstü';
+        const gecmis = String(sip.islem_gecmisi || '')
+            + `\n═══════════════════════════════\n📷 ${zaman} — [${user}] ${yer} · ${eklenenler.length} fotoğraf eklendi`
+            + eklenenler.map((f, n) => `\n  • Fotoğraf ${n + 1}: ${f.aciklama ? `"${f.aciklama}"` : '(açıklama yok)'}`).join('');
+        const yama = { siparis_fotograflar: dbDeger, islem_gecmisi: gecmis, updated_by: user, updated_at: new Date().toISOString() };
+        const { error } = await sb.from('siparisler').update(yama).eq('id', sid);
+        if (error) throw error;
+
+        const yerel = (dataCache.siparisler || []).find(x => String(x.id) === String(sid));
+        if (yerel) Object.assign(yerel, yama);
+        try {
+            /* Liste canlı senkronla arkada yeniden çizilmiş olabilir — currentData[selectedIndex]
+               artık başka sipariş olabilir; yalnız aynı kayıtsa ona yaz. Detay ise her hâlde
+               bu siparişi gösteriyor (düğme o detaydan açıldı), onu yenile. */
+            const acik = (typeof currentData !== 'undefined' && typeof selectedIndex !== 'undefined') ? currentData?.[selectedIndex] : null;
+            const ayni = acik && String(acik.id) === String(sid);
+            if (ayni) Object.assign(acik, yama);
+            if (_siparisFotoEkleDetaydan && (ayni || yerel)) siparisFotoEkleDetayYenile(ayni ? acik : yerel);
+        } catch (e) {}
+        siparisFotoEkleKaldir();
+        erpToast(`${sip.sno || 'Sipariş'}: ${eklenenler.length} fotoğraf eklendi.`, 'success');
+    } catch (e) {
+        erpToast('Fotoğraf eklenemedi: ' + (e?.message || e), 'error', 7000);
+        if (btn) { btn.disabled = false; btn.textContent = `Kaydet (${secilen.length} fotoğraf)`; }
+    } finally {
+        window.__erpSiparisFotoYazma = false;
+    }
+}
+
+/** Açık sipariş penceresini yeni fotoğraflarla yeniden çizer (açık sekmeyi korur). */
+function siparisFotoEkleDetayYenile(i) {
+    const modal = document.getElementById('detail-modal');
+    const body = document.getElementById('modal-body');
+    if (!modal || modal.style.display !== 'flex' || !body || typeof buildSiparisDetailModalHtml !== 'function') return;
+    if (typeof siparisDetailModalAcikSekme === 'function' && siparisDetailModalAcikSekme() === 'durum') {
+        const oz = document.getElementById('siparis-modal-tab-ozet');
+        if (oz) oz.innerHTML = buildSiparisDetailModalHtml(i, { embedKonf: true });
+        return;
+    }
+    body.innerHTML = buildSiparisDetailModalHtml(i);
+    if (typeof siparisDetailModalBaslatDurumTab === 'function') siparisDetailModalBaslatDurumTab(i);
 }
 
 function siparisFotoDropOver(e) {

@@ -4428,6 +4428,8 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             border: 1px solid rgba(var(--svk-accent-rgb), 0.28);
             box-shadow: 0 4px 14px rgba(var(--svk-accent-rgb), 0.12);
         }
+        .svk-hero__icon--foto { overflow: hidden; padding: 0; }
+        .svk-hero__icon--foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .svk-hero__eyebrow {
             font-size: 9px;
             font-weight: 800;
@@ -6161,6 +6163,57 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     /* Sarmalayıcıdaki yatay kaydırma artık gereksiz */
     .mobil-kart-tablo-sar { overflow-x: visible !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TELEFON TEMELİ (24.09.2026) — kullanıcı: "mobilde ciddi anlamda kullanamama
+   sorunu var, her şey birbirine giriyor, kökten ve sağlam bir çözüm".
+   Yazı boyu / ızgara / iç kaydırma / tablo uyarlamasını ÖLÇEREK mobil-app.js'teki
+   "TELEFON UYARLAYICISI" yapar (her ekranda, kendiliğinden). Bu bölüm yalnız
+   ölçüye gerek olmayan temel kuralları taşır: parmakla basılabilir hedef (en az
+   36 px), başlık çubuğu, ana programın telefonda zaten gizlediği arama ipucu.
+   Kasıtlı olarak dosyanın SONUNDA ve !important — önceki ~40 medya bloğunu ezer.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+    /* Dokunma hedefleri — Apple/Google önerisi ~44/48 px; tablo içi sıkışmasın diye 36 */
+    main button, main .btn-pro, main select,
+    main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+    body > [id$="-modal"] button, body > [id$="-modal"] select,
+    body > [id$="-modal"] input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+    #detail-modal button, #detail-modal select,
+    #detail-modal input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+        min-height: 36px !important;
+    }
+    main button, #detail-modal button, body > [id$="-modal"] button { min-width: 36px !important; }
+    main input[type="checkbox"], main input[type="radio"],
+    #detail-modal input[type="checkbox"], #detail-modal input[type="radio"] {
+        width: 20px !important; height: 20px !important;
+    }
+    /* Filtre/çip düğmeleri: dokunulabilir yükseklik, yazı dikey ortada */
+    main button.pill, #detail-modal button.pill {
+        display: inline-flex !important; align-items: center !important;
+        padding-top: 6px !important; padding-bottom: 6px !important;
+    }
+    /* Yan menü satırları */
+    .erp-sidebar .nav-pro-sub, .erp-sidebar .nav-pro {
+        min-height: 40px !important; display: flex !important; align-items: center !important;
+    }
+
+    /* Başlık çubuğu: Yenile düğmesi yazısız kare simge; başlık sıkışırsa üç nokta */
+    #erp-super-yenile-btn {
+        width: 40px !important; height: 40px !important; min-height: 40px !important;
+        padding: 0 !important; justify-content: center !important; align-items: center !important;
+        display: inline-flex !important; border-radius: 10px !important;
+    }
+    #erp-super-yenile-btn span:not(:first-child) { display: none !important; }
+    #erp-super-yenile-btn span:first-child { font-size: 18px !important; }
+    .top-header #current-title {
+        min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+    }
+
+    /* Arama ipucu ("birden fazla kelime = ve") kutunun içinde yazının üstüne biniyordu;
+       ana program 900 px altında zaten gizler (head.html) — aynısı. */
+    .siparis-arama-bar__hint { display: none !important; }
+}
 </style>
 </head>
 <body class="erp-mobil-lite">
@@ -6531,7 +6584,7 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
   window.ERP_MOBIL_NO_CHARTS = true;
   window.ERP_MOBIL_NO_EXCEL = true;
 
-  var v = '20260924-6342b3';
+  var v = '20260924-f1d943';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
