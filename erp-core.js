@@ -1370,11 +1370,17 @@ function siparisKapananLimitSifirla() {
 }
 try { window.siparisKapananLimitArtir = siparisKapananLimitArtir; } catch (e) {}
 
+/* Sıralama kartta gösterilen kapanış tarihiyle aynı kaynaktan (siparisKapanisBilgiOku: gerçek
+   kapanış kaydı, yoksa son işlem). Aynı anda kapananlarda yeni sipariş no üstte. */
 function siparisKapananSonKapanisTs(sip) {
-    return new Date(sip?.updated_at || sip?.ttarih || sip?.created_at || 0).getTime() || 0;
+    return siparisKapanisBilgiOku(sip).d?.getTime() || 0;
 }
 function siparisKapananSonKapanisSirala(liste) {
-    return [...(liste || [])].sort((a, b) => siparisKapananSonKapanisTs(b) - siparisKapananSonKapanisTs(a));
+    const snoNo = (s) => parseInt(String(s?.sno || '').replace(/\D+/g, ''), 10) || 0;
+    return (liste || [])
+        .map(s => [siparisKapananSonKapanisTs(s), snoNo(s), s])
+        .sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]))
+        .map(x => x[2]);
 }
 /** Kapanan sipariş listesi: kapanış bilgisi.
     ÖNEMLİ — iki ayrı kaynak var, hangisi varsa o gösterilir:
@@ -8711,6 +8717,86 @@ function sevkiyatSiparisKalemAdTekilMi(kalemler, kalemIdx, kumasKalem) {
     return n === 1;
 }
 
+/* Depo satırının bu hesapta kullanılan normalleştirilmiş hali — her kalem çağrısında tüm satırları
+   yeniden büyük harfe çevirmek 88 siparişte ~400 ms tutuyordu. Kaynak alan değişince yeniden hesaplanır. */
+const _sevkDepoSatirNormCache = new WeakMap();
+const SEVK_DEPO_SATIR_ALANLARI = ['notlar', 'kaynak_birim', 'ana_grup', 'stok_kodu', 'lot_no', 'islem_turu',
+    'miktar_mt', 'miktar_kg', 'cuval_sayisi', 'urun_adi', 'kumas_cinsi'];
+function sevkiyatDepoSatirNorm(r) {
+    const eski = _sevkDepoSatirNormCache.get(r);
+    if (eski) {
+        let ayni = true;
+        for (let a = 0; a < SEVK_DEPO_SATIR_ALANLARI.length; a++) {
+            const alan = SEVK_DEPO_SATIR_ALANLARI[a];
+            if (eski.kaynak[alan] !== r[alan]) { ayni = false; break; }
+        }
+        if (ayni) return eski;
+    }
+    const kaynak = {};
+    SEVK_DEPO_SATIR_ALANLARI.forEach(alan => { kaynak[alan] = r[alan]; });
+    const not = String(r.notlar || '');
+    const lot = String(r.lot_no || '').trim();
+    const tip = String(r.islem_turu || '').toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ç/g, 'C').replace(/Ş/g, 'S');
+    const n = {
+        kaynak,
+        not,
+        kb: String(r.kaynak_birim || '').toUpperCase(),
+        ana: String(r.ana_grup || '').toUpperCase(),
+        stokKodu: String(r.stok_kodu || '').trim().toUpperCase(),
+        lot,
+        lotIlk: lot.split(',')[0].trim(),
+        isCikis: tip.includes('CIKIS'),
+        isGiris: tip.includes('GIRIS'),
+        tagged: /SEVK_KUMAS:sip=|SEVK_GRID:|SEVK_MERKEZ_ADET:sip=/i.test(not),
+        urun: String(r.urun_adi || r.kumas_cinsi || '').trim().toUpperCase(),
+        mt: Math.abs(parseFloat(r.miktar_mt) || 0),
+        kg: Math.abs(parseFloat(r.miktar_kg) || 0),
+        signedMt: parseFloat(r.miktar_mt) || 0,
+        signedKg: parseFloat(r.miktar_kg) || 0,
+        cuval: parseInt(r.cuval_sayisi, 10) || 0
+    };
+    _sevkDepoSatirNormCache.set(r, n);
+    return n;
+}
+
+/* Aday satır indeksi: bir kaleme ancak kendi sipariş etiketiyle, stok koduyla (tam ya da "KOD-…" öneki)
+   ya da lot = sipariş no ile eşleşen satır sayılabilir; indeks bu üç anahtarın üst kümesini verir,
+   kesin eşleşme yine aşağıdaki kurallarla yapılır. Satır nesnesi değişince (canlı güncelleme) yenilenir. */
+const _sevkDepoIdx = { refs: null, bySid: null, byStok: null, byLot: null };
+function sevkiyatDepoIndeks(rows) {
+    const idx = _sevkDepoIdx;
+    let gecerli = !!idx.refs && idx.refs.length === rows.length;
+    for (let i = 0; gecerli && i < rows.length; i++) if (rows[i] !== idx.refs[i]) gecerli = false;
+    if (gecerli) return idx;
+    idx.refs = rows.slice();
+    idx.bySid = new Map();
+    idx.byStok = new Map();
+    idx.byLot = new Map();
+    const ekle = (m, k, i) => {
+        if (!k) return;
+        let a = m.get(k);
+        if (!a) m.set(k, a = []);
+        if (a[a.length - 1] !== i) a.push(i);
+    };
+    const reEtiket = /(?:SEVK_KUMAS:sip=|SEVK_MERKEZ_ADET:sip=|SEVK_GRID:)([^|]*)\|/gi;
+    for (let i = 0; i < rows.length; i++) {
+        if (!rows[i]) continue;
+        const n = sevkiyatDepoSatirNorm(rows[i]);
+        if (n.tagged) {
+            reEtiket.lastIndex = 0;
+            let m;
+            while ((m = reEtiket.exec(n.not))) ekle(idx.bySid, m[1].toUpperCase(), i);
+        }
+        const s = n.stokKodu;
+        ekle(idx.byStok, s, i);
+        for (let j = s.indexOf('-'); j > 0; j = s.indexOf('-', j + 1)) ekle(idx.byStok, s.slice(0, j), i);
+        ekle(idx.byLot, n.lot, i);
+        if (n.lotIlk !== n.lot) ekle(idx.byLot, n.lotIlk, i);
+    }
+    return idx;
+}
+
 function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
     const sid = String(siparisId || '').trim();
     const ki = parseInt(kalemIdx, 10);
@@ -8730,68 +8816,61 @@ function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
     const reGrid = new RegExp(`SEVK_GRID:${sidEsc}\\|${ki}\\|`, 'i');
     const reMerkez = new RegExp(`SEVK_MERKEZ_ADET:sip=${sidEsc}\\|k=${ki}\\|`, 'i');
     const reKumas = new RegExp(`SEVK_KUMAS:sip=${sidEsc}\\|k=${ki}\\|`, 'i');
-    const reHerhangiTag = /SEVK_KUMAS:sip=|SEVK_GRID:|SEVK_MERKEZ_ADET:sip=/i;
     const adTekil = sevkiyatSiparisKalemAdTekilMi(kalemler, ki, kumasKalem);
     let net = 0;
     const rows = (typeof dataCache !== 'undefined' && dataCache.kumas_stok) ? dataCache.kumas_stok : [];
-    for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        const kb = String(r?.kaynak_birim || '').toUpperCase();
-        const ana = String(r?.ana_grup || '').toUpperCase();
-        const not = String(r?.notlar || '');
-        const stokKodu = String(r?.stok_kodu || '').trim().toUpperCase();
-        const lot = String(r?.lot_no || '').trim();
-        const tip = String(r.islem_turu || '').toUpperCase()
-            .replace(/İ/g, 'I').replace(/Ç/g, 'C').replace(/Ş/g, 'S');
-        const isCikis = tip.includes('CIKIS');
-        const isGiris = tip.includes('GIRIS');
-        const tagged = reHerhangiTag.test(not);
+    const idx = sevkiyatDepoIndeks(rows);
+    const aday = [];
+    const adayEkle = (liste) => { if (liste) for (let j = 0; j < liste.length; j++) aday.push(liste[j]); };
+    adayEkle(idx.bySid.get(sid.toUpperCase()));
+    if (sipStok) adayEkle(idx.byStok.get(sipStok));
+    if (kodN) adayEkle(idx.byStok.get(kodN));
+    if (sno) adayEkle(idx.byLot.get(sno));
+    aday.sort((a, b) => a - b);
+    for (let j = 0; j < aday.length; j++) {
+        if (j && aday[j] === aday[j - 1]) continue;
+        const n = sevkiyatDepoSatirNorm(rows[aday[j]]);
+        const kb = n.kb;
 
         if (kumasKalem) {
             const kumasHareket = kb === 'DEPO_HAREKET_KUMAS' || kb.startsWith('DEPO_HAREKET_KUMAS')
                 || kb === 'DEPO_HAREKET_HAM_KUMAS' || kb === 'KUMAS';
             if (!kumasHareket) continue;
-            let esles = reKumas.test(not);
-            if (!esles && !tagged) {
-                if (sevkiyatSipStokKodEslesir(stokKodu, sipStok)) esles = true;
-                else if (kodN && kodN !== 'KODSUZ' && stokKodu === kodN) esles = true;
-                else if (adTekil && sno && (lot === sno || lot.split(',')[0].trim() === sno)) {
-                    const urun = String(r?.urun_adi || r?.kumas_cinsi || '').trim().toUpperCase();
-                    if (adN && urun === adN) esles = true;
+            let esles = reKumas.test(n.not);
+            if (!esles && !n.tagged) {
+                if (sevkiyatSipStokKodEslesir(n.stokKodu, sipStok)) esles = true;
+                else if (kodN && kodN !== 'KODSUZ' && n.stokKodu === kodN) esles = true;
+                else if (adTekil && sno && (n.lot === sno || n.lotIlk === sno)) {
+                    if (adN && n.urun === adN) esles = true;
                 }
             }
             if (!esles) continue;
-            const mt = Math.abs(parseFloat(r.miktar_mt) || 0);
-            const kg = Math.abs(parseFloat(r.miktar_kg) || 0);
-            const miktar = birim === 'KG' ? (kg || mt) : (mt || kg);
+            const miktar = birim === 'KG' ? (n.kg || n.mt) : (n.mt || n.kg);
             if (!(miktar > 0)) continue;
-            const signedMt = parseFloat(r.miktar_mt) || 0;
-            const signedKg = parseFloat(r.miktar_kg) || 0;
-            const signed = birim === 'KG' ? signedKg : signedMt;
-            if (isCikis || signed < 0) net += miktar;
-            else if (isGiris || signed > 0) net -= miktar;
+            const signed = birim === 'KG' ? n.signedKg : n.signedMt;
+            if (n.isCikis || signed < 0) net += miktar;
+            else if (n.isGiris || signed > 0) net -= miktar;
             else net += (signed < 0 ? miktar : -miktar);
             continue;
         }
 
         const mamulHareket = kb === 'DEPO_HAREKET_MAMUL_DEPO' || kb.startsWith('DEPO_HAREKET_MAMUL')
-            || ana === 'MAMUL' || kb === 'MAMUL_DEPO';
+            || n.ana === 'MAMUL' || kb === 'MAMUL_DEPO';
         if (!mamulHareket) continue;
-        let esles = reGrid.test(not) || reMerkez.test(not);
-        if (!esles && !tagged) {
-            if (sevkiyatSipStokKodEslesir(stokKodu, sipStok)) esles = true;
-            else if (kodN && kodN !== 'KODSUZ' && stokKodu === kodN) esles = true;
-            else if (adTekil && sno && lot === sno) {
-                const urun = String(r?.urun_adi || r?.kumas_cinsi || '').trim().toUpperCase();
-                if (adN && urun === adN) esles = true;
+        let esles = reGrid.test(n.not) || reMerkez.test(n.not);
+        if (!esles && !n.tagged) {
+            if (sevkiyatSipStokKodEslesir(n.stokKodu, sipStok)) esles = true;
+            else if (kodN && kodN !== 'KODSUZ' && n.stokKodu === kodN) esles = true;
+            else if (adTekil && sno && n.lot === sno) {
+                if (adN && n.urun === adN) esles = true;
             }
         }
         if (!esles) continue;
-        const ad = Math.abs(parseInt(r.cuval_sayisi, 10) || 0);
+        const ad = Math.abs(n.cuval);
         if (!ad) continue;
-        const signed = parseInt(r.cuval_sayisi, 10) || 0;
-        if (isCikis || signed < 0) net += ad;
-        else if (isGiris || signed > 0) net -= ad;
+        const signed = n.cuval;
+        if (n.isCikis || signed < 0) net += ad;
+        else if (n.isGiris || signed > 0) net -= ad;
         else net += (signed < 0 ? ad : -ad);
     }
     return Math.max(0, Math.round(net));
@@ -9060,6 +9139,51 @@ function planlamaIhtiyacSevkAdet(siparisId, kalemIdx, rowK) {
     }
     return sevk;
 }
+
+/** Sipariş yükleme oranı (0–1): kalem yüklemesi (planlamaIhtiyacSevkAdet) hedefiyle sınırlanır;
+ *  tüm kalemler aynı birimdeyse miktar ağırlıklı, karışık birimde kalem oranlarının ortalaması. */
+const _siparisYuklemeOraniMemo = { imza: '', harita: new Map() };
+function siparisYuklemeOraniImza() {
+    const ks = (typeof dataCache !== 'undefined' && dataCache.kumas_stok) || [];
+    let enSon = '';
+    for (let i = 0; i < ks.length; i++) {
+        const t = String(ks[i]?.updated_at || ks[i]?.created_at || '');
+        if (t > enSon) enSon = t;
+    }
+    let kdSon = 0;
+    if (typeof _kdCacheAt === 'object' && _kdCacheAt) for (const k in _kdCacheAt) if (_kdCacheAt[k] > kdSon) kdSon = _kdCacheAt[k];
+    let akis = 0;
+    if (typeof _konfIslemLogCache !== 'undefined' && _konfIslemLogCache) for (const k in _konfIslemLogCache) akis += (_konfIslemLogCache[k] || []).length;
+    return `${ks.length}|${enSon}|${kdSon}|${akis}`;
+}
+function siparisYuklemeOrani(siparis) {
+    const sid = String(siparis?.id || '').trim();
+    if (!sid) return 0;
+    const memo = _siparisYuklemeOraniMemo;
+    const imza = siparisYuklemeOraniImza();
+    if (imza !== memo.imza) { memo.imza = imza; memo.harita.clear(); }
+    const anahtar = `${sid}|${siparis.updated_at || ''}`;
+    if (memo.harita.has(anahtar)) return memo.harita.get(anahtar);
+    const kd = (_kdCache[`KD_KONFEKSIYON_${sid}`] || {});
+    const satir = siparisListeKalemleriArr(siparis).map((k, i) => {
+        const hedef = parseFloat(k.miktar) || 0;
+        return {
+            hedef,
+            yuk: Math.min(hedef, planlamaIhtiyacSevkAdet(sid, i, kd[`kalem_${i}`] || {})),
+            birim: String(siparisKalemBirim(k) || '').toUpperCase()
+        };
+    }).filter(x => x.hedef > 0);
+    let oran = 0;
+    if (satir.length) {
+        oran = new Set(satir.map(x => x.birim)).size === 1
+            ? satir.reduce((a, x) => a + x.yuk, 0) / satir.reduce((a, x) => a + x.hedef, 0)
+            : satir.reduce((a, x) => a + x.yuk / x.hedef, 0) / satir.length;
+    }
+    oran = Math.max(0, Math.min(1, oran));
+    memo.harita.set(anahtar, oran);
+    return oran;
+}
+try { window.siparisYuklemeOrani = siparisYuklemeOrani; } catch (e) {}
 
 /** Açık sipariş için depo + akış yüklemelerini KD_KONFEKSIYON'a geri yaz (özet/durum kalıcı görsün) */
 async function sevkiyatSiparisYuklemeKdDepodanOnar(siparisId, opts = {}) {
@@ -10973,19 +11097,22 @@ function sevkiyatRender(opts = {}) {
         || String(a.renk).localeCompare(String(b.renk), 'tr')
     );
 
-    /* Büyük listelerde DOM hafif kalsın — “Tümünü göster” ile tamamı açılır (veri silinmez) */
-    const MAX_ROWS = _sevkiyatTumunuGoster ? rows.length : 400;
-    const truncated = !_sevkiyatTumunuGoster && rows.length > 400;
-    const shown = truncated ? rows.slice(0, 400) : rows;
+    /* Büyük listelerde DOM hafif kalsın — “Tümünü göster” ile tamamı açılır (veri silinmez).
+       Telefonda her satır karta döner (6-8 satır yükseklik): 400 kart hem çok uzun hem ağır —
+       mobilde ilk görünüm 60 satır (kullanıcı 24.09.2026: telefonda kullanılabilirlik). */
+    const SVK_ILK = (typeof window !== 'undefined' && window.ERP_MOBIL_LITE) ? 60 : 400;
+    const MAX_ROWS = _sevkiyatTumunuGoster ? rows.length : SVK_ILK;
+    const truncated = !_sevkiyatTumunuGoster && rows.length > SVK_ILK;
+    const shown = truncated ? rows.slice(0, SVK_ILK) : rows;
     const moreNote = truncated
-        ? `<div class="svk-more">İlk 400 / ${rows.length.toLocaleString('tr-TR')} satır.
+        ? `<div class="svk-more">İlk ${SVK_ILK} / ${rows.length.toLocaleString('tr-TR')} satır.
             <button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px;margin-left:8px;border-radius:8px"
                 onclick="sevkiyatTumunuGosterToggle(true)">Tümünü göster</button>
             <span style="opacity:.8"> · veya arama ile daraltın</span></div>`
-        : (_sevkiyatTumunuGoster && rows.length > 400
+        : (_sevkiyatTumunuGoster && rows.length > SVK_ILK
             ? `<div class="svk-more">${rows.length.toLocaleString('tr-TR')} satırın tamamı.
                 <button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px;margin-left:8px;border-radius:8px"
-                    onclick="sevkiyatTumunuGosterToggle(false)">Hızlı görünüm (400)</button></div>`
+                    onclick="sevkiyatTumunuGosterToggle(false)">Hızlı görünüm (${SVK_ILK})</button></div>`
             : '');
 
     const tabloAraHtml = `<div class="svk-table-search">
@@ -27291,17 +27418,21 @@ function renderUaAksesuarGenelPanel(siparis, kalemler) {
     const fasonKalemler = fasonTakipFasonKalemleri(siparis);
     const fasonAdet = fasonKalemler.reduce((a, { k }) => a + (parseInt(k.miktar, 10) || 0), 0);
     const dolu = UA_AKSESUARLAR.filter(ak => (parseFloat(genel[ak.id]) || 0) > 0);
+    /* Telefonda açılır-kapanır, istenmedikçe kapalı; açık/kapalı durumu yeniden çizimde korunur. */
+    const katlanir = !!window.ERP_MOBIL_LITE;
+    const baslik = `<span class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>Genel aksesuar planı</span>`;
     return `
-    <div class="panel-box" style="margin-top:12px">
-        <div class="panel-head">
-            <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>Genel aksesuar planı</span>
-        </div>
+    ${katlanir
+        ? `<details class="panel-box ua-aksesuar-katlanir" style="margin-top:12px"${window._uaAksesuarGenelAcik ? ' open' : ''} ontoggle="window._uaAksesuarGenelAcik = this.open">
+        <summary class="panel-head">${baslik}<span class="ua-aksesuar-katlanir__ozet">${dolu.length ? `${dolu.length} kalem girili` : 'boş'}</span></summary>`
+        : `<div class="panel-box" style="margin-top:12px">
+        <div class="panel-head">${baslik}</div>`}
         <div style="padding:10px 14px;font-size:10px;color:var(--text3);line-height:1.45;border-bottom:1px solid var(--border)">
             Sipariş geneli — <b>adet/ürün</b> (veya metre/ürün). Fason Takip ve konfeksiyon özetinde fason kalemlerin sipariş adedi ile çarpılır.
             ${fasonAdet > 0 ? `<span style="display:block;margin-top:4px;color:var(--accent2);font-weight:600">Fason kalem toplamı: ${fasonAdet.toLocaleString('tr-TR')} adet</span>` : ''}
         </div>
         <div style="padding:10px 14px;max-height:280px;overflow-y:auto">
-            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+            <div class="ua-aksesuar-izgara" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
                 ${UA_AKSESUARLAR.map(ak => `
                 <div style="display:flex;align-items:center;gap:6px;min-width:0">
                     <label style="font-size:9px;font-weight:600;color:var(--text2);width:72px;flex-shrink:0;line-height:1.2">${ak.label}</label>
@@ -27324,7 +27455,7 @@ function renderUaAksesuarGenelPanel(siparis, kalemler) {
                 </div>
             </div>` : ''}
         </div>
-    </div>`;
+    ${katlanir ? '</details>' : '</div>'}`;
 }
 
 function uaNormalizeAsamalar(rawAsamalar = [], opts = {}) {
@@ -27923,7 +28054,7 @@ function renderUrunAgaciIcerik() {
             </div>
 
             <!-- Sağ: Ağaç düzenleyici -->
-            <div>
+            <div id="ua-editor-panel">
                 ${uaSeciliUrunIdx !== null ? renderUaEditor(kalemler[uaSeciliUrunIdx], uaSeciliUrunIdx) : `
                 <div class="empty-pro" style="padding:60px 20px">
                     <div class="empty-pro-icon">←</div>
@@ -28022,8 +28153,8 @@ function renderUaEditor(urun, idx) {
                 </div>` : ''}
             </div>
 
-            <!-- KUMAŞ TÜKETİM -->
-            <div>
+            <!-- KUMAŞ TÜKETİM — telefonda gösterilmez (kullanıcı, 25.09.2026: şu an kullanılmıyor) -->
+            ${window.ERP_MOBIL_LITE ? '' : `<div>
                 <div class="text-[10px] font-bold uppercase tracking-widest mb-3">🏁 Kumaş Tüketim Oranı</div>
                 <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
                     <div>
@@ -28043,7 +28174,7 @@ function renderUaEditor(urun, idx) {
                 <div class="mt-2 bg-indigo-50 rounded-xl px-4 py-2 text-[9px] font-bold text-indigo-700">
                     📐 Tahmini toplam kumaş: <b>${(parseFloat(ua.kumas_metre||0) * parseInt(urun.miktar||0) * (1 + parseFloat(ua.kumas_tolerans||0)/100)).toFixed(1)} metre</b>
                 </div>` : ''}
-            </div>
+            </div>`}
 
             <div style="padding:12px 14px;border-radius:10px;border:1px dashed var(--border);background:var(--surface2);font-size:10px;color:var(--text3);line-height:1.45">
                 Genel aksesuar planını soldaki <b>Genel aksesuar planı</b> panelinden girin (sipariş geneli). Fason Takip bu değerleri fason kalemlerin adedi ile çarpar.
@@ -28066,6 +28197,10 @@ async function uaSecUrun(idx) {
     uaSeciliUrunIdx = idx;
     const cont = document.getElementById('ua-content');
     if (cont) cont.innerHTML = renderUrunAgaciIcerik();
+    /* Telefonda düzenleyici kalem listesinin altına düşer — seçince ekran ona kaysın. */
+    if (window.ERP_MOBIL_LITE) {
+        requestAnimationFrame(() => document.getElementById('ua-editor-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
 }
 
 async function uaAsamaToggle(id, checked) {
@@ -28205,8 +28340,15 @@ async function uaAksesuarGenelGuncelle(akId, deger) {
     sipMeta.aksesuar_genel[akId] = parseFloat(deger) || 0;
     _kdCache[allKey].siparis = sipMeta;
     await uaSetSiparisAgac(uaSeciliSiparisId, sipMeta);
+    /* Yeniden çizim yazılan kutuyu da yeniler — odak ve imleç geri verilmezse her harften sonra
+       kutuya yeniden dokunmak gerekiyordu. */
+    const odakId = String(document.activeElement?.id || '');
     const cont = document.getElementById('ua-content');
     if (cont) cont.innerHTML = renderUrunAgaciIcerik();
+    if (odakId.startsWith('ua-ak-genel-')) {
+        const el = document.getElementById(odakId);
+        if (el) { el.focus(); const v = el.value; el.value = ''; el.value = v; }
+    }
 }
 
 async function uaKaydet() {
@@ -34113,8 +34255,8 @@ function loadData(opts) {
     const siparisKapananAramaAktif = (table === 'siparisler' && appMode === 'SIPARIS_KAPANAN' && siparisKapananAramaAktifMi());
     if (table === 'siparisler' && appMode === 'SIPARIS_KAPANAN') {
         siparisKapananToplam = currentData.length;
+        currentData = siparisKapananSonKapanisSirala(currentData);
         if (!siparisKapananAramaAktif) {
-            currentData = siparisKapananSonKapanisSirala(currentData);
             const lim = siparisKapananListeLimitOku();
             siparisKapananGosterilen = Math.min(lim, currentData.length);
             currentData = currentData.slice(0, lim);
@@ -35391,6 +35533,7 @@ function siparisListeAramaToolbarHtml(sayac) {
         ? `<button type="button" onclick="siparisListeFiltreTemizle()" class="pill pill-gray" style="cursor:pointer;border:none;font-size:9px;padding:3px 10px;margin-left:auto">✕ Temizle</button>`
         : '';
     const f = siparisListeHizliFiltre;
+    if (window.ERP_MOBIL_LITE && appMode === 'SIPARIS_LISTE') return siparisListeMobilToolbarHtml(qVal, sc, f);
     const durumPills = appMode === 'SIPARIS_LISTE' ? `
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
             <button onclick="siparisListeSetHizliFiltre('HEPSI')" class="pill ${f==='HEPSI'?'pill-blue':'pill-gray'}" style="cursor:pointer;border:none">Tümü (${sc.hepsi})</button>
@@ -35423,6 +35566,83 @@ function siparisListeAramaToolbarHtml(sayac) {
         </div>
         ${durumPills}
     </div>`;
+}
+
+/* Telefon: aynı hızlı filtreler (siparisListeSetHizliFiltre) — 10 düğme yerine tek durum düğmesi + alttan açılan seçim paneli. */
+function siparisDurumSecenekleri(sc) {
+    return [
+        { k: 'HEPSI', ad: 'Tümü', n: sc.hepsi, renk: 'var(--accent)' },
+        { k: 'PLANDA', ad: 'Planda', n: sc.planda, renk: '#94a3b8' },
+        { k: 'BEKLEMEDE', ad: 'Beklemede', n: sc.beklemede, renk: 'var(--amber-c)' },
+        { k: 'DOKUMA', ad: 'Dokuma', n: sc.dokuma, renk: 'var(--cyan-c)' },
+        { k: 'URETIMDE', ad: 'Üretimde', n: sc.uretimde, renk: '#a78bfa' },
+        { k: 'KONFEKSIYON', ad: 'Konfeksiyon', n: sc.konfeksiyon, renk: '#f472b6' },
+        { k: 'SEVK', ad: 'Sevk', n: sc.sevk, renk: 'var(--emerald-c)' },
+        { k: 'DOGRUDAN_SEVK', ad: 'Doğrudan Sevk', n: sc.dogrudanSevk, renk: '#8b5cf6' },
+        { k: 'YAKIN', ad: 'Yaklaşan', n: sc.yakin, renk: 'var(--amber-c)' },
+        { k: 'GECIKEN', ad: 'Geciken', n: sc.geciken, renk: 'var(--rose-c)' }
+    ];
+}
+
+function siparisListeMobilToolbarHtml(qVal, sc, f) {
+    window._siparisDurumSayac = sc;
+    const secenekler = siparisDurumSecenekleri(sc);
+    const secili = secenekler.find(s => s.k === f) || secenekler[0];
+    const aktif = secili.k !== 'HEPSI';
+    return `<div class="siparis-liste-toolbar sm-toolbar">
+        <div class="siparis-arama-bar">
+            <span class="siparis-arama-bar__icon" aria-hidden="true">⌕</span>
+            <input id="f-siparis-q" type="search" autocomplete="off" enterkeyhint="search"
+                class="siparis-arama-bar__input"
+                value="${pdfEsc(qVal)}"
+                placeholder="Sipariş, müşteri, ürün, renk ara…"
+                oninput="siparisListePanelFiltreAlan('q', this.value)">
+            <button type="button" class="siparis-arama-bar__clear" title="Aramayı temizle"
+                onclick="siparisListeAramaTemizle()" ${qVal ? '' : 'hidden'}>✕</button>
+        </div>
+        <div class="sm-durum">
+            <button type="button" class="sm-durum__btn${aktif ? ' is-aktif' : ''}" style="--durum-renk:${secili.renk}"
+                onclick="siparisDurumSecimAc()" aria-haspopup="dialog">
+                <span class="sm-durum__nokta"></span>
+                <span class="sm-durum__ad">${secili.ad}</span>
+                <span class="sm-durum__sayi">${secili.n || 0}</span>
+                <span class="sm-durum__ok" aria-hidden="true"></span>
+            </button>
+            ${aktif ? `<button type="button" class="sm-durum__kaldir" onclick="siparisListeSetHizliFiltre('HEPSI')">Tümünü göster</button>` : ''}
+        </div>
+    </div>`;
+}
+
+function siparisDurumSecimAc() {
+    siparisDurumSecimKapat();
+    const f = siparisListeHizliFiltre;
+    const kap = document.createElement('div');
+    kap.id = 'siparis-durum-sayfa';
+    kap.className = 'sds';
+    kap.innerHTML = `<div class="sds__zemin" onclick="siparisDurumSecimKapat()"></div>
+        <div class="sds__sayfa" role="dialog" aria-modal="true" aria-label="Sipariş durumu">
+            <div class="sds__tutamac"></div>
+            <div class="sds__baslik">Sipariş durumu</div>
+            <div class="sds__liste">${siparisDurumSecenekleri(window._siparisDurumSayac || {}).map(s => `
+                <button type="button" class="sds__satir${f === s.k ? ' is-secili' : ''}" style="--durum-renk:${s.renk}" onclick="siparisDurumSecimYap('${s.k}')">
+                    <span class="sds__nokta"></span>
+                    <span class="sds__ad">${s.ad}</span>
+                    <span class="sds__sayi">${s.n || 0}</span>
+                    <span class="sds__tik" aria-hidden="true">${f === s.k ? '✓' : ''}</span>
+                </button>`).join('')}
+            </div>
+        </div>`;
+    document.body.appendChild(kap);
+    requestAnimationFrame(() => kap.classList.add('is-acik'));
+}
+
+function siparisDurumSecimKapat() {
+    document.getElementById('siparis-durum-sayfa')?.remove();
+}
+
+function siparisDurumSecimYap(k) {
+    siparisDurumSecimKapat();
+    siparisListeSetHizliFiltre(k);
 }
 
 function siparisListePanelFiltreAlan(key, value) {
@@ -36628,6 +36848,42 @@ async function handleSave() {
     }
 }
 
+/* Fason konfeksiyon siparişinde hangi fasona gittiği — ürün ağacındaki "Hangi fasona gidecek"
+   (Fason Takip ile aynı okuma: fasonTakipFasonFirmaAl). Ürün ağacı henüz yüklenmediyse boş döner;
+   detay penceresi veriler gelince kendini yeniden çizer. */
+function siparisFasonFirmaSatirHtml(siparis) {
+    const ua = _kdCache[`KD_URUN_AGACI_${siparis.id}`];
+    if (ua === undefined || typeof fasonTakipFasonKalemleri !== 'function') return '';
+    const firmalar = [...new Set(fasonTakipFasonKalemleri(siparis)
+        .map(({ i }) => fasonTakipFasonFirmaAl(siparis, ua || {}, i))
+        .filter(f => f && f !== '—'))];
+    return firmalar.length
+        ? `<div style="margin-top:4px;font-size:12px;font-weight:700;color:var(--amber-c);word-break:break-word">Fason: ${pdfEsc(firmalar.join(' · '))}</div>`
+        : `<div style="margin-top:4px;font-size:11px;color:var(--text3)">Fason firması ürün ağacında girilmemiş</div>`;
+}
+
+/* Telefon: sipariş kalemlerinin kaba görünümü (ürün, renk · ebat, sipariş miktarı).
+   Üretim sütunları (kesim, yıkama, kalite, yükleme) masaüstü tablosunda ve Sipariş Durum İnceleme'de. */
+function siparisKalemMobilListeHtml(kalemler) {
+    const satirlar = kalemler.map((k) => {
+        const birim = String(siparisKalemBirim(k) || 'ADET').toLowerCase();
+        const kumas = typeof siparisKalemKumasMi === 'function' && siparisKalemKumasMi(k);
+        const miktar = kumas ? Math.round(parseFloat(k.miktar) || 0) : (parseFloat(k.miktar) || 0);
+        const alt = [k.renk, k.ebat].map(x => String(x || '').trim()).filter(Boolean).join(' · ');
+        return `<div class="siparis-kalem-liste__satir">
+            <div class="siparis-kalem-liste__sol">
+                <div class="siparis-kalem-liste__ad">${pdfEsc(k.ad || '—')}</div>
+                ${alt ? `<div class="siparis-kalem-liste__alt">${pdfEsc(alt)}</div>` : ''}
+            </div>
+            <div class="siparis-kalem-liste__miktar">${miktar.toLocaleString('tr-TR')} <span>${pdfEsc(birim)}</span></div>
+        </div>`;
+    }).join('');
+    return `<div class="siparis-kalem-liste">
+        <div class="siparis-kalem-liste__baslik"><span>Sipariş kalemleri</span><span class="siparis-kalem-liste__sayi">${kalemler.length}</span></div>
+        ${satirlar}
+    </div>`;
+}
+
 // --- Sipariş listesi: detay modal (okunaklı özet + kalem tablosu) ---
 function buildSiparisDetailModalHtml(i, opts) {
     opts = opts || {};
@@ -36699,7 +36955,9 @@ function buildSiparisDetailModalHtml(i, opts) {
         </div>`;
     }
 
-    if (kalemler.length) {
+    if (kalemler.length && window.ERP_MOBIL_LITE) {
+        html += siparisKalemMobilListeHtml(kalemler);
+    } else if (kalemler.length) {
         const kdKonfOzet = (_kdCache && i.id != null) ? (_kdCache[`KD_KONFEKSIYON_${i.id}`] || {}) : {};
         const kdDokOzet = (_kdCache && i.id != null) ? (_kdCache[`KD_DOKUMA_${i.id}`] || {}) : {};
         const urunlerDok = kdDokOzet.urunler || {};
@@ -36845,6 +37103,7 @@ function buildSiparisDetailModalHtml(i, opts) {
     const siparisExtraExclude = new Set(['id', 'created_at', 'updated_at', 'fotograf', 'islem_gecmisi', 'kaynak_birim', 'updated_by', 'cins', 'sno', 'firma', 'starih', 'ttarih', 'durum', 'miktar', 'notlar']);
     const extras = Object.entries(i).filter(([key, val]) => {
         if (siparisExtraExclude.has(key)) return false;
+        if (key.startsWith('_')) return false;   // istemci iç önbelleği (ör. _search_siparis_blob), veritabanı alanı değil
         if (val === null || val === undefined || val === '') return false;
         if (typeof val === 'object') return false;
         return true;
@@ -36858,6 +37117,7 @@ function buildSiparisDetailModalHtml(i, opts) {
                 <div style="padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface)">
                     <div style="font-size:8px;font-weight:600;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-bottom:4px">${pdfEsc(key.replace(/_/g, ' '))}</div>
                     <div style="font-size:12px;font-weight:500;color:var(--text);word-break:break-word">${pdfEsc(val)}</div>
+                    ${key === 'uretim_yeri' && val === 'FASON_KONF' ? siparisFasonFirmaSatirHtml(i) : ''}
                 </div>`).join('')}
             </div>
         </div>`;
@@ -37568,7 +37828,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         </tr>`
         : '';
 
-    const kumasTabloHtml = !kumasIndices.length ? '' : `
+    const kumasTabloHtml = (!kumasIndices.length || window.ERP_MOBIL_LITE) ? '' : `
     <div class="panel-box" style="padding:0;overflow:hidden;margin:0 0 ${urunIndices.length ? '10px' : '0'};flex:1;min-width:0">
         <div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace">Kumaş takip</span>
@@ -37617,27 +37877,35 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         <div style="font-size:8px;color:var(--text3);padding:6px 10px;border-top:1px solid var(--border);font-family:'DM Mono',monospace">Hazır bekleyen = Dokunan − Sevk. Kumaşta kesim / yıkama / dikim / kalite sütunları yok.</div>
     </div>`;
 
-    const urunTabloSatirlari = !urunIndices.length
+    /* Ürün kalemi üretim sayıları — masaüstü tablosu ve telefon kutusu aynı değerleri buradan okur. */
+    const urunKalemDegerleri = (i) => {
+        const k = kalemler[i] || {};
+        const row = (kdKonf && kdKonf[`kalem_${i}`]) ? kdKonf[`kalem_${i}`] : {};
+        /* Tek kural — Konfeksiyon Panel ile aynı sayı (günlük toplamı girmez). */
+        const ur = konfKalemUretimSayilari(siparis.id, i, kdKonf);
+        return {
+            k,
+            row,
+            yik: Math.max(ur.yikSevk, ur.yikGel),
+            kkN: ur.kalite,
+            kesN: ur.kesim,
+            dikN: ur.dikim,
+            koliN: ur.koli,
+            sevkN: konfKalemSevkNet(kdKonf, islemRows, kalemler, i, sevkCtx),
+            fireTop: (parseInt(row.fire_kesim, 10) || 0) + (parseInt(row.fire_dikim, 10) || 0) + (parseInt(row.iki_kalite, 10) || 0),
+            dokOzet: dokumaUrunIkinciOzet(urunler[i] || {}, k),
+            sipBirim: siparisKalemBirim(k)
+        };
+    };
+
+    const urunTabloSatirlari = (!urunIndices.length || window.ERP_MOBIL_LITE)
         ? ''
         : urunIndices.map((i) => {
-            const k = kalemler[i] || {};
-            const u = urunler[i] || {};
-            const row = (kdKonf && kdKonf[`kalem_${i}`]) ? kdKonf[`kalem_${i}`] : {};
+            const { k, row, yik, kkN, kesN, dikN, koliN, sevkN, fireTop, dokOzet, sipBirim } = urunKalemDegerleri(i);
             const ua = kdUrunAgaciAll[`u_${i}`] || {};
             const ad = pdfEsc(k.ad || k.kod || ('Kalem ' + (i + 1)));
             const renkEbat = [k.renk, k.ebat].filter(Boolean).map(pdfEsc).join(' · ');
             const titleAttr = pdfEsc([k.ad, k.kod, k.renk, k.ebat].filter(Boolean).join(' · ') || '');
-            /* Tek kural — Konfeksiyon Panel ile aynı sayı (günlük toplamı girmez). */
-            const ur = konfKalemUretimSayilari(siparis.id, i, kdKonf);
-            const yik = Math.max(ur.yikSevk, ur.yikGel);
-            const kkN = ur.kalite;
-            const kesN = ur.kesim;
-            const dikN = ur.dikim;
-            const koliN = ur.koli;
-            const sevkN = konfKalemSevkNet(kdKonf, islemRows, kalemler, i, sevkCtx);
-            const fireTop = (parseInt(row.fire_kesim, 10) || 0) + (parseInt(row.fire_dikim, 10) || 0) + (parseInt(row.iki_kalite, 10) || 0);
-            const dokOzet = dokumaUrunIkinciOzet(u, k);
-            const sipBirim = siparisKalemBirim(k);
             return `<tr style="border-bottom:1px solid var(--border);vertical-align:middle;font-size:10px">
                 <td style="padding:5px 4px;font-family:'DM Mono',monospace;color:var(--text3);text-align:center">${i + 1}</td>
                 <td style="padding:5px 6px;min-width:100px;max-width:160px" title="${titleAttr}">
@@ -37665,7 +37933,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         ? ''
         : `<div style="font-size:9px;color:var(--amber-c);margin:0 0 8px;padding:5px 8px;border-radius:8px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.35)">Bazı kalemlerde ürün ağacı seçilmemiş — <b>Ü.A.</b> sütunu varsayılan akış + 🚚 gösterir.</div>`;
 
-    const urunTabloHtml = !urunIndices.length ? '' : `
+    const urunTabloHtml = (!urunIndices.length || window.ERP_MOBIL_LITE) ? '' : `
     <div class="panel-box" style="padding:0;overflow:hidden;margin:0;flex:1;min-width:0">
         ${uaUyariBand}
         ${kumasIndices.length ? `<div style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace">Ürün / konfeksiyon takip</div>` : ''}
@@ -37697,9 +37965,61 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         <div style="font-size:8px;color:var(--text3);padding:5px 8px;border-top:1px solid var(--border);line-height:1.35;font-family:'DM Mono',monospace">Toplamlar = ana program + konfeksiyon paneli. Yükleme = Sevkiyat Merkezi kümülatif.</div>
     </div>`;
 
+    /* Telefon: bütün sipariş tek kutuda — her kalem bir satır, altında aşama sayıları (masaüstü tablosuyla aynı değerler). */
+    const mobilDurumKutusu = () => {
+        const hucre = (lbl, n, renk, fmt = fmtI) => {
+            const bos = !(parseFloat(n) > 0);
+            return `<div class="sdk__hucre"><div class="sdk__lbl">${lbl}</div><div class="sdk__val" style="color:${bos ? 'var(--text3)' : renk}">${bos ? '—' : fmt(n)}</div></div>`;
+        };
+        const baslik = (k, i, hedefHtml) => `<div class="sdk__ust">
+                <div class="sdk__sol">
+                    <div class="sdk__ad">${pdfEsc(k.ad || k.kod || ('Kalem ' + (i + 1)))}</div>
+                    ${[k.renk, k.ebat].filter(Boolean).length ? `<div class="sdk__alt">${[k.renk, k.ebat].filter(Boolean).map(pdfEsc).join(' · ')}</div>` : ''}
+                </div>
+                <div class="sdk__hedef">${hedefHtml}</div>
+            </div>`;
+        const kumasSatirlar = kumasIndices.map((i) => {
+            const k = kalemler[i] || {};
+            const row = (kdKonf && kdKonf[`kalem_${i}`]) ? kdKonf[`kalem_${i}`] : {};
+            const o = siparisKalemKumasMetrajOzet(siparis.id, i, k, urunler[i] || urunler[String(i)] || {}, row);
+            const fm = (n) => Math.round(n).toLocaleString('tr-TR');
+            return `<div class="sdk__satir">
+                ${baslik(k, i, `${fm(o.siparis)} <span>${pdfEsc(o.birimLbl)}</span>`)}
+                <div class="sdk__asamalar sdk__asamalar--3 mobil-izgara-sabit">
+                    ${hucre('Dokunan', o.dokunan, 'var(--cyan-c)', fm)}${hucre('Sevk', o.sevk, 'var(--emerald-c)', fm)}${hucre('Hazır', o.hazir, 'var(--amber-c)', fm)}
+                </div>
+            </div>`;
+        });
+        const urunSatirlar = urunIndices.map((i) => {
+            const { k, row, yik, kkN, kesN, dikN, koliN, sevkN, fireTop, dokOzet, sipBirim } = urunKalemDegerleri(i);
+            const dok = dokOzet.tip === 'ADET' ? [dokOzet.adet, fmtI] : (dokOzet.tip === 'KG' ? [dokOzet.kg, fmtN] : [dokOzet.metre, fmtN]);
+            const ek = [
+                fireTop ? `Fire ${fireTop.toLocaleString('tr-TR')}` : '',
+                parseInt(row.tamir, 10) ? `Tamir ${fmtI(row.tamir)}` : '',
+                parseInt(row.imha, 10) ? `İmha ${fmtI(row.imha)}` : ''
+            ].filter(Boolean).join(' · ');
+            return `<div class="sdk__satir">
+                ${baslik(k, i, `${fmtI(k.miktar)} <span>${pdfEsc(String(sipBirim || 'adet').toLowerCase())}</span>`)}
+                <div class="sdk__asamalar mobil-izgara-sabit">
+                    ${hucre('Dok', dok[0], 'var(--cyan-c)', dok[1])}${hucre('Kes', kesN, 'var(--accent2)')}${hucre('Yık', yik, 'var(--cyan-c)')}${hucre('Dik', dikN, 'var(--rose-c)')}${hucre('Kal', kkN, 'var(--amber-c)')}${hucre('Koli', koliN, 'var(--emerald-c)')}${hucre('Yük', sevkN, 'var(--emerald-c)')}
+                </div>
+                ${ek ? `<div class="sdk__ek">${ek}</div>` : ''}
+            </div>`;
+        });
+        const orphan = sevkOrphan > 0 && urunIndices.length > 1
+            ? `<div class="sdk__ek" style="padding:8px 0;border-top:1px solid var(--border)">Günlükte kaleme eşlenemeyen yükleme: <b>${sevkOrphan.toLocaleString('tr-TR')}</b></div>`
+            : '';
+        return `<div class="sdk">
+            <div class="sdk__baslik"><span>Üretim durumu</span><span class="sdk__sayi">${kumasIndices.length + urunIndices.length} kalem</span></div>
+            ${kumasSatirlar.join('')}${urunSatirlar.join('')}${orphan}
+        </div>`;
+    };
+
     const tabloGenis = (!kumasIndices.length && !urunIndices.length)
         ? `<div class="panel-box" style="padding:24px;text-align:center;color:var(--text3)">Bu siparişte kalem satırı yok.</div>`
-        : `<div style="display:flex;flex-direction:column;gap:0;flex:1;min-width:0">${kumasTabloHtml}${urunTabloHtml}</div>`;
+        : window.ERP_MOBIL_LITE
+            ? mobilDurumKutusu()
+            : `<div style="display:flex;flex-direction:column;gap:0;flex:1;min-width:0">${kumasTabloHtml}${urunTabloHtml}</div>`;
 
     const solPanel = `
     <div class="panel-box" style="padding:10px 12px;margin:0;flex-shrink:0;width:200px;max-width:36vw;box-sizing:border-box">
@@ -37723,7 +38043,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
     const fasonPanel = fasonTakipDurumPanelHtml(siparis, kdKonf);
     const anaIzgara = `
     <div class="siparis-durum-izgara" style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:10px;align-items:stretch;margin-bottom:10px;width:100%;max-width:100%;box-sizing:border-box">
-        ${solPanel}
+        ${window.ERP_MOBIL_LITE ? '' : solPanel /* telefonda sipariş bilgisi Özet sekmesinde; ağaç/genel özet gösterilmez */}
         ${tabloGenis}
     </div>`;
 
@@ -37840,10 +38160,10 @@ async function siparisDetailModalBaslatDurumTab(siparis, quietRefresh = false) {
         const kdD = _kdCache[`KD_DOKUMA_${siparis.id}`] || {};
         const rows = _konfIslemLogCache[siparis.id] || [];
         const allUa = _kdCache[`KD_URUN_AGACI_${siparis.id}`] || {};
-        el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
+        el.innerHTML = (window.ERP_MOBIL_LITE ? '' : `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
             <button type="button" class="btn-pro btn-primary-pro" style="padding:6px 14px;font-size:10px" onclick="siparisKapamaRaporPdf('${siparis.id}')">📄 Sipariş kapama raporu (PDF)</button>
             <span style="font-size:9px;color:var(--text3)">Dokuma, konfeksiyon, fason takip ve aksesuar — tek rapor</span>
-        </div>` + buildSiparisDurumIncelemeHtml(siparis, kdK, kdD, rows, allUa);
+        </div>`) + buildSiparisDurumIncelemeHtml(siparis, kdK, kdD, rows, allUa);
         siparisOpGunlukFiltreUygula(el);
         if (typeof siparisDurumYatayScrollUygula === 'function') siparisDurumYatayScrollUygula(el);
         if (typeof siparisDurumFasonUiSync === 'function') siparisDurumFasonUiSync();

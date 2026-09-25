@@ -1938,6 +1938,296 @@
         @media (max-width: 720px) {
             .siparis-ust-kutular { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
+        /* Telefon: ürün ağacı › Genel aksesuar planı açılır-kapanır (renderUaAksesuarGenelPanel) */
+        .ua-aksesuar-katlanir > summary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            list-style: none;
+            cursor: pointer;
+            user-select: none;
+        }
+        .ua-aksesuar-katlanir > summary::-webkit-details-marker { display: none; }
+        .ua-aksesuar-katlanir > summary::after {
+            content: '';
+            flex-shrink: 0;
+            width: 7px;
+            height: 7px;
+            margin: 0 4px 3px 2px;
+            border-right: 1.5px solid var(--text3);
+            border-bottom: 1.5px solid var(--text3);
+            transform: rotate(45deg);
+            transition: transform .15s ease;
+        }
+        .ua-aksesuar-katlanir[open] > summary::after {
+            transform: rotate(-135deg);
+            margin-bottom: -3px;
+        }
+        .ua-aksesuar-katlanir:not([open]) > summary { border-bottom: none; }
+        /* İki sütunda etiket + birim arasında değer kutusu ~20 px'e eziliyordu — telefonda tek sütun. */
+        .ua-aksesuar-katlanir .ua-aksesuar-izgara {
+            grid-template-columns: minmax(0, 1fr) !important;
+        }
+        .ua-aksesuar-katlanir .ua-aksesuar-izgara label {
+            width: 110px !important;
+        }
+        .ua-aksesuar-katlanir .ua-aksesuar-izgara input {
+            min-width: 70px;
+        }
+        .ua-aksesuar-katlanir__ozet {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--text3);
+            white-space: nowrap;
+        }
+        /* Telefon: Sipariş Durum İnceleme — bütün sipariş tek kutu (buildSiparisDurumIncelemeHtml › mobilDurumKutusu) */
+        .sdk {
+            flex: 1;
+            min-width: 0;
+            padding: 4px 14px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+        .sdk__baslik {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .sdk__sayi {
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: var(--surface3);
+            color: var(--text2);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .sdk__satir {
+            padding: 10px 0 11px;
+            border-top: 1px solid var(--border);
+        }
+        .sdk__ust {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .sdk__sol { min-width: 0; }
+        .sdk__ad {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1.3;
+        }
+        .sdk__alt {
+            margin-top: 1px;
+            font-size: 12px;
+            color: var(--text3);
+        }
+        .sdk__hedef {
+            flex-shrink: 0;
+            font-family: 'DM Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            white-space: nowrap;
+        }
+        .sdk__hedef span {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text3);
+        }
+        .sdk__asamalar {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 4px;
+            margin-top: 8px;
+            padding: 6px 4px;
+            border-radius: 10px;
+            background: var(--surface2);
+        }
+        .sdk__asamalar--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .sdk__hucre {
+            min-width: 0;
+            text-align: center;
+        }
+        .sdk__lbl {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .sdk__val {
+            margin-top: 1px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+            letter-spacing: -0.02em;
+        }
+        .sdk__ek {
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--text3);
+        }
+        /* Telefon: sipariş kalemleri sade liste (siparisKalemMobilListeHtml) */
+        .siparis-kalem-liste {
+            margin-top: 12px;
+            padding: 4px 16px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+        .siparis-kalem-liste__baslik {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .siparis-kalem-liste__sayi {
+            min-width: 24px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--surface3);
+            color: var(--text2);
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+        }
+        .siparis-kalem-liste__satir {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 0;
+            border-top: 1px solid var(--border);
+        }
+        .siparis-kalem-liste__sol { min-width: 0; }
+        .siparis-kalem-liste__ad {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1.3;
+        }
+        .siparis-kalem-liste__alt {
+            margin-top: 2px;
+            font-size: 12px;
+            color: var(--text3);
+        }
+        .siparis-kalem-liste__miktar {
+            flex-shrink: 0;
+            font-family: 'DM Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            white-space: nowrap;
+        }
+        .siparis-kalem-liste__miktar span {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text3);
+        }
+        /* Telefon: sipariş özeti tek kart — firma + durum / no · tarih · termin / toplam adet.
+           Kutu sırası buildSiparisDetailModalHtml'deki sıradır (no, firma, durum, tarih, termin, adet). */
+        @media (max-width: 640px) {
+            .siparis-ust-kutular {
+                grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1.25fr);
+                grid-template-areas:
+                    "firma firma durum"
+                    "no    tarih termin"
+                    "adet  adet  adet";
+                gap: 14px 12px;
+                padding: 14px 16px;
+                border-radius: 16px;
+                border: 1px solid var(--border);
+                background: var(--surface);
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu {
+                padding: 0;
+                border: none;
+                border-radius: 0;
+                min-height: 0;
+                min-width: 0;
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(1) { grid-area: no; }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(2) { grid-area: firma; align-self: center; }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(3) { grid-area: durum; justify-self: end; align-self: center; }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(4) { grid-area: tarih; }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(5) { grid-area: termin; }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(6) {
+                grid-area: adet;
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                padding-top: 12px;
+                border-top: 1px solid var(--border);
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(2) .siparis-ozet-lbl,
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(3) .siparis-ozet-lbl {
+                display: none;
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(2) .siparis-ozet-val {
+                margin-top: 0;
+                font-size: 18px;
+                font-weight: 700;
+                line-height: 1.25;
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(3) > div {
+                margin-top: 0 !important;
+            }
+            .siparis-ust-kutular .siparis-ozet-lbl {
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+            }
+            .siparis-ust-kutular .siparis-ozet-val {
+                margin-top: 3px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .siparis-ust-kutular .siparis-ozet-sub {
+                margin-top: 2px;
+                font-size: 11px;
+            }
+            .siparis-ust-kutular > .siparis-ozet-kutu:nth-child(6) .siparis-ozet-val {
+                margin-top: 0;
+                font-size: 17px;
+                font-weight: 700;
+                color: var(--text);
+            }
+            .siparis-not-kutu {
+                padding: 14px 16px;
+                border-radius: 16px;
+                border: 1px solid var(--border) !important;
+                background: var(--surface);
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+            }
+            .siparis-not-kutu .siparis-not-lbl {
+                margin-bottom: 0;
+                font-size: 13px;
+                font-weight: 700;
+                letter-spacing: 0;
+                color: var(--text) !important;
+            }
+            .siparis-not-kutu .siparis-not-body {
+                margin-top: 8px;
+                font-size: 13px !important;
+            }
+        }
         .siparis-modal-tabrow {
             display: flex;
             flex-wrap: wrap;
@@ -3695,21 +3985,27 @@
             display: none !important;
         }
         .siparis-liste-toolbar {
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         }
         .siparis-arama-bar {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 0 12px;
-            min-height: 38px;
-            border-radius: 999px;
+            gap: 10px;
+            padding: 0 6px 0 14px;
+            min-height: 46px;
+            border-radius: 14px;
             border: 1px solid var(--border);
-            background: var(--surface2);
+            background: var(--surface);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .siparis-arama-bar:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
         }
         .siparis-arama-bar__icon {
             color: var(--text3);
-            font-size: 14px;
+            font-size: 16px;
             flex-shrink: 0;
         }
         .siparis-arama-bar__input {
@@ -3719,23 +4015,163 @@
             outline: none;
             background: transparent;
             color: var(--text);
-            font-size: 13px;
+            font-size: 15px;
             font-family: 'DM Sans', sans-serif;
-            padding: 8px 0;
+            padding: 10px 0;
         }
         .siparis-arama-bar__input::placeholder {
             color: var(--text3);
         }
+        .siparis-arama-bar__input::-webkit-search-cancel-button { -webkit-appearance: none; }
         .siparis-arama-bar__clear {
             border: none;
             background: var(--surface3);
             color: var(--text2);
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            font-size: 11px;
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            font-size: 12px;
             cursor: pointer;
             flex-shrink: 0;
+        }
+
+        /* Telefon: tek durum düğmesi + alttan açılan seçim paneli (siparisListeMobilToolbarHtml) */
+        .sm-durum {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .sm-durum__btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 38px;
+            padding: 0 12px 0 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+        }
+        .sm-durum__btn.is-aktif {
+            border-color: color-mix(in srgb, var(--durum-renk) 45%, transparent);
+            background: color-mix(in srgb, var(--durum-renk) 12%, var(--surface));
+        }
+        .sm-durum__nokta, .sds__nokta {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--durum-renk);
+            flex-shrink: 0;
+        }
+        .sm-durum__sayi, .sds__sayi {
+            min-width: 24px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--surface3);
+            color: var(--text2);
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .sm-durum__ok {
+            width: 7px;
+            height: 7px;
+            margin: 0 2px 3px 2px;
+            border-right: 1.5px solid var(--text3);
+            border-bottom: 1.5px solid var(--text3);
+            transform: rotate(45deg);
+        }
+        .sm-durum__kaldir {
+            border: none;
+            background: none;
+            color: var(--accent);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 8px 4px;
+            cursor: pointer;
+        }
+        .sds {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+        }
+        .sds__zemin {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            opacity: 0;
+            transition: opacity .2s ease;
+        }
+        .sds__sayfa {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 8px 12px calc(16px + env(safe-area-inset-bottom));
+            border-radius: 20px 20px 0 0;
+            background: var(--surface);
+            box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.18);
+            transform: translateY(100%);
+            transition: transform .24s cubic-bezier(.2, .8, .2, 1);
+        }
+        .sds.is-acik .sds__zemin { opacity: 1; }
+        .sds.is-acik .sds__sayfa { transform: translateY(0); }
+        .sds__tutamac {
+            width: 40px;
+            height: 4px;
+            margin: 2px auto 12px;
+            border-radius: 2px;
+            background: var(--border);
+        }
+        .sds__baslik {
+            padding: 0 8px 10px;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .sds__liste {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sds__satir {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 50px;
+            padding: 0 12px;
+            border: none;
+            border-radius: 12px;
+            background: none;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            text-align: left;
+            cursor: pointer;
+        }
+        .sds__satir:active { background: var(--surface2); }
+        .sds__satir.is-secili {
+            background: color-mix(in srgb, var(--durum-renk) 12%, transparent);
+            font-weight: 600;
+        }
+        .sds__ad { flex: 1; }
+        .sds__tik {
+            width: 18px;
+            color: var(--accent);
+            font-size: 15px;
+            font-weight: 700;
+            text-align: center;
         }
         .siparis-hizli-filtre {
             display: flex;
@@ -3802,26 +4238,108 @@
         @media (max-width: 768px) {
             .siparis-tp-bar { margin: 0 1rem 0.75rem; padding: 12px; }
         }
+        /* Sipariş kartı = yükleme çubuğu: soldan, yüklenen oran (--yuk, siparisYuklemeOrani) kadar yumuşak yeşil. */
+        .record-item.siparis-liste-row.has-yukleme {
+            background-image: linear-gradient(90deg,
+                color-mix(in srgb, var(--emerald-c) 10%, transparent) var(--yuk),
+                transparent var(--yuk)) !important;
+        }
+        /* Telefon: sıkı kart — no+durum / adet, müşteri / termin, özet, grup */
         @media (max-width: 480px) {
             body[data-erp-mode="SIPARIS_LISTE"] .record-item.siparis-liste-row,
             body[data-erp-mode="SIPARIS_KAPANAN"] .record-item.siparis-liste-row {
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: stretch !important;
-                gap: 10px !important;
-                padding: 14px 12px !important;
+                display: grid !important;
+                grid-template-columns: minmax(0, 1fr) auto !important;
+                grid-template-rows: none !important;
+                grid-template-areas:
+                    "no     adet"
+                    "firma  tarih"
+                    "ozet   ozet"
+                    "gecmis ." !important;
+                align-items: center !important;
+                gap: 3px 12px !important;
+                padding: 10px 12px !important;
+                margin-bottom: 8px !important;
+                border-radius: 12px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-no,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-no {
+                grid-area: no !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-no > span:first-child,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-no > span:first-child {
+                font-size: 13px !important;
+            }
+            /* Durum rozeti sipariş no yazısı boyunda (genel 36 px dokunma hedefi burada uygulanmaz). */
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row select.siparis-durum-sel {
+                min-height: 0 !important;
+                height: 20px !important;
+                padding: 0 6px !important;
+                line-height: 18px !important;
+                font-size: 11px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-firma,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-firma {
+                grid-area: firma !important;
+                font-size: 14px !important;
+                font-weight: 700 !important;
+                margin-top: 2px;
             }
             body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-ozet,
             body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-ozet {
-                white-space: normal !important;
-                display: -webkit-box !important;
-                -webkit-line-clamp: 4;
-                -webkit-box-orient: vertical;
+                grid-area: ozet !important;
+                align-self: start !important;
+                display: block !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                font-size: 12px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-renk,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-renk {
+                white-space: nowrap;
                 overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-adet,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-adet {
+                grid-area: adet !important;
+                font-size: 17px !important;
+                white-space: nowrap;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-adet span,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-adet span {
+                display: none !important;
+            }
+            /* Termin: tarih müşterinin sağında; gecikme/yaklaşma uyarısı en alt satırın sağında
+               (sağ sütunu genişletip no+durum satırını sıkıştırmasın diye). */
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-termin {
+                display: contents !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-termin > div:first-child,
+            body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-liste-row .siparis-lc-termin {
+                grid-area: tarih !important;
+                align-self: center !important;
+                text-align: right;
+                font-family: 'DM Mono', monospace;
+                font-size: 12px !important;
+            }
+            body[data-erp-mode="SIPARIS_LISTE"] .siparis-liste-row .siparis-lc-termin > div:last-child:not(:first-child) {
+                grid-row: 4 !important;
+                grid-column: 1 / -1 !important;
+                justify-self: end !important;
+                align-self: center !important;
+                margin-top: 4px !important;
+                font-size: 11px !important;
             }
             body[data-erp-mode="SIPARIS_LISTE"] .siparis-lc-gecmis,
             body[data-erp-mode="SIPARIS_KAPANAN"] .siparis-lc-gecmis {
-                align-self: flex-start;
+                grid-area: gecmis !important;
+                justify-content: flex-start !important;
+                margin-top: 4px;
             }
         }
 
@@ -5419,6 +5937,195 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir {
             grid-template-columns: 120px 78px 90px 90px 1fr 1.4fr;
         }
+
+        /* Telefon: kumaş stok listesi sade kart (iplik kartıyla aynı dil). Yalnız Kumaş Stoğu ekranı —
+           mamul listesi de .ms-row kullanıyor, ona dokunmaz. Solda ad / teknik tarif (tek satır) /
+           stok kodu · kategori; sağda metre. Dokununca detay penceresi (showKumasGroupDetail) aynen açılır. */
+        body[data-erp-mode="KUMAS"] .ms-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: none;
+            border-radius: 0;
+            background: none;
+            overflow: visible;
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row,
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row:last-child {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: "main qty";
+            align-items: start;
+            gap: 12px;
+            padding: 12px 14px !important;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-row-main {
+            display: grid;
+            grid-template-areas: "name" "meta" "top";
+            gap: 3px;
+            min-width: 0;
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-name {
+            grid-area: name;
+            font-size: 16px !important;
+            font-weight: 700;
+            color: var(--text);
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-meta {
+            grid-area: meta;
+            margin-top: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px !important;
+            color: var(--text3);
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-row-top {
+            grid-area: top;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-kod-pill {
+            padding: 0;
+            border: none;
+            background: none;
+            font-family: 'DM Mono', monospace;
+            font-size: 11px !important;
+            color: var(--text3);
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-chip {
+            padding: 1px 8px;
+            border: none;
+            border-radius: 999px;
+            background: var(--surface2);
+            color: var(--text3);
+            font-size: 10px !important;
+            letter-spacing: 0.02em;
+        }
+        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-qty {
+            grid-area: qty;
+            margin-top: 1px;
+            font-size: 16px;
+        }
+
+        /* Telefon: iplik stok listesi sade kart (iplikStokListeDynamicHtml › kart dalı).
+           Solda iplik no + marka · cins · lot; sağda kg + stok kodu. Yalnız .iplik-stok-card — mamul/kumaş ms-row'a dokunmaz. */
+        .iplik-stok-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: none;
+            border-radius: 0;
+            background: none;
+            overflow: visible;
+        }
+        .iplik-stok-card.ms-row,
+        .iplik-stok-card.ms-row:last-child {
+            display: block;
+            padding: 0 !important;   /* telefon temelindeki .ms-row { padding: 8px 10px !important } yerine */
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--surface);
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+            overflow: hidden;
+        }
+        .iplik-stok-card .ms-row-main {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: "name qty" "meta kod";
+            gap: 3px 12px;
+            align-items: baseline;
+            width: 100%;
+            padding: 12px 14px;
+        }
+        .iplik-stok-card .ms-row-top { display: contents; }
+        .iplik-stok-card .iplik-stok-chev { display: none; }
+        .iplik-stok-card .ms-name {
+            grid-area: name;
+            font-size: 16px !important;   /* telefon temelindeki .ms-name { 13px !important } yerine */
+            font-weight: 700;
+        }
+        .iplik-stok-card .ms-qty {
+            grid-area: qty;
+            font-size: 16px;
+        }
+        .iplik-stok-card .ms-meta {
+            grid-area: meta;
+            margin-top: 0;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px;
+        }
+        .iplik-stok-card .ms-kod {
+            grid-area: kod;
+            justify-self: end;
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            color: var(--text3);
+        }
+        .iplik-stok-card.is-open {
+            background: var(--surface);
+            border-color: color-mix(in srgb, var(--accent2) 45%, var(--border));
+        }
+        .iplik-stok-card.is-open .ms-row-main { border-bottom: 1px solid var(--border); }
+        .iplik-stok-card .iplik-stok-detail-card { padding: 4px 12px 12px; }
+        .iplik-stok-card .iplik-depo-lot-panel {
+            margin: 0;
+            padding: 0;
+            border: none;
+            background: none;
+        }
+        /* Lot: lot no · marka · kg (stok kodu ve cins grubun kendisiyle aynı, tekrar edilmez) */
+        /* Alan adlı ızgara: telefon uyarlayıcısı grid-template-areas tanımlı ızgaranın sütunlarını azaltmaz. */
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir {
+            display: grid;
+            align-items: baseline;
+            border-bottom: 1px solid var(--border);
+            grid-template-columns: auto minmax(0, 1fr) auto !important;
+            grid-template-areas: "lot marka kg";
+            gap: 10px;
+            padding: 9px 2px;
+        }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(2) { grid-area: lot; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(3) { grid-area: marka; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(5) { grid-area: kg; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(1),
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(4) { display: none; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir--head { display: none; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(3) {
+            font-size: 12px;
+            color: var(--text2);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Hareket: tarih · işlem · lot · miktar, altında kullanıcı · not (kim girdi her zaman görünür) */
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir:last-child { border-bottom: none; font-weight: 700; }
+        .iplik-stok-card .iplik-lot-block .iplik-kart-lot-liste-satir > :nth-child(5) { text-align: right; white-space: nowrap; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir {
+            display: grid;
+            align-items: baseline;
+            border-bottom: 1px solid var(--border);
+            grid-template-columns: auto minmax(0, 1fr) auto !important;
+            grid-template-areas: "islem lot miktar" "tarih kul kul" "not not not";
+            gap: 2px 8px;
+            padding: 8px 2px;
+            font-size: 12px;
+        }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir--head { display: none; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(1) { grid-area: tarih; color: var(--text3); font-size: 11px !important; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(2) { grid-area: islem; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(3) { grid-area: lot; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(4) { grid-area: miktar; text-align: right; }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(5) { grid-area: kul; font-size: 11px; color: var(--text3); }
+        .iplik-stok-card .iplik-depo-hareket-panel .iplik-kart-lot-liste-satir > :nth-child(6) { grid-area: not; font-size: 11px; color: var(--text3); }
         .iplik-hv-giris { color: var(--emerald-c); font-weight: 800; font-size: 9px; }
         .iplik-hv-cikis { color: var(--rose-c); font-weight: 800; font-size: 9px; }
         .iplik-hv-kart { color: var(--text3); font-weight: 700; font-size: 9px; }
@@ -6206,6 +6913,10 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     }
     #erp-super-yenile-btn span:not(:first-child) { display: none !important; }
     #erp-super-yenile-btn span:first-child { font-size: 18px !important; }
+    /* Başlık uzunsa KISALAN başlıktır; düğmeler asla ezilmez (Dokuma Sevk Geçmişi'nde 🌙 12 px'e iniyordu) */
+    .top-header button, .top-header #theme-btn, .top-header #erp-live-indicator { flex-shrink: 0 !important; }
+    .top-header > div:first-child { min-width: 0 !important; flex: 1 1 auto !important; }
+    .top-header > div:last-child { flex-shrink: 0 !important; }
     .top-header #current-title {
         min-width: 0 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
     }
@@ -6213,6 +6924,123 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     /* Arama ipucu ("birden fazla kelime = ve") kutunun içinde yazının üstüne biniyordu;
        ana program 900 px altında zaten gizler (head.html) — aynısı. */
     .siparis-arama-bar__hint { display: none !important; }
+
+    /* Satır içi küçük yazı (ana programda ~800 yerde font-size:7–11px) — öğe öğe JS ile
+       büyütmek Siparişler ekranında +234 ms tutuyordu; CSS eşlemesi çizimde bedava.
+       Boy sırası korunur: 7–8,5 px → 11 px, 9–11 px → 12 px. Sınıftan gelen küçük yazıyı
+       mobil-app.js uyarlayıcısı ölçerek büyütür. */
+    main [style*="font-size:7px;"],
+    main [style$="font-size:7px"],
+    main [style*="font-size: 7px;"],
+    main [style$="font-size: 7px"],
+    main [style*="font-size:7.5px;"],
+    main [style$="font-size:7.5px"],
+    main [style*="font-size: 7.5px;"],
+    main [style$="font-size: 7.5px"],
+    main [style*="font-size:8px;"],
+    main [style$="font-size:8px"],
+    main [style*="font-size: 8px;"],
+    main [style$="font-size: 8px"],
+    main [style*="font-size:8.5px;"],
+    main [style$="font-size:8.5px"],
+    main [style*="font-size: 8.5px;"],
+    main [style$="font-size: 8.5px"],
+    #detail-modal [style*="font-size:7px;"],
+    #detail-modal [style$="font-size:7px"],
+    #detail-modal [style*="font-size: 7px;"],
+    #detail-modal [style$="font-size: 7px"],
+    #detail-modal [style*="font-size:7.5px;"],
+    #detail-modal [style$="font-size:7.5px"],
+    #detail-modal [style*="font-size: 7.5px;"],
+    #detail-modal [style$="font-size: 7.5px"],
+    #detail-modal [style*="font-size:8px;"],
+    #detail-modal [style$="font-size:8px"],
+    #detail-modal [style*="font-size: 8px;"],
+    #detail-modal [style$="font-size: 8px"],
+    #detail-modal [style*="font-size:8.5px;"],
+    #detail-modal [style$="font-size:8.5px"],
+    #detail-modal [style*="font-size: 8.5px;"],
+    #detail-modal [style$="font-size: 8.5px"],
+    body > [id$="-modal"] [style*="font-size:7px;"],
+    body > [id$="-modal"] [style$="font-size:7px"],
+    body > [id$="-modal"] [style*="font-size: 7px;"],
+    body > [id$="-modal"] [style$="font-size: 7px"],
+    body > [id$="-modal"] [style*="font-size:7.5px;"],
+    body > [id$="-modal"] [style$="font-size:7.5px"],
+    body > [id$="-modal"] [style*="font-size: 7.5px;"],
+    body > [id$="-modal"] [style$="font-size: 7.5px"],
+    body > [id$="-modal"] [style*="font-size:8px;"],
+    body > [id$="-modal"] [style$="font-size:8px"],
+    body > [id$="-modal"] [style*="font-size: 8px;"],
+    body > [id$="-modal"] [style$="font-size: 8px"],
+    body > [id$="-modal"] [style*="font-size:8.5px;"],
+    body > [id$="-modal"] [style$="font-size:8.5px"],
+    body > [id$="-modal"] [style*="font-size: 8.5px;"],
+    body > [id$="-modal"] [style$="font-size: 8.5px"] {
+        font-size: 11px !important; transition: none !important;
+    }
+    main [style*="font-size:9px;"],
+    main [style$="font-size:9px"],
+    main [style*="font-size: 9px;"],
+    main [style$="font-size: 9px"],
+    main [style*="font-size:9.5px;"],
+    main [style$="font-size:9.5px"],
+    main [style*="font-size: 9.5px;"],
+    main [style$="font-size: 9.5px"],
+    main [style*="font-size:10px;"],
+    main [style$="font-size:10px"],
+    main [style*="font-size: 10px;"],
+    main [style$="font-size: 10px"],
+    main [style*="font-size:10.5px;"],
+    main [style$="font-size:10.5px"],
+    main [style*="font-size: 10.5px;"],
+    main [style$="font-size: 10.5px"],
+    main [style*="font-size:11px;"],
+    main [style$="font-size:11px"],
+    main [style*="font-size: 11px;"],
+    main [style$="font-size: 11px"],
+    #detail-modal [style*="font-size:9px;"],
+    #detail-modal [style$="font-size:9px"],
+    #detail-modal [style*="font-size: 9px;"],
+    #detail-modal [style$="font-size: 9px"],
+    #detail-modal [style*="font-size:9.5px;"],
+    #detail-modal [style$="font-size:9.5px"],
+    #detail-modal [style*="font-size: 9.5px;"],
+    #detail-modal [style$="font-size: 9.5px"],
+    #detail-modal [style*="font-size:10px;"],
+    #detail-modal [style$="font-size:10px"],
+    #detail-modal [style*="font-size: 10px;"],
+    #detail-modal [style$="font-size: 10px"],
+    #detail-modal [style*="font-size:10.5px;"],
+    #detail-modal [style$="font-size:10.5px"],
+    #detail-modal [style*="font-size: 10.5px;"],
+    #detail-modal [style$="font-size: 10.5px"],
+    #detail-modal [style*="font-size:11px;"],
+    #detail-modal [style$="font-size:11px"],
+    #detail-modal [style*="font-size: 11px;"],
+    #detail-modal [style$="font-size: 11px"],
+    body > [id$="-modal"] [style*="font-size:9px;"],
+    body > [id$="-modal"] [style$="font-size:9px"],
+    body > [id$="-modal"] [style*="font-size: 9px;"],
+    body > [id$="-modal"] [style$="font-size: 9px"],
+    body > [id$="-modal"] [style*="font-size:9.5px;"],
+    body > [id$="-modal"] [style$="font-size:9.5px"],
+    body > [id$="-modal"] [style*="font-size: 9.5px;"],
+    body > [id$="-modal"] [style$="font-size: 9.5px"],
+    body > [id$="-modal"] [style*="font-size:10px;"],
+    body > [id$="-modal"] [style$="font-size:10px"],
+    body > [id$="-modal"] [style*="font-size: 10px;"],
+    body > [id$="-modal"] [style$="font-size: 10px"],
+    body > [id$="-modal"] [style*="font-size:10.5px;"],
+    body > [id$="-modal"] [style$="font-size:10.5px"],
+    body > [id$="-modal"] [style*="font-size: 10.5px;"],
+    body > [id$="-modal"] [style$="font-size: 10.5px"],
+    body > [id$="-modal"] [style*="font-size:11px;"],
+    body > [id$="-modal"] [style$="font-size:11px"],
+    body > [id$="-modal"] [style*="font-size: 11px;"],
+    body > [id$="-modal"] [style$="font-size: 11px"] {
+        font-size: 12px !important; transition: none !important;
+    }
 }
 </style>
 </head>
@@ -6584,7 +7412,7 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
   window.ERP_MOBIL_NO_CHARTS = true;
   window.ERP_MOBIL_NO_EXCEL = true;
 
-  var v = '20260924-f1d943';
+  var v = '20260925-a85139';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],

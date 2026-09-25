@@ -1,3 +1,5 @@
+/* 3. ADIM: ana programla birebir aynı 1 tanım bu dosyadan silindi; mobil onları assets/erp-core.js üzerinden
+   (ana programın kendi kodu) çalıştırır. Yeniden: node scripts/mobil-cekirdek-temizle.js */
 /* 3. ADIM: ana programla birebir aynı 13 tanım bu dosyadan silindi; mobil onları assets/erp-core.js üzerinden
    (ana programın kendi kodu) çalıştırır. Yeniden: node scripts/mobil-cekirdek-temizle.js */
 /* 3. ADIM: ana programla birebir aynı 29 tanım bu dosyadan silindi; mobil onları assets/erp-core.js üzerinden
@@ -218,6 +220,33 @@ function mobilFotoYazmasiMi(tablo, yontem, payload) {
     return alanlar.includes('siparis_fotograflar') && alanlar.every(a => MOBIL_FOTO_ALANLARI.includes(a));
 }
 
+/* ÜÇÜNCÜ İSTİSNA — ürün ağacı yalnız yönetici (kullanıcı, 25.09.2026: "sadece admin, benden başka
+   kimse giriş yapamayacak"). Şartların HEPSİ: yönetici + Ürün Ağacı ekranı açık + yazılan şey yalnız
+   ürün ağacı: siparis_akis'te KD_URUN_AGACI satırı (sbKdSet) ya da siparisler'de yalnız uretim_yeri
+   (uaKaydet). Silme, sipariş kalemi ekle/sil (cins/miktar) ve başka tablolar kapalı kalır.
+   Yönetici olmayan ekranı zaten açamaz (mobilKisitEngelMetni). */
+const MOBIL_UA_KD_ALANLARI = ['notlar', 'kalem_ad', 'miktar'];
+const MOBIL_UA_SIPARIS_ALANLARI = ['uretim_yeri', 'updated_by', 'updated_at'];
+function mobilUrunAgaciYazmasiMi(tablo, yontem, payload) {
+    if (typeof appMode === 'undefined' || appMode !== 'URUN_AGACI') return false;
+    if (typeof erpIsAdmin !== 'function' || !erpIsAdmin()) return false;
+    if (!payload || typeof payload !== 'object') return false;
+    if (tablo === 'siparis_akis') {
+        if (yontem === 'update') {
+            return !Array.isArray(payload) && payload.kalem_ad === 'KD_URUN_AGACI'
+                && Object.keys(payload).every(a => MOBIL_UA_KD_ALANLARI.includes(a));
+        }
+        if (yontem !== 'insert') return false;
+        const satirlar = Array.isArray(payload) ? payload : [payload];
+        return satirlar.length > 0 && satirlar.every(r => r && r.islem === 'KD_URUN_AGACI' && r.kalem_ad === 'KD_URUN_AGACI');
+    }
+    if (tablo === 'siparisler' && yontem === 'update' && !Array.isArray(payload)) {
+        const alanlar = Object.keys(payload);
+        return alanlar.includes('uretim_yeri') && alanlar.every(a => MOBIL_UA_SIPARIS_ALANLARI.includes(a));
+    }
+    return false;
+}
+
 function mobilSayimYazmasiMi(tablo, payload) {
     if (typeof appMode === 'undefined' || appMode !== 'STOK_SAYIM') return false;
     if (!MOBIL_SAYIM_TABLOLARI.includes(tablo)) return false;
@@ -234,33 +263,47 @@ function mobilSayimYazmasiMi(tablo, payload) {
    Burada yalnız etiket işlenir (data-mobil-etiket); görünümü mobil-erp.css yapar.
    Yalnız ekrana SIĞMAYAN tablolar işaretlenir, dar tablolar tablo olarak kalır. */
 const MOBIL_TABLO_ESIK = 560;
-function mobilTabloKartlastir(kok) {
+function mobilTabloKartlastir(kok, yalnizBunlar) {
     try {
         if (window.innerWidth > MOBIL_TABLO_ESIK) return;
         const alan = kok || document;
-        alan.querySelectorAll('table').forEach((t) => {
+        const tablolar = yalnizBunlar ? [...yalnizBunlar] : [...alan.querySelectorAll('table')];
+        /* PERFORMANS: önce hepsi okunur, sonra hepsi yazılır. Hücre yazısı textContent ile
+           okunur (innerText her çağrıda sayfa düzenini hesaplatır; araya etiket yazımı girince
+           800 satırlık Sevkiyat tablosunda hücre başına yeniden hesap = saniyeler). */
+        const metinAl = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+        const yazilacak = [];
+        tablolar.forEach((t) => {
             /* Karta dönmüş tablo artık sığar — yeniden ölçüp geri almak "aç-kapa" döngüsü yapıyordu
                (her çalışmada kart ↔ tablo). Kart kalır; yalnız yeni satırların etiketi tazelenir. */
             if (!t.classList.contains('mobil-kart-tablo')) {
                 const sar = t.parentElement;
-                const sigmiyor = t.scrollWidth > (sar ? sar.clientWidth : window.innerWidth) + 8;
-                if (!sigmiyor) return;
+                /* Sarmalayıcı da tabloyla birlikte genişlemiş olabilir (esnek öğe min-width:auto) —
+                   ekran genişliği de sınır sayılır; yoksa tablo "sığıyor" sanılıp dışı kesiliyordu. */
+                const sinir = Math.min(sar ? sar.clientWidth : window.innerWidth, window.innerWidth - 16);
+                if (t.scrollWidth <= sinir + 8) return;
             }
-            const basliklar = [...t.querySelectorAll('thead th')].map((th) => th.innerText.trim());
+            /* Başlık az sayıda — innerText ile okunur: "SİP<br>MİKTAR" textContent'te "SİPMİKTAR" oluyordu. */
+            const basliklar = [...t.querySelectorAll('thead th')].map((th) => (th.innerText || '').replace(/\s+/g, ' ').trim());
             if (!basliklar.length) return;
+            const hucreler = [];
             t.querySelectorAll('tbody tr').forEach((tr) => {
                 [...tr.children].forEach((td, i) => {
-                    const et = basliklar[i] || '';
-                    if (et && td.getAttribute('data-mobil-etiket') !== et) td.setAttribute('data-mobil-etiket', et);
                     /* Değeri olmayan alan (—) kartı uzatmasın; dolu bilgiler görünür kalır. */
-                    const bos = !td.querySelector('input,select,button,img,svg')
-                        && ['', '—', '-', '–'].includes(td.innerText.trim());
-                    if (bos) td.setAttribute('data-mobil-bos', '1');
-                    else td.removeAttribute('data-mobil-bos');
+                    const bos = !td.querySelector('input,select,button,img,svg') && ['', '—', '-', '–'].includes(metinAl(td));
+                    hucreler.push([td, basliklar[i] || '', bos]);
                 });
             });
-            t.classList.add('mobil-kart-tablo');
+            yazilacak.push([t, hucreler]);
         });
+        for (const [t, hucreler] of yazilacak) {
+            for (const [td, et, bos] of hucreler) {
+                if (et && td.getAttribute('data-mobil-etiket') !== et) td.setAttribute('data-mobil-etiket', et);
+                if (bos) { if (!td.hasAttribute('data-mobil-bos')) td.setAttribute('data-mobil-bos', '1'); }
+                else if (td.hasAttribute('data-mobil-bos')) td.removeAttribute('data-mobil-bos');
+            }
+            if (!t.classList.contains('mobil-kart-tablo')) t.classList.add('mobil-kart-tablo');
+        }
     } catch (e) { console.warn('mobilTabloKartlastir', e && e.message); }
 }
 
@@ -283,6 +326,15 @@ const MOBIL_MIN_SUTUN = 132;      // ızgara sütunu bundan darsa yeniden dizili
 function mobilTelefonMu() { return window.innerWidth <= MOBIL_TEL_ESIK; }
 const mobilOnemli = (el, ozellik, deger) => el.style.setProperty(ozellik, deger, 'important');
 
+/* PERFORMANS: her adım önce TÜM öğeleri okur, sonra hepsine birden yazar. Yazıp hemen
+   okumak tarayıcıyı her öğede sayfa düzenini baştan hesaplamaya zorlar — 2.000 öğelik
+   ekranda telefonu saniyelerce donduruyordu (denetimde bir sayfa 588 sn işlemci harcadı).
+   Adım başına tek düzen hesabı yapılır. İşlenen yazı öğeleri DOM'a yazmadan WeakSet'te. */
+/* Yazı durumu: 1 = bakıldı, gerek yok · 2 = büyütüldü. Büyütülen öğenin satır içi boyu
+   ana programın kodu tarafından silinirse (stilini baştan yazan sekme düğmesi) yeniden uygulanır. */
+const _mobilYaziDurum = new WeakMap();
+const _mobilIzgaraSutun = new WeakMap();
+
 /** Uyarlanacak kökler: ana alan + açık pencereler (sabit konumlu katmanlar). */
 function mobilUyarlaKokleri() {
     const out = [];
@@ -291,71 +343,116 @@ function mobilUyarlaKokleri() {
     for (const el of document.body.children) {
         if (el === main || el.contains(main) || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
         const s = getComputedStyle(el);
-        if (s.display !== 'none' && (s.position === 'fixed' || s.position === 'absolute')) out.push(el);
+        if (s.display === 'none' || (s.position !== 'fixed' && s.position !== 'absolute')) continue;
+        /* Yalnız EKRANDA görünen katman: PDF/yazdırma için ekran dışına konan gizli kap
+           uyarlanırsa telefondan alınan PDF'in düzeni bozulur. */
+        const r = el.getBoundingClientRect();
+        if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) continue;
+        if (s.visibility === 'hidden' || Number(s.opacity) === 0) continue;
+        out.push(el);
     }
     return out;
 }
 
+const mobilKontrolMu = (el) => /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName);
+function mobilKendiYazisiVar(el) {
+    if (mobilKontrolMu(el)) return true;
+    for (const n of el.childNodes) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
+    return false;
+}
+
 /** 1) Yazı: okunamayacak kadar küçük yazıyı alt sınıra çeker; sıkışık satır aralığını açar. */
-function mobilYaziBuyut(kok) {
-    const kume = kok.querySelectorAll('*');
-    for (const el of kume) {
-        if (el.dataset.mobY === '1') continue;
-        if (el.closest('svg')) continue;
-        let yaziVar = /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName);
-        if (!yaziVar) {
-            for (const n of el.childNodes) {
-                if (n.nodeType === 3 && n.nodeValue.trim()) { yaziVar = true; break; }
-            }
-        }
-        if (!yaziVar) continue;
-        el.dataset.mobY = '1';
+function mobilYaziBuyut(ogeler) {
+    const yaz = [];
+    for (const el of ogeler) {
+        const durum = _mobilYaziDurum.get(el);
+        if (durum === 1) continue;
+        if (durum === 2 && el.style.getPropertyValue('font-size')) continue;
+        if (!mobilKendiYazisiVar(el) || el.closest('svg')) { _mobilYaziDurum.set(el, 1); continue; }
         const s = getComputedStyle(el);
         const boy = parseFloat(s.fontSize) || 0;
         const etiket = s.textTransform === 'uppercase' || parseFloat(s.letterSpacing) >= 0.6;
         const alt = etiket ? MOBIL_MIN_ETIKET : MOBIL_MIN_YAZI;
-        if (boy && boy < alt) {
-            /* "transition: all" olan düğmelerde boy animasyonla büyür; uyarlayıcının sonraki
-               adımları (ızgara/dizi ölçümü) o an ESKİ boyu görür ve yanlış karar verir.
-               Telefonda üzerine gelme efekti yok — geçişi kapatmak bir şey kaybettirmez. */
-            mobilOnemli(el, 'transition', 'none');
-            mobilOnemli(el, 'font-size', alt + 'px');
-            const la = parseFloat(s.lineHeight);
-            if (s.lineHeight.endsWith('px') && la < alt * 1.15) mobilOnemli(el, 'line-height', '1.25');
-        }
+        if (!boy || boy >= alt) { _mobilYaziDurum.set(el, 1); continue; }
+        _mobilYaziDurum.set(el, 2);
+        yaz.push([el, alt, s.lineHeight.endsWith('px') && parseFloat(s.lineHeight) < alt * 1.15]);
+    }
+    for (const [el, alt, satir] of yaz) {
+        /* "transition: all" olan düğmede boy animasyonla büyür; sonraki adımlar o an ESKİ
+           boyu ölçüp yanlış karar verir. Telefonda üzerine gelme yok — kayıp yok. */
+        mobilOnemli(el, 'transition', 'none');
+        mobilOnemli(el, 'font-size', alt + 'px');
+        if (satir) mobilOnemli(el, 'line-height', '1.25');
     }
 }
 
-/** 2) Izgara: sütunları MOBIL_MIN_SUTUN'dan dar düşen ızgarayı sığan sütun sayısına indirir. */
-function mobilIzgaraUyarla(kok) {
-    for (const el of kok.querySelectorAll('*')) {
-        const s = getComputedStyle(el);
-        if (s.display !== 'grid' && s.display !== 'inline-grid') continue;
-        if (s.gridTemplateAreas && s.gridTemplateAreas !== 'none') continue;
-        const izler = s.gridTemplateColumns.split(' ').map(parseFloat).filter((x) => x > 0);
-        if (izler.length < 2) continue;
-        const genislik = el.clientWidth - (parseFloat(s.paddingLeft) || 0) - (parseFloat(s.paddingRight) || 0);
-        const bosluk = parseFloat(s.columnGap) || 0;
-        const dar = Math.min(...izler) < MOBIL_MIN_SUTUN;
-        /* Uyarlandıktan sonra hâlâ içerik taşıyorsa bir sütun daha azalt. */
-        const tasiyor = [...el.children].some((c) => c.scrollWidth > c.clientWidth + 3 && c.clientWidth > 0);
-        if (!dar && !tasiyor) continue;
-        let n = Math.max(1, Math.floor((genislik + bosluk) / (MOBIL_MIN_SUTUN + bosluk)));
-        if (el.dataset.mobIzgara) n = Math.min(n, Math.max(1, Number(el.dataset.mobIzgara) - (tasiyor ? 1 : 0)));
-        if (n >= izler.length && !tasiyor) continue;
-        el.dataset.mobIzgara = String(n);
-        mobilOnemli(el, 'grid-template-columns', `repeat(${n}, minmax(0, 1fr))`);
-        /* Sabit sütun konumu (grid-column: 3) yeni sütun sayısını aşarsa satır başına alınır. */
-        for (const c of el.children) {
-            const gc = getComputedStyle(c).gridColumnStart;
-            if (/^\d+$/.test(gc) && Number(gc) > n) mobilOnemli(c, 'grid-column', 'auto');
+/** Satır içi şablonda esnek (fr) tanımlı olup ekranda MOBIL_MIN_SUTUN'un altına ezilen sütun var mı?
+    Ör. "minmax(320px,1.2fr) minmax(0,3fr)": toplam genişlik iki sütuna yeter görünür ama ilki
+    320 px'i alıp ikincisini 21 px'e ezer. Bilerek dar (sabit px) sütunlar (ikon vb.) sayılmaz. */
+function mobilIzgaraEzikFrSutunVar(el, izler) {
+    const tanim = String(el.style.gridTemplateColumns || '');
+    if (!tanim || tanim.includes('repeat(')) return false;
+    const parcalar = [];
+    let derinlik = 0, bas = 0;
+    for (let i = 0; i <= tanim.length; i++) {
+        const ch = tanim[i];
+        if (ch === '(') derinlik++;
+        else if (ch === ')') derinlik--;
+        else if ((ch === ' ' || ch === undefined) && derinlik === 0) {
+            const p = tanim.slice(bas, i).trim();
+            if (p) parcalar.push(p);
+            bas = i + 1;
+        }
+    }
+    if (parcalar.length !== izler.length) return false;
+    return parcalar.some((p, i) => /fr\b/.test(p) && izler[i] < MOBIL_MIN_SUTUN);
+}
+
+/** 2) Izgara: sütunları MOBIL_MIN_SUTUN'dan dar düşen ızgarayı sığan sütun sayısına indirir;
+    indirdikten sonra içerik hâlâ taşıyorsa bir sütun daha azaltır (en çok 3 tur). */
+function mobilIzgaraUyarla(ogeler) {
+    const izgaralar = ogeler.filter((el) => {
+        if (el.classList.contains('mobil-izgara-sabit')) return false;   // bilerek dar sütunlu, içeriği sığan ızgara
+        const d = getComputedStyle(el).display;
+        return d === 'grid' || d === 'inline-grid';
+    });
+    for (let tur = 0; tur < 3; tur++) {
+        const yaz = [];
+        for (const el of izgaralar) {
+            const s = getComputedStyle(el);
+            if (s.gridTemplateAreas && s.gridTemplateAreas !== 'none') continue;
+            const izler = s.gridTemplateColumns.split(' ').map(parseFloat).filter((x) => x > 0);
+            if (izler.length < 2) continue;
+            const genislik = el.clientWidth - (parseFloat(s.paddingLeft) || 0) - (parseFloat(s.paddingRight) || 0);
+            const bosluk = parseFloat(s.columnGap) || 0;
+            const dar = Math.min(...izler) < MOBIL_MIN_SUTUN;
+            const tasiyor = [...el.children].some((c) => c.scrollWidth > c.clientWidth + 3 && c.clientWidth > 0);
+            if (!dar && !tasiyor) continue;
+            let n = Math.max(1, Math.floor((genislik + bosluk) / (MOBIL_MIN_SUTUN + bosluk)));
+            const once = _mobilIzgaraSutun.get(el);
+            if (once) n = Math.min(n, Math.max(1, once - (tasiyor ? 1 : 0)));
+            if (n >= izler.length && dar && mobilIzgaraEzikFrSutunVar(el, izler)) n = izler.length - 1;
+            if (n >= izler.length) continue;
+            const sabitKolon = [...el.children].filter((c) => {
+                const gc = getComputedStyle(c).gridColumnStart;
+                return /^\d+$/.test(gc) && Number(gc) > n;
+            });
+            yaz.push([el, n, sabitKolon]);
+        }
+        if (!yaz.length) break;
+        for (const [el, n, sabitKolon] of yaz) {
+            _mobilIzgaraSutun.set(el, n);
+            mobilOnemli(el, 'grid-template-columns', `repeat(${n}, minmax(0, 1fr))`);
+            /* Sabit sütun konumu (grid-column: 3) yeni sütun sayısını aşarsa kendi yerine akar. */
+            for (const c of sabitKolon) mobilOnemli(c, 'grid-column', 'auto');
         }
     }
 }
 
 /** 3) Yatay dizi: içeriği sığmayan tek satırlık esnek diziyi alt satıra kaydırır. */
-function mobilDiziUyarla(kok) {
-    for (const el of kok.querySelectorAll('*')) {
+function mobilDiziUyarla(ogeler) {
+    const yaz = [];
+    for (const el of ogeler) {
         const s = getComputedStyle(el);
         if (s.display !== 'flex' && s.display !== 'inline-flex') continue;
         if (!s.flexDirection.startsWith('row') || s.flexWrap !== 'nowrap') continue;
@@ -363,24 +460,64 @@ function mobilDiziUyarla(kok) {
         if (el.closest('table')) continue;
         const tasiyor = el.scrollWidth > el.clientWidth + 2
             || [...el.children].some((c) => c.children.length === 0 && c.scrollWidth > c.clientWidth + 3 && c.clientWidth > 0);
-        if (!tasiyor) continue;
+        if (tasiyor) yaz.push([el, !(parseFloat(s.rowGap) > 0)]);
+    }
+    for (const [el, bosluk] of yaz) {
         mobilOnemli(el, 'flex-wrap', 'wrap');
-        if (!(parseFloat(s.rowGap) > 0)) mobilOnemli(el, 'row-gap', '6px');
+        if (bosluk) mobilOnemli(el, 'row-gap', '6px');
+    }
+}
+
+/** 3a) Geniş çocuk: kapsayıcısından geniş öğe kapsayıcıya sığdırılır. Esnek/ızgara öğesi
+    varsayılan min-width:auto yüzünden içindeki tablo kadar (900 px) genişliyor, taşan kısmı
+    en dıştaki pencerede SESSİZCE kesiliyordu (Sipariş Durum İnceleme ürün tablosu). Sığınca
+    içteki tablo sığmadığını görür ve karta döner. Bilerek kaydırılan kaplara dokunulmaz.
+    Dıştan içe turlar: dış kap daralınca iç öğeler bir sonraki turda görünür (en çok 4 tur). */
+function mobilGenisCocukDaralt(ogeler) {
+    const W = window.innerWidth;
+    const aday = ogeler.filter((el) => el.tagName !== 'TABLE' && !el.closest('table'));
+    for (let tur = 0; tur < 4; tur++) {
+        const yaz = [];
+        for (const el of aday) {
+            const p = el.parentElement;
+            if (!p) continue;
+            const pw = p.clientWidth;
+            if (!pw || pw > W || el.offsetWidth <= pw + 2) continue;
+            if (/(auto|scroll)/.test(getComputedStyle(p).overflowX)) continue;
+            const s = getComputedStyle(el);
+            if (s.position === 'absolute' || s.position === 'fixed') continue;
+            if (el.style.getPropertyValue('max-width') === '100%') continue;
+            yaz.push([el, s.boxSizing !== 'border-box']);
+        }
+        if (!yaz.length) break;
+        for (const [el, kutu] of yaz) {
+            mobilOnemli(el, 'min-width', '0');
+            mobilOnemli(el, 'max-width', '100%');
+            if (kutu) mobilOnemli(el, 'box-sizing', 'border-box');
+        }
     }
 }
 
 /** 3b) Kesik yazı: tek satıra sığmayıp "…" ile kesilen bilgi telefonda alt satıra akar
     (Kumaş kartında "ARMÜR · Tarak eni 270 · Atkı…" yarıdan fazlası görünmüyordu). */
-function mobilKesikYaziAc(kok) {
-    for (const el of kok.querySelectorAll('*')) {
-        if (el.children.length > 2 || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(el.tagName)) continue;
-        if (el.closest('.top-header, .erp-sidebar, table:not(.mobil-kart-tablo)')) continue;
-        const s = getComputedStyle(el);
-        if (s.whiteSpace !== 'nowrap' || !/(hidden|clip)/.test(s.overflowX)) continue;
+function mobilKesikYaziAc(ogeler) {
+    const yaz = [];
+    for (const el of ogeler) {
+        if (el.children.length > 2 || mobilKontrolMu(el)) continue;
         if (el.scrollWidth <= el.clientWidth + 3 || !el.clientWidth) continue;
-        mobilOnemli(el, 'white-space', 'normal');
+        if (el.closest('.top-header, .erp-sidebar, table:not(.mobil-kart-tablo), .mobil-tek-satir')) continue;   // .mobil-tek-satir: bilerek kesilen, tamamı ayrıntıda görünen yazı
+        const s = getComputedStyle(el);
+        if (/(auto|scroll)/.test(s.overflowX)) continue;   // bilerek kaydırılan şerit tek satır kalır
+        /* Kesilen ("…") ya da kutusundan taşıp komşusuna binen tek satırlık yazı akar; boşluksuz
+           uzun kelime ("SİPARİŞ→DOKUMA→KESİM→…" zinciri) gerekirse bölünür. */
+        yaz.push([el, s.whiteSpace === 'nowrap' || s.whiteSpace === 'pre']);
+    }
+    for (const [el, tekSatir] of yaz) {
+        if (tekSatir) {
+            mobilOnemli(el, 'white-space', 'normal');
+            mobilOnemli(el, 'text-overflow', 'clip');
+        }
         mobilOnemli(el, 'overflow-wrap', 'anywhere');
-        mobilOnemli(el, 'text-overflow', 'clip');
     }
 }
 
@@ -395,33 +532,76 @@ function mobilKatmanKaydiricisiMi(el) {
 }
 
 /** 4) İç kaydırma: sayfa içindeki küçük kaydırma kutularını açar — telefonda tek, doğal kaydırma. */
-function mobilIcKaydirmaAc(kok) {
-    for (const el of kok.querySelectorAll('*')) {
-        if (el.matches('.content-scroll, #modal-body, [role="listbox"], [class*="dropdown"], [class*="suggest"], [class*="autocomplete"], [class*="oneri"]')) continue;
+const MOBIL_KAYDIRMA_KORU = '.content-scroll, #modal-body, [role="listbox"], [class*="dropdown"], [class*="suggest"], [class*="autocomplete"], [class*="oneri"]';
+function mobilIcKaydirmaAc(ogeler) {
+    const yaz = [];
+    for (const el of ogeler) {
         const s = getComputedStyle(el);
         if (!/(auto|scroll)/.test(s.overflowY)) continue;
         if (el.scrollHeight <= el.clientHeight + 8) continue;
-        if (mobilKatmanKaydiricisiMi(el)) continue;
+        if (el.matches(MOBIL_KAYDIRMA_KORU) || mobilKatmanKaydiricisiMi(el)) continue;
+        yaz.push(el);
+    }
+    for (const el of yaz) {
         mobilOnemli(el, 'max-height', 'none');
         mobilOnemli(el, 'height', 'auto');
         mobilOnemli(el, 'overflow-y', 'visible');
     }
 }
 
+/** Yalnız DEĞİŞEN bölümler: gözlemcinin bildirdiği hedeflerin alt ağacı + onları saran kaplar
+    (içerik büyüyünce saran ızgara/dizi yeniden değerlendirilir). Hedef yoksa tüm ekran.
+    Canlı veriyle tek satır değiştiğinde tüm sayfa değil yalnız o satır taranır. */
+function mobilUyarlanacakOgeler(hedefler) {
+    const kokler = mobilUyarlaKokleri();
+    if (!hedefler || !hedefler.size) {
+        const hepsi = [];
+        for (const k of kokler) for (const el of k.querySelectorAll('*')) hepsi.push(el);
+        return { ogeler: hepsi, tablolar: document.querySelectorAll('table') };
+    }
+    const kume = new Set();
+    const tablolar = new Set();
+    const liste = [...hedefler].filter((h) => h.isConnected && kokler.some((k) => k === h || k.contains(h)));
+    /* İç içe hedeflerden yalnız en dıştaki taranır. */
+    const distakiler = liste.filter((h) => !liste.some((d) => d !== h && d.contains(h)));
+    for (const h of distakiler) {
+        kume.add(h);
+        for (const el of h.querySelectorAll('*')) kume.add(el);
+        for (let p = h.parentElement; p && p !== document.body; p = p.parentElement) kume.add(p);
+        h.querySelectorAll('table').forEach((t) => tablolar.add(t));
+        const ust = h.closest('table'); if (ust) tablolar.add(ust);
+    }
+    return { ogeler: [...kume], tablolar: [...tablolar] };
+}
+
 let _mobilUyarlaCalisiyor = false;
-function mobilTelefonaUyarla() {
+function mobilTelefonaUyarla(hedefler) {
     if (!mobilTelefonMu() || _mobilUyarlaCalisiyor) return;
     _mobilUyarlaCalisiyor = true;
+    const t0 = performance.now();
     try {
-        const kokler = mobilUyarlaKokleri();
-        for (const k of kokler) { try { mobilYaziBuyut(k); } catch (e) { console.warn('mobilYaziBuyut', e && e.message); } }
-        for (const k of kokler) { try { mobilIzgaraUyarla(k); mobilIzgaraUyarla(k); } catch (e) { console.warn('mobilIzgaraUyarla', e && e.message); } }
-        for (const k of kokler) { try { mobilDiziUyarla(k); } catch (e) { console.warn('mobilDiziUyarla', e && e.message); } }
-        for (const k of kokler) { try { mobilKesikYaziAc(k); } catch (e) { console.warn('mobilKesikYaziAc', e && e.message); } }
-        for (const k of kokler) { try { mobilIcKaydirmaAc(k); } catch (e) { console.warn('mobilIcKaydirmaAc', e && e.message); } }
-        mobilTabloKartlastir(document);
+        const { ogeler, tablolar } = mobilUyarlanacakOgeler(hedefler);
+        /* Tablo içi (Sevkiyat'ta 7.619 öğenin 7.358'i) yalnız yazı adımından geçer — tablo
+           zaten karta döner; ızgara/dizi/kaydırma adımlarının orada işi yok. */
+        const tabloDisi = ogeler.filter((el) => !el.closest('table'));
+        /* Teşhis: window.__mobilUyarlaProfil = {} verilirse adım süreleri (ms) oraya toplanır. */
+        const profil = window.__mobilUyarlaProfil && typeof window.__mobilUyarlaProfil === 'object' ? window.__mobilUyarlaProfil : null;
+        const adim = (ad, fn, liste) => {
+            const a = profil ? performance.now() : 0;
+            try { fn(liste); } catch (e) { console.warn(ad, e && e.message); }
+            if (profil) profil[ad] = (profil[ad] || 0) + (performance.now() - a);
+        };
+        adim('mobilYaziBuyut', mobilYaziBuyut, ogeler);
+        adim('mobilIzgaraUyarla', mobilIzgaraUyarla, tabloDisi);
+        adim('mobilDiziUyarla', mobilDiziUyarla, tabloDisi);
+        adim('mobilGenisCocukDaralt', mobilGenisCocukDaralt, tabloDisi);
+        adim('mobilKesikYaziAc', mobilKesikYaziAc, tabloDisi);
+        adim('mobilIcKaydirmaAc', mobilIcKaydirmaAc, tabloDisi);
+        adim('mobilTabloKartlastir', () => mobilTabloKartlastir(document, tablolar), null);
+        if (profil) { const a = performance.now(); void document.body.offsetHeight; profil.sonYerlesim = (profil.sonYerlesim || 0) + (performance.now() - a); profil.calisma = (profil.calisma || 0) + 1; profil.oge = (profil.oge || 0) + ogeler.length; }
     } finally {
         _mobilUyarlaCalisiyor = false;
+        window.__mobilUyarlaSonMs = Math.round(performance.now() - t0);
     }
 }
 window.mobilTelefonaUyarla = mobilTelefonaUyarla;
@@ -431,23 +611,41 @@ window.mobilTelefonaUyarla = mobilTelefonaUyarla;
 function mobilTabloIzleyiciKur() {
     if (window.__mobilTabloIzleyici || !mobilTelefonMu()) return;
     let bekleyen = null;
-    const planla = () => { clearTimeout(bekleyen); bekleyen = setTimeout(mobilTelefonaUyarla, 90); };
-    const gozlemci = new MutationObserver(planla);
-    const main = document.querySelector('main');
-    if (main) gozlemci.observe(main, { childList: true, subtree: true });
-    /* Yeni açılan pencereler body'ye eklenir; içleri de izlenir. */
-    gozlemci.observe(document.body, { childList: true });
-    ['detail-modal'].map((id) => document.getElementById(id)).filter(Boolean)
-        .forEach((h) => { if (!main || !main.contains(h)) gozlemci.observe(h, { childList: true, subtree: true }); });
-    new MutationObserver((kayitlar) => {
-        for (const k of kayitlar) for (const n of k.addedNodes) {
-            if (n.nodeType === 1 && n !== main) gozlemci.observe(n, { childList: true, subtree: true });
+    let sonCalisma = 0;
+    let hedefler = new Set();     // değişen bölümler (childList hedefleri)
+    let tamTarama = false;        // tıklama/yön değişimi: stil değişimi her yerde olabilir
+    const calistir = () => {
+        const h = hedefler; const tam = tamTarama;
+        hedefler = new Set(); tamTarama = false;
+        sonCalisma = performance.now();
+        mobilTelefonaUyarla(tam ? null : h);
+    };
+    /* Gözlemci bildirimi ekran çizilmeden ÖNCE gelir: hemen uygulanırsa yeni içerik ilk
+       karesinden uyarlanmış görünür — önce masaüstü boyutunda görünüp sonra "sıçrama" yok.
+       Art arda gelen değişikliklerde (120 ms içinde) yük birikmesin diye bekletilir. */
+    const planla = (kayitlar) => {
+        if (Array.isArray(kayitlar)) for (const k of kayitlar) {
+            if (!k.target || k.target.nodeType !== 1) continue;
+            /* body'ye doğrudan eklenen pencere: hedef body değil, eklenen öğenin kendisi. */
+            if (k.target === document.body || k.target === document.documentElement) {
+                for (const n of k.addedNodes) if (n.nodeType === 1) hedefler.add(n);
+            } else hedefler.add(k.target);
         }
-    }).observe(document.body, { childList: true });
-    /* Pencere açılıp kapanması (display değişimi) childList değildir — stil değişimini de dinle. */
-    const modal = document.getElementById('detail-modal');
-    if (modal) new MutationObserver(planla).observe(modal, { attributes: true, attributeFilter: ['style', 'class'] });
-    window.addEventListener('orientationchange', () => setTimeout(mobilTelefonaUyarla, 250));
+        clearTimeout(bekleyen);
+        if (performance.now() - sonCalisma > 120) calistir();
+        else bekleyen = setTimeout(calistir, 90);
+    };
+    const tamPlanla = (gecikme) => { tamTarama = true; clearTimeout(bekleyen); bekleyen = setTimeout(calistir, gecikme); };
+    /* Tüm sayfa TEK gözlemciyle izlenir: ana alan, sonradan eklenen ya da kapanıp yeniden
+       kurulan pencereler. (Önce yalnız başlangıçta bulunan pencere izleniyordu; ikinci açılışta
+       pencerenin son çizimi gözden kaçıyordu.) Uyarlayıcı yalnız stil/öznitelik yazar,
+       childList değil → kendini tetiklemez. Boştayken sayfada DOM değişimi yok (ölçüldü). */
+    const gozlemci = new MutationObserver(planla);
+    gozlemci.observe(document.body, { childList: true, subtree: true });
+    /* Sekme, aç-kapa gibi yalnız STİL değiştiren dokunuşlar childList üretmez (ana programın
+       sekme düğmesi her tıklamada kendi stilini baştan yazıyor, büyütülen yazı siliniyordu). */
+    document.addEventListener('click', () => tamPlanla(150), true);
+    window.addEventListener('orientationchange', () => tamPlanla(250));
     window.__mobilTabloIzleyici = gozlemci;
     mobilTelefonaUyarla();
 }
@@ -467,7 +665,8 @@ function mobilSaltOkunurKapisiKur(client) {
             if (!asil) continue;
             q[yontem] = (payload, ...rest) => {
                 const izin = ((yontem === 'insert' || yontem === 'upsert') && mobilSayimYazmasiMi(tablo, payload))
-                    || mobilFotoYazmasiMi(tablo, yontem, payload);
+                    || mobilFotoYazmasiMi(tablo, yontem, payload)
+                    || mobilUrunAgaciYazmasiMi(tablo, yontem, payload);
                 return izin ? asil(payload, ...rest) : mobilSaltOkunurEngelSonucu(tablo + '.' + yontem);
             };
         }
@@ -3272,7 +3471,7 @@ async function erpRefreshCurrentScreen(opts = {}) {
                 erpScheduleDeferredUiRefresh();
                 return;
             }
-            if (!force && (mode === 'SIPARIS_LISTE' || mode === 'SIPARIS_KAPANAN')
+            if (!force && mode === 'SIPARIS_LISTE'
                 && typeof siparisListeAramaYenile === 'function') {
                 siparisListeAramaYenile();
                 return;
@@ -7644,113 +7843,6 @@ if (!window.__uaPastalBound) {
     document.addEventListener('mouseup', uaPastalDragEnd);
 }
 
-async function uaKaydet() {
-    {
-        const engel = mobilKisitEngelMetni('URUN_AGACI', true);
-        if (engel) { erpToast(engel, 'error', 4500); return; }
-    }
-    if (!uaSeciliSiparisId) return;
-    const savedSid = uaSeciliSiparisId;
-    const siparis = (dataCache.siparisler || []).find(s => s.id == savedSid);
-    const kalemler = uaSiparisKalemleriGetir(siparis);
-    if (!kalemler.length) {
-        alert('Bu siparişte ürün kalemi bulunamadı.');
-        return;
-    }
-
-    const cacheKey = `KD_URUN_AGACI_${savedSid}`;
-    if (!_uaKdHydrated[cacheKey] && !uaIsKdDirty(savedSid)) {
-        await sbKdGet(savedSid, 'KD_URUN_AGACI');
-    }
-    const all = uaCloneAgacSnapshot(_kdCache[cacheKey] || {});
-    let eksikSayisi = 0;
-    for (let i = 0; i < kalemler.length; i++) {
-        const key = `u_${i}`;
-        const ua = all[key] || {};
-        ua.asamalar = uaNormalizeAsamalar(ua.asamalar || [], { forceSevk: true });
-        if (!ua.asamalar.length) {
-            eksikSayisi += 1;
-            continue;
-        }
-        uaStampKayitMeta(ua, { manual: true });
-        all[key] = ua;
-    }
-
-    const dogrudanSevkMi = uaSiparisUretimYeriFromAll(all, kalemler) === 'DOGRUDAN_SEVK';
-    let dogrudanTemizlenenKonfAdim = 0;
-    if (dogrudanSevkMi) {
-        for (let i = 0; i < kalemler.length; i++) {
-            const key = `u_${i}`;
-            const ua = all[key] || {};
-            const onceki = Array.isArray(ua.asamalar) ? ua.asamalar : [];
-            const temiz = onceki.filter(a => !UA_KONFEKSIYON_ASAMALARI.has(String(a || '').toLowerCase()));
-            dogrudanTemizlenenKonfAdim += Math.max(0, onceki.length - temiz.length);
-            ua.asamalar = uaNormalizeAsamalar(temiz, { forceSevk: true });
-            all[key] = ua;
-        }
-    }
-    if (eksikSayisi > 0) {
-        alert(`Önce eksik ürün ağaçlarını tamamlayın. Tanımsız kalem: ${eksikSayisi}`);
-        return;
-    }
-
-    const siparisAgac = all['siparis'] || {};
-    siparisAgac.tamamlandi = true;
-    siparisAgac.tamamlanma_tarihi = new Date().toLocaleString('tr-TR');
-    all['siparis'] = siparisAgac;
-    _kdCache[cacheKey] = all;
-    const kdWrite = await sbKdSet(savedSid, 'KD_URUN_AGACI', all);
-    if (kdWrite?.error) {
-        alert(`Ürün ağacı kaydedilemedi: ${kdWrite.error.message || 'Bilinmeyen hata'}`);
-        return;
-    }
-    uaClearKdDirty(savedSid);
-    _uaKdHydrated[cacheKey] = true;
-    const allVerify = await sbKdGet(savedSid, 'KD_URUN_AGACI', true);
-    const verifyTamam = !!(allVerify?.siparis?.tamamlandi);
-    if (!verifyTamam) {
-        alert('Ürün ağacı yazıldı ancak doğrulama başarısız. Lütfen tekrar kaydedin.');
-        return;
-    }
-
-    const siparisUretimYeri = uaSiparisUretimYeriFromAll(all, kalemler);
-    let uretimYeriNotu = '';
-    const { data: sipYerRows, error: siparisYerErr } = await sb.from('siparisler')
-        .update({ uretim_yeri: siparisUretimYeri })
-        .select('id,uretim_yeri')
-        .eq('id', savedSid);
-    if (siparisYerErr) {
-        const msg = String(siparisYerErr.message || '');
-        const kolonYok = msg.toLowerCase().includes("could not find") && msg.toLowerCase().includes("'uretim_yeri'");
-        if (kolonYok) {
-            uretimYeriNotu = '\nNot: siparisler.uretim_yeri kolonu bulunamadı, sipariş satırı güncellenmedi.';
-        } else {
-            alert(`Ürün ağacı kaydedildi; sipariş üretim yeri güncellenemedi: ${siparisYerErr.message}`);
-            return;
-        }
-    } else {
-        const yeniYer = String((sipYerRows || [])[0]?.uretim_yeri || '');
-        if (yeniYer !== String(siparisUretimYeri)) {
-            alert('Ürün ağacı kaydedildi; sipariş üretim yeri doğrulanamadı.');
-            return;
-        }
-        const dcSip = (dataCache.siparisler || []).find(s => s.id == savedSid);
-        if (dcSip) dcSip.uretim_yeri = siparisUretimYeri;
-    }
-
-    const gorevOzet = '\nGörevler: «Siparişlerden Ata» ile manuel oluşturun (otomatik kapalı).';
-
-    const btn = document.querySelector('button[onclick="uaKaydet()"]');
-    if (btn) { const o=btn.innerHTML; btn.innerHTML='✅ KAYDEDİLDİ'; btn.classList.add('opacity-75'); setTimeout(()=>{btn.innerHTML=o;btn.classList.remove('opacity-75');},1500); }
-    erpSyncTablesBackground(['siparisler']);
-    alert(`✅ Ürün ağacı kaydedildi.\nSipariş: ${siparis?.sno || '-'}\nKalem sayısı: ${kalemler.length}\nÜretim yeri: ${siparisUretimYeri}${uretimYeriNotu}${gorevOzet}`);
-
-    uaSeciliSiparisId = null;
-    uaSeciliUrunIdx = null;
-    uaCalismaModu = 'URUN';
-    await renderUrunAgaci();
-}
-
 // ── Fason Takip (ürün ağacında FASON_KONF — sipariş bazlı malzeme takibi) ──
 /** Hedefe göre: >= hedef yeşil, ~%85+ sarı, altı kırmızı; hedef yoksa nötr */
 // ── DOKUMA FASON — kendi başına, ayrı tabloda dokuma sipariş kayıtları ──
@@ -8388,6 +8480,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
     const prevMode = appMode;
     appMode = mode;
+    if (mode === 'SIPARIS_KAPANAN' && prevMode !== 'SIPARIS_KAPANAN') siparisKapananLimitSifirla();
     try { document.body.setAttribute('data-erp-mode', mode); } catch (e) {}
     if (prevMode !== mode) {
         try { erpMobilEkranGecis(); } catch (e) {}
@@ -8776,6 +8869,8 @@ async function setAppMode(mode, keepEditingId = false) {
 
     if (listTitle) {
         if (mode === 'DEPO_HAREKET_LISTE') listTitle.innerText = 'DETAYLI HAREKET LİSTESİ';
+        else if (mode === 'SIPARIS_LISTE') listTitle.innerText = 'AÇIK SİPARİŞLER';
+        else if (mode === 'SIPARIS_KAPANAN') listTitle.innerText = 'KAPANAN SİPARİŞLER';
         else listTitle.innerText = mode.includes('LISTE') ? "KAYITLI ARŞİV LİSTESİ" : "HAREKET KAYITLARI";
     }
 
@@ -9072,6 +9167,18 @@ function loadData(opts) {
     if (table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
         currentData = siparisListeSirala(currentData);
     }
+    /* Kapanan siparişler — ana programla aynı: son kapanan üstte, ilk 10 (+10 düğmesi), aramada tümü. */
+    let siparisKapananToplam = 0;
+    let siparisKapananGosterilen = 0;
+    const siparisKapananAramaAktif = table === 'siparisler' && appMode === 'SIPARIS_KAPANAN' && siparisKapananAramaAktifMi();
+    if (table === 'siparisler' && appMode === 'SIPARIS_KAPANAN') {
+        siparisKapananToplam = currentData.length;
+        currentData = siparisKapananSonKapanisSirala(currentData);
+        if (!siparisKapananAramaAktif) {
+            siparisKapananGosterilen = Math.min(siparisKapananListeLimitOku(), currentData.length);
+            currentData = currentData.slice(0, siparisKapananGosterilen);
+        }
+    }
 
     const siparisHizliSayac = (table === 'siparisler' && appMode === 'SIPARIS_LISTE')
         ? siparisListeHizliSayacHesapla(currentData)
@@ -9227,6 +9334,9 @@ function loadData(opts) {
     if (appMode === 'KART_LISTE' && archiveTab === 'KUMAS') listeHtml += '</div>';
     if (appMode === 'KART_LISTE' && archiveTab === 'IPLIK') listeHtml += '</div>';
     if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') listeHtml += mamulStokListeTabloKapatHtml();
+    if (table === 'siparisler' && appMode === 'SIPARIS_KAPANAN' && !siparisKapananAramaAktif) {
+        listeHtml += siparisKapananDahaFazlaHtml(siparisKapananGosterilen, siparisKapananToplam);
+    }
     list.innerHTML = listeHtml;
     if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL' && typeof mamulTopluTemizlemePanelInit === 'function') mamulTopluTemizlemePanelInit();
     if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL' && window._mamulKartFiltreFocus?.id) {
@@ -9240,27 +9350,21 @@ function loadData(opts) {
             }
         }
     }
-    if (window._siparisPanelFocus?.id && table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
-        const el = document.getElementById(window._siparisPanelFocus.id) || document.getElementById('f-siparis-q');
+    /* Kaynağı: erp-core.js aynı bloğu window._siparisAramaFocus yazar (siparisListePanelFiltreAlan).
+       Bu dosya daha önce farklı adlarla (_siparisPanelFocus / _siparisKolonFocus) okuyordu — hiçbiri
+       hiç yazılmadığı için mobilde odak hiç geri gelmiyordu, her harften sonra alan yeniden seçilmek
+       zorunda kalınıyordu. */
+    if (window._siparisAramaFocus && table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
+        const el = document.getElementById('f-siparis-q');
         if (el) {
             el.focus();
-            const p = window._siparisPanelFocus.pos;
+            const p = window._siparisAramaFocus.pos;
             if (typeof p === 'number' && typeof el.setSelectionRange === 'function') {
                 const safe = Math.max(0, Math.min(p, String(el.value || '').length));
                 el.setSelectionRange(safe, safe);
             }
         }
-    }
-    if (window._siparisKolonFocus?.key && table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
-        const el = document.getElementById('f-siparis-q');
-        if (el) {
-            el.focus();
-            const p = window._siparisKolonFocus.pos;
-            if (typeof p === 'number') {
-                const safe = Math.max(0, Math.min(p, String(el.value || '').length));
-                el.setSelectionRange(safe, safe);
-            }
-        }
+        window._siparisAramaFocus = null;
     }
 }
 
@@ -9654,14 +9758,15 @@ function siparisListeSatirHtml(i, idx) {
         });
         return bits.slice(0, 3).join(' | ');
     })();
-    return `<div class="record-item siparis-liste-row" style="border-left-color:${borderClr}" title="${pdfEsc((i.sno || '') + ' · ' + (i.firma || '') + ' · ' + durumMeta.label)}">
+    const yukYuzde = Math.round(siparisYuklemeOrani(i) * 100);
+    return `<div class="record-item siparis-liste-row${yukYuzde > 0 ? ' has-yukleme' : ''}" style="border-left-color:${borderClr};--yuk:${yukYuzde}%" title="${pdfEsc((i.sno || '') + ' · ' + (i.firma || '') + ' · ' + durumMeta.label + (yukYuzde > 0 ? ` · %${yukYuzde} yüklendi` : ''))}">
         <div onclick="showDetail(${idx})" class="siparis-liste-row-hit">
         <div class="siparis-lc-no">
             <span style="font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:var(--text);line-height:1.2">${pdfEsc(i.sno || '—')}</span>
             ${durumSel}
         </div>
-        <div class="siparis-lc-firma" title="${pdfEsc(i.firma || '')}">${pdfEsc(i.firma || '—')}</div>
-        <div class="siparis-lc-ozet${renkOzet ? ' has-renk' : ''}" title="${pdfEsc(ozetRaw + (renkOzet ? ' · ' + renkOzet : ''))}">${pdfEsc(ozetRaw)}${renkOzet ? `<div class="siparis-lc-renk" title="${pdfEsc(renkOzet)}">${pdfEsc(renkOzet)}</div>` : ''}</div>
+        <div class="siparis-lc-firma mobil-tek-satir" title="${pdfEsc(i.firma || '')}">${pdfEsc(i.firma || '—')}</div>
+        <div class="siparis-lc-ozet mobil-tek-satir${renkOzet ? ' has-renk' : ''}" title="${pdfEsc(ozetRaw + (renkOzet ? ' · ' + renkOzet : ''))}">${pdfEsc(ozetRaw)}${renkOzet ? `<div class="siparis-lc-renk" title="${pdfEsc(renkOzet)}">${pdfEsc(renkOzet)}</div>` : ''}</div>
         <div class="siparis-lc-adet">${pdfEsc(adetVal)}<span>kalem toplamı</span></div>
         <div class="siparis-lc-termin">
             ${appMode === 'SIPARIS_KAPANAN' && typeof siparisKapanisBilgiHtml === 'function'

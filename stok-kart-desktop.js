@@ -3140,6 +3140,25 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     window.siparisMamulAnaVaryantliMi = siparisMamulAnaVaryantliMi;
 
 
+    /* Kullanıcı, 25.09.2026: "mamul stok kartında fotoğraf ekliyse sipariş açıldığında
+       stok kartıyla o resmi de sipariş formuna eklesin". Kalem bir mamul karttan
+       dolduruluyorsa (yeni satır seçimi / "↻ Mamül karttan yenile" / tek satır yenile —
+       hepsi bu fonksiyona düşer) kartın fotoğrafı, siparişin kendi foto listesine
+       (siparisFotograflar) eklenir. DB'ye HEMEN yazılmaz — form nasılsa Kaydet ile
+       kaydedilir; kullanıcı isterse 🗑 ile kaldırabilir. Aynı karttan tekrar tekrar
+       eklenmesin diye satır üstünde işaretlenir (_karttan). */
+    function siparisKalemMamulFotografCek(k) {
+        if (!k || typeof kartFotografSrc !== 'function') return;
+        const src = kartFotografSrc(k);
+        if (!src) return;
+        if (typeof siparisFotograflar === 'undefined') return;
+        if (!Array.isArray(siparisFotograflar)) siparisFotograflar = [];
+        if (siparisFotograflar.some(f => f && (f.src === src || f._karttan === k.desen_kodu))) return;
+        const ad = (typeof siparisMamulUrunAdiOku === 'function' ? siparisMamulUrunAdiOku(k) : '') || k.desen_kodu || '';
+        siparisFotograflar.push({ src, aciklama: `Ürün kartından: ${ad}`.trim(), _karttan: k.desen_kodu || true });
+        try { if (typeof siparisFotoRenderList === 'function') siparisFotoRenderList(); } catch (e) {}
+    }
+
     window.siparisKalemMamulDoldur = function (kalemNo, k, opts) {
         opts = opts || {};
         if (!k || !kalemNo) return;
@@ -3151,6 +3170,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         mv(`sk-ebat-${kalemNo}`, String(siparisMamulEbatOku(k) || '').trim().replace(/\s+/g, ''));
         if (anaSecim && siparisMamulAnaVaryantliMi(k)) mv(`sk-renk-${kalemNo}`, '');
         else mv(`sk-renk-${kalemNo}`, siparisMamulRenkOku(k));
+        siparisKalemMamulFotografCek(k);
         if (typeof updateSiparisPreview === 'function') updateSiparisPreview();
     };
 
