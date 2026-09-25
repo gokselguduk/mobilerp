@@ -4729,6 +4729,343 @@ body[data-erp-mode="STOK_SAYIM"] .content-scroll { padding-bottom: 0 !important;
 .sayim-tum-liste { margin-top: 16px; }
 .sayim-tum-liste summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 8px; min-height: 40px; display: flex; align-items: center; }
 
+/* Telefon: Depo Hareketleri — hareket kartı (depoHareketDefterMobilKartHtml; yalnız görünüm,
+   veri/hesap depoHareketDefterTabloHtml ile aynı fonksiyonlardan). */
+.dhd-kart-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px;
+}
+.dhd-kart {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.dhd-kart-ust {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+.dhd-kart-sol { min-width: 0; }
+.dhd-kart-ad {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.3;
+}
+.dhd-kart-meta {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.dhd-kart-sag {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+.dhd-kart-sag .pill { font-size: 9px !important; padding: 2px 8px !important; }
+.dhd-kart-miktar {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+}
+.dhd-kart-miktar.is-giris { color: var(--emerald-c); }
+.dhd-kart-miktar.is-cikis { color: var(--rose-c); }
+.dhd-kart-alt {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text3);
+    overflow: hidden;
+}
+.dhd-kart-alt > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dhd-kart-kod {
+    flex-shrink: 0;
+    font-family: 'DM Mono', monospace;
+    font-weight: 600;
+    color: var(--text2);
+}
+.dhd-kart-not {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.4;
+}
+.dhd-kart-ceki {
+    margin-top: 8px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Telefon: Sevkiyat — İplik/Kumaş/Mamül formu açıkken Sevkiyat Merkezi yerine gösterilen
+   "Son N hareket" paneli (sevkiyatMobilSonHareketlerHtml). */
+.svk-son-hareket-panel {
+    padding: 4px 14px 8px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.svk-son-hareket-baslik {
+    padding: 12px 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+}
+.svk-son-hareket-satir {
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+}
+.svk-son-hareket-ust {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+.svk-son-hareket-ad {
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.svk-son-hareket-miktar {
+    flex-shrink: 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.svk-son-hareket-miktar em { font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; font-style: normal; opacity: .75; }
+.svk-son-hareket-miktar.is-giris { color: var(--emerald-c); }
+.svk-son-hareket-miktar.is-cikis { color: var(--rose-c); }
+.svk-son-hareket-alt {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.svk-son-hareket-bos {
+    padding: 14px 0 18px;
+    font-size: 12px;
+    color: var(--text3);
+    text-align: center;
+}
+
+/* ── Telefon: stok sayım sade kart (stok-sayim.js sayimKartHtml; yalnız görünüm) ──
+   Satır 1: ad + kod·meta | sayı kutusu.  Satır 2: "Stok N" (dokununca kopyalar) + fark | Kaydet.
+   Alan adlı ızgara: telefon uyarlayıcısı grid-template-areas tanımlı ızgaraya dokunmaz. */
+.sayim-shell--mobil .sayim-tip-toggle--mobil {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface2);
+}
+.sayim-shell--mobil .sayim-tip-toggle--mobil .sayim-tip-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 2px;
+    border: none;
+    border-radius: 9px;
+    background: none;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 600;
+}
+.sayim-shell--mobil .sayim-tip-toggle--mobil .sayim-tip-btn.aktif {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+.sayim-shell--mobil .sayim-tip-toggle--mobil .sayim-tip-btn.pasif { opacity: .45; }
+.sayim-shell--mobil .sayim-info { display: block; margin-top: 6px; font-size: 12px; color: var(--text3); text-align: left; }
+.sayim-shell--mobil .sayim-kaydet-btn { min-height: 46px; font-size: 15px; border-radius: 12px; }
+.sayim-shell--mobil .sayim-ara-inp { padding: 11px 14px; border-radius: 12px; background: var(--surface); }
+.sayim-shell--mobil .sayim-grup-bas { margin: 16px 4px 8px; }
+
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 104px;
+    grid-template-areas:
+        "bilgi bilgi say"
+        "stok  fark  kaydet";
+    align-items: center;
+    gap: 10px 10px;
+    margin-bottom: 8px;
+    padding: 12px 12px 12px 14px;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) :is(.sayim-kart-ust, .sayim-kart-giris, .sayim-kart-alt) { display: contents; }
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-bilgi { grid-area: bilgi; min-width: 0; }
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-say { grid-area: say; }
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-btn--kaydet { grid-area: kaydet; }
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-stok { grid-area: stok; }
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-fark { grid-area: fark; }
+
+.sayim-shell--mobil .sayim-kart-ad { font-size: 15px; font-weight: 700; line-height: 1.25; }
+.sayim-shell--mobil .sayim-kart-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--text3);
+}
+.sayim-shell--mobil .sayim-kod { font-family: 'DM Mono', monospace; font-size: 11px; }
+.sayim-shell--mobil .sayim-kart .sayim-inp {
+    min-height: 48px;
+    padding: 6px 8px;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    font-size: 20px;
+    font-weight: 700;
+}
+.sayim-shell--mobil .sayim-kart-btn--kaydet {
+    min-height: 40px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sayim-shell--mobil .sayim-kart-btn--kaydet:disabled { opacity: .4; cursor: not-allowed; }
+/* "Stok 10 ad" — dokununca stoğu sayılana kopyalar */
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-stok {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    width: auto;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    flex-direction: row;
+}
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-stok::before {
+    content: 'Stok';
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+}
+.sayim-shell--mobil .sayim-kart:not(.sayim-kart--kayitli) .sayim-kart-stok em {
+    display: inline;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text3);
+}
+.sayim-shell--mobil .sayim-kart-fark { font-size: 14px; font-weight: 800; font-family: 'DM Mono', monospace; }
+.sayim-shell--mobil .sayim-kart-fark.fark-artis::before { content: 'Fark '; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600; color: var(--text3); }
+.sayim-shell--mobil .sayim-kart-fark.fark-azalis::before { content: 'Fark '; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600; color: var(--text3); }
+.sayim-shell--mobil .sayim-kart--kilit .sayim-inp { background: var(--surface2); }
+/* Oturum çubuğu: durum yazısı küçük; Duraklat ikincil, "Sayım tamamlandı" birincil — yan yana */
+.sayim-shell--mobil .sayim-oturum-durum {
+    margin: 2px 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+}
+.sayim-shell--mobil .sayim-oturum-acts,
+.sayim-shell--mobil .sayim-oturum--duraklat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    grid-template-areas: "ikincil birincil";
+    gap: 8px;
+}
+.sayim-shell--mobil .sayim-oturum--duraklat .sayim-oturum-durum { grid-column: 1 / -1; }
+.sayim-shell--mobil .sayim-oturum-acts .sayim-kaydet-btn--duraklat,
+.sayim-shell--mobil .sayim-oturum--duraklat .sayim-kaydet-btn--devam { grid-area: ikincil; }
+.sayim-shell--mobil .sayim-oturum-acts #sayim-kaydet-btn,
+.sayim-shell--mobil .sayim-oturum--duraklat #sayim-kaydet-btn { grid-area: birincil; }
+.sayim-shell--mobil .sayim-oturum--duraklat { grid-template-areas: "durum durum" "ikincil birincil"; }
+.sayim-shell--mobil .sayim-oturum--duraklat .sayim-oturum-durum { grid-area: durum; }
+.sayim-shell--mobil .sayim-kaydet-btn--duraklat {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+/* Kaydedilmiş kart: ad | sayılan toplam; altında parçalar ve "Stok · fark" */
+.sayim-shell--mobil .sayim-kart--kayitli { padding: 12px 14px; border-radius: 14px; margin-bottom: 8px; }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-ust { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-bilgi { min-width: 0; }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-toplam { flex-shrink: 0; text-align: right; white-space: nowrap; }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-toplam strong { font-family: 'DM Mono', monospace; font-size: 20px; color: var(--text); }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-toplam em { margin-left: 3px; font-style: normal; font-size: 11px; color: var(--text3); }
+.sayim-shell--mobil .sayim-kart-parcalar { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.sayim-shell--mobil .sayim-parca {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface2));
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+}
+.sayim-shell--mobil .sayim-parca-arti { font-size: 11px; color: var(--text3); }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-alt { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--text3); }
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-stok {
+    display: inline-flex; align-items: baseline; gap: 4px; width: auto; min-height: 0; padding: 0;
+    border: none; background: none; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text3); flex-direction: row;
+}
+.sayim-shell--mobil .sayim-kart--kayitli .sayim-kart-stok em { display: inline; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.sayim-shell--mobil .sayim-kart-btn--ekle-ac,
+.sayim-shell--mobil .sayim-kart-btn--ekle {
+    margin-top: 8px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+}
+
 /* ── Mobil dünya: yumuşak geçişler, çekmece, alt sayfa ── */
 body.erp-mobil-lite {
     --erp-ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -4867,7 +5204,16 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
 .kumas-ceki-row-btn.has-ceki { border-color: rgba(16,185,129,0.4); color: #059669; }
 #kumas-ceki-overlay, #kumas-ceki-toplu-overlay { display: none; position: fixed; inset: 0; z-index: 2147482500; background: rgba(8,12,24,0.55); align-items: stretch; justify-content: center; padding: 8px; }
 #kumas-ceki-overlay.is-open, #kumas-ceki-toplu-overlay.is-open { display: flex; }
-.kumas-ceki-box { width: min(210mm, 100%); max-height: 100%; overflow: auto; background: #fff; color: #111; border-radius: 10px; }
+.kumas-ceki-box { width: min(210mm, 100%); max-height: 100%; overflow: auto; background: #fff; color: #111; border-radius: 10px; border: 1px solid #d4d4d4; display: flex; flex-direction: column; }
+/* Desktop head.html/stok.html'de var, mobile-erp.css'te hiç yoktu — başlık (Kapat dahil) sabitlenmiyordu,
+   uzun bir fişte aşağı kaydırınca Kapat düğmesiyle birlikte ekrandan kayboluyordu ("açılıyor, kapanmıyor"). */
+.kumas-ceki-head, .mf-ceki-head {
+    display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid #e5e5e5; background: #f7f7f7; position: sticky; top: 0; z-index: 2;
+}
+.kumas-ceki-head h3 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: 0.04em; }
+.kumas-ceki-meta { font-size: 14px; font-weight: 700; color: #111; }
+.kumas-ceki-musteri { font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; }
 .kumas-ceki-block { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .mf-fis-row { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .mf-fis-head { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; padding: 12px 14px; cursor: pointer; }
@@ -5938,10 +6284,10 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             grid-template-columns: 120px 78px 90px 90px 1fr 1.4fr;
         }
 
-        /* Telefon: kumaş stok listesi sade kart (iplik kartıyla aynı dil). Yalnız Kumaş Stoğu ekranı —
-           mamul listesi de .ms-row kullanıyor, ona dokunmaz. Solda ad / teknik tarif (tek satır) /
+        /* Telefon: kumaş ve mamul stok listeleri sade kart (iplik kartıyla aynı dil). Yalnız Kumaş Stoğu ve Mamul Deposu —
+           başka .ms-row listelerine dokunmaz. Solda ad / tarif (tek satır) /
            stok kodu · kategori; sağda metre. Dokununca detay penceresi (showKumasGroupDetail) aynen açılır. */
-        body[data-erp-mode="KUMAS"] .ms-list {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list {
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -5950,8 +6296,8 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             background: none;
             overflow: visible;
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row,
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row:last-child {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row,
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row:last-child {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             grid-template-areas: "main qty";
@@ -5963,19 +6309,19 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             background: var(--surface);
             box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-row-main {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-row-main {
             display: grid;
             grid-template-areas: "name" "meta" "top";
             gap: 3px;
             min-width: 0;
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-name {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-name {
             grid-area: name;
             font-size: 16px !important;
             font-weight: 700;
             color: var(--text);
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-meta {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-meta {
             grid-area: meta;
             margin-top: 0;
             display: -webkit-box;
@@ -5986,14 +6332,14 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             font-size: 12px !important;
             color: var(--text3);
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-row-top {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-row-top {
             grid-area: top;
             display: flex;
             align-items: center;
             gap: 8px;
             margin-top: 4px;
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-kod-pill {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-kod-pill {
             padding: 0;
             border: none;
             background: none;
@@ -6001,7 +6347,7 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             font-size: 11px !important;
             color: var(--text3);
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-chip {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-chip {
             padding: 1px 8px;
             border: none;
             border-radius: 999px;
@@ -6010,10 +6356,29 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
             font-size: 10px !important;
             letter-spacing: 0.02em;
         }
-        body[data-erp-mode="KUMAS"] .ms-list > .ms-row .ms-qty {
+        body:is([data-erp-mode="KUMAS"], [data-erp-mode="MAMUL_DEPO"]) .ms-list > .ms-row .ms-qty {
             grid-area: qty;
             margin-top: 1px;
             font-size: 16px;
+        }
+        /* Mamul: ad / ebat · renk · depo / kategori + kod ile yanında son hareket (üç satır). */
+        body[data-erp-mode="MAMUL_DEPO"] .ms-list > .ms-row .ms-row-main {
+            grid-template-columns: auto minmax(0, 1fr);
+            grid-template-areas: "name name" "meta meta" "top son";
+            column-gap: 10px;
+        }
+        body[data-erp-mode="MAMUL_DEPO"] .ms-list > .ms-row .ms-meta--son {
+            grid-area: son;
+            align-self: center;
+            margin-top: 4px;
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+            text-align: right;
+            white-space: normal;   /* sığmazsa tarih kesilmesin, alt satıra insin */
+            overflow: visible;
+            text-overflow: clip;
+            display: block;        /* tarif satırının tek satır kesme kuralı (line-clamp) buna uygulanmasın */
+            -webkit-line-clamp: unset;
         }
 
         /* Telefon: iplik stok listesi sade kart (iplikStokListeDynamicHtml › kart dalı).
@@ -7412,7 +7777,7 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
   window.ERP_MOBIL_NO_CHARTS = true;
   window.ERP_MOBIL_NO_EXCEL = true;
 
-  var v = '20260925-a85139';
+  var v = '20260925-67998e';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],

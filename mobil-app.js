@@ -247,12 +247,21 @@ function mobilUrunAgaciYazmasiMi(tablo, yontem, payload) {
     return false;
 }
 
+/* Stok tablosuna yalnız sayımın kendi fark hareketi (stok-sayim.js sayimHareketPayload): [SAYIM] notu,
+   GİRİŞ/ÇIKIŞ ve o tablonun sayım kaynağı. Sayım ekranındayken başka bir stok yazması geçmez. */
+const MOBIL_SAYIM_KAYNAKLARI = {
+    iplik_stok: ['DEPO_HAREKET_IPLIK'],
+    kumas_stok: ['DEPO_HAREKET_MAMUL_DEPO', 'DEPO_HAREKET_KUMAS']
+};
 function mobilSayimYazmasiMi(tablo, payload) {
     if (typeof appMode === 'undefined' || appMode !== 'STOK_SAYIM') return false;
     if (!MOBIL_SAYIM_TABLOLARI.includes(tablo)) return false;
-    if (tablo !== 'siparis_akis') return true;
     const satirlar = Array.isArray(payload) ? payload : [payload];
-    return satirlar.length > 0 && satirlar.every(r => r && r.islem === 'STOK_SAYIM_RAPOR');
+    if (!satirlar.length || !satirlar.every(r => r && typeof r === 'object')) return false;
+    if (tablo === 'siparis_akis') return satirlar.every(r => r.islem === 'STOK_SAYIM_RAPOR');
+    return satirlar.every(r => String(r.notlar || '').startsWith('[SAYIM]')
+        && (r.islem_turu === 'GİRİŞ' || r.islem_turu === 'ÇIKIŞ')
+        && MOBIL_SAYIM_KAYNAKLARI[tablo].includes(r.kaynak_birim));
 }
 
 /* ── TELEFONDA GENİŞ TABLO → KART ──────────────────────────────────────────
@@ -274,6 +283,11 @@ function mobilTabloKartlastir(kok, yalnizBunlar) {
         const metinAl = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
         const yazilacak = [];
         tablolar.forEach((t) => {
+            /* PDF/yazdırma kabı (erp-pdf-capture-host, kumas-ceki.js): sabit 794px genişlikte,
+               ekranın sol üst köşesinden başlıyor (position:fixed;left:0;top:0) — "ekran dışı" bounding-box
+               kontrolünü (mobilUyarlaKokleri) atlatıyor. Buradaki tablo telefon genişliğine göre kartlaştırılırsa
+               794px'lik PDF sayfasında etiket ile değer üst üste biner. Bu kap her zaman atlanır. */
+            if (t.closest('#erp-pdf-capture-host')) return;
             /* Karta dönmüş tablo artık sığar — yeniden ölçüp geri almak "aç-kapa" döngüsü yapıyordu
                (her çalışmada kart ↔ tablo). Kart kalır; yalnız yeni satırların etiketi tazelenir. */
             if (!t.classList.contains('mobil-kart-tablo')) {
@@ -342,6 +356,9 @@ function mobilUyarlaKokleri() {
     if (main) out.push(main);
     for (const el of document.body.children) {
         if (el === main || el.contains(main) || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+        /* PDF yakalama kabı (kumas-ceki.js erpBelgePdfIndir): A4 genişliğinde sabit, sol üstten (0,0)
+           başladığı için aşağıdaki "ekran dışı" bounding-box testini atlatıyor — burada adla dışlanır. */
+        if (el.id === 'erp-pdf-capture-host') continue;
         const s = getComputedStyle(el);
         if (s.display === 'none' || (s.position !== 'fixed' && s.position !== 'absolute')) continue;
         /* Yalnız EKRANDA görünen katman: PDF/yazdırma için ekran dışına konan gizli kap

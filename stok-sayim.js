@@ -1551,11 +1551,37 @@ function sayimCacheHareketEkle(table, payloads, inserted) {
     });
 }
 
+/* Kayıttan önce bakiye sunucudan tazelenir: sayım ekranı açıkken otomatik yenileme yok; sayım
+   sürerken başka kullanıcının girdiği hareket bayat "mevcut" ile yanlış fark yazdırırdı. */
+async function sayimBakiyeTazele() {
+    if (typeof syncAllData !== 'function') return;
+    const tablolar = _sayimTip === 'IPLIK' ? ['iplik_stok', 'kumas_kutuphanesi'] : ['kumas_stok', 'kumas_kutuphanesi'];
+    /* Süren bir senkron varsa syncAllData isteği sıraya alıp hemen döner — önce onun bitmesi beklenir. */
+    for (let i = 0; i < 60 && typeof _syncAllDataBusy !== 'undefined' && _syncAllDataBusy; i++) {
+        await new Promise(r => setTimeout(r, 250));
+    }
+    await syncAllData(false, { silent: true, tables: tablolar });
+}
+
 async function stokSayimKaydet() {
     if (_sayimKaydediliyor) return;
     if (_sayimDurum === 'KAPALI') {
         erpToast('Önce sayımı başlatın.', 'info');
         return;
+    }
+    {
+        _sayimKaydediliyor = true;
+        const b = document.getElementById('sayim-kaydet-btn');
+        if (b) { b.disabled = true; b.textContent = 'Güncel stok okunuyor…'; }
+        try {
+            await sayimBakiyeTazele();
+        } catch (e) {
+            console.warn('sayım bakiye tazeleme', e?.message || e);
+        } finally {
+            _sayimKaydediliyor = false;
+            if (b) { b.disabled = false; b.textContent = 'Sayım tamamlandı'; }
+        }
+        if (typeof sayimListeYenile === 'function') sayimListeYenile();
     }
     const paket = sayimGirisPaketiniTopla();
     if (!paket.sayilanlar.length) {

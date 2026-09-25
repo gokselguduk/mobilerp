@@ -4142,6 +4142,65 @@ function depoHareketDefterBolumDahaFazla(cls) {
     renderDepoHareketDefteri({ bodyOnly: true });
 }
 window.depoHareketDefterBolumDahaFazla = depoHareketDefterBolumDahaFazla;
+/* Telefon: depo hareketi tek kart — masaüstü tablosuyla aynı fonksiyonlardan (depoHareketDefterKanalBul,
+   -IslemTip, -Kalem, -MiktarStr) okur, veri/hesap değişmez, yalnız düzeni değişir. */
+function depoHareketDefterMobilKartHtml(row, hideKanal, detayTip) {
+    const ch = depoHareketDefterKanalBul(row);
+    const tip = depoHareketDefterIslemTip(row);
+    const tipCls = tip === 'GİRİŞ' ? 'pill-green' : (tip === 'ÇIKIŞ' ? 'pill-red' : 'pill-gray');
+    const miktarCls = tip === 'GİRİŞ' ? 'is-giris' : (tip === 'ÇIKIŞ' ? 'is-cikis' : '');
+    const tarihStr = row.created_at
+        ? new Date(row.created_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '—';
+    const islemYapan = String(row.updated_by || '').trim() || '—';
+    const firmaStr = [row.firma, row.araci_firma].filter(x => x && String(x).trim()).join(' · ');
+    const notOz = String(depoNotlarStripBirim(row.notlar || '') || '').trim() || String(row.islem_gecmisi || '').trim();
+    const notKisa = notOz.length > 90 ? notOz.slice(0, 87) + '…' : notOz;
+    const cekiVar = /\[CEKI:/i.test(String(row.notlar || ''));
+    const k = depoHareketDefterKalem(row, detayTip);
+
+    let baslik, meta;
+    if (detayTip === 'IPLIK') {
+        baslik = row.iplik_no || row.stok_kodu || '—';
+        meta = [row.marka, row.cins, row.lot_no ? `Lot ${row.lot_no}` : ''].filter(x => x && String(x).trim()).join(' · ');
+    } else if (detayTip === 'KUMAS') {
+        baslik = (k && k.urun_adi) || row.stok_kodu || '—';
+        meta = [k?.kumas_cinsi, k?.terbiye, k?.tarak_eni && `Tarak ${k.tarak_eni}`, k?.atki_sikligi && `Atkı skl. ${k.atki_sikligi}`,
+            k?.cozgu_sikligi && `Çözgü skl. ${k.cozgu_sikligi}`, k?.atki_ipi && `Atkı ipi ${k.atki_ipi}`, k?.cozgu_ipi && `Çözgü ipi ${k.cozgu_ipi}`]
+            .filter(Boolean).join(' · ');
+    } else if (detayTip === 'MAMUL') {
+        baslik = (k && k.urun_adi) || row.stok_kodu || '—';
+        meta = [k?.urun_grubu, k?.renk, k?.ebat].filter(Boolean).join(' · ');
+    } else {
+        baslik = depoHareketDefterTanim(row, detayTip);
+        meta = '';
+    }
+
+    const altParcalar = [tarihStr, islemYapan];
+    if (!hideKanal) altParcalar.push(ch.etiket);
+    if (firmaStr) altParcalar.push(firmaStr);
+    if (row.irsaliye_no) altParcalar.push(`İrs. ${row.irsaliye_no}`);
+
+    return `<div class="dhd-kart">
+        <div class="dhd-kart-ust">
+            <div class="dhd-kart-sol">
+                <div class="dhd-kart-ad">${pdfEsc(baslik)}</div>
+                ${meta ? `<div class="dhd-kart-meta">${pdfEsc(meta)}</div>` : ''}
+            </div>
+            <div class="dhd-kart-sag">
+                <span class="pill ${tipCls}">${pdfEsc(tip || '—')}</span>
+                <div class="dhd-kart-miktar ${miktarCls}">${pdfEsc(depoHareketDefterMiktarStr(row, detayTip))}</div>
+            </div>
+        </div>
+        <div class="dhd-kart-alt">
+            <span class="dhd-kart-kod">${pdfEsc(row.stok_kodu || '—')}</span>
+            <span>${pdfEsc(altParcalar.filter(Boolean).join(' · '))}</span>
+        </div>
+        ${notKisa ? `<div class="dhd-kart-not">${pdfEsc(notKisa)}</div>` : ''}
+        ${cekiVar ? `<button type="button" class="dhd-kart-ceki" onclick="event.stopPropagation();kumasCekiHarekettenGoster('${pdfEsc(row.id)}')">Çeki göster</button>` : ''}
+    </div>`;
+}
+
 function depoHareketDefterTabloHtml(rows, opts) {
     opts = opts || {};
     if (!rows.length) {
@@ -4149,6 +4208,20 @@ function depoHareketDefterTabloHtml(rows, opts) {
     }
     const hideKanal = !!opts.hideKanal;
     const detayTip = depoHareketDefterDetayTip(rows[0], opts.detayTip);
+    if (window.ERP_MOBIL_LITE) {
+        const winM = opts.bolumKey
+            ? depoDefterBolumPencere(rows, String(opts.bolumKey))
+            : (typeof erpListePencere === 'function'
+                ? erpListePencere(rows, opts.windowKey || 'depo-defter', opts.cap || ERP_LISTE_DOM_CAP)
+                : { visible: rows, total: rows.length, lim: rows.length, truncated: false });
+        const kartlar = winM.visible.map(row => depoHareketDefterMobilKartHtml(row, hideKanal, detayTip)).join('');
+        const moreM = opts.bolumKey
+            ? depoDefterBolumDahaFazlaHtml(String(opts.bolumKey), winM.total, winM.lim)
+            : (typeof erpListeDahaFazlaHtml === 'function'
+                ? erpListeDahaFazlaHtml(opts.windowKey || 'depo-defter', winM.total, winM.lim, "if(typeof renderDepoHareketDefteri==='function')renderDepoHareketDefteri({bodyOnly:true})")
+                : '');
+        return `<div class="dhd-kart-liste">${kartlar}</div>${moreM}`;
+    }
     const kanalTh = hideKanal ? '' : '<th>Kanal</th>';
     let detayTh = '<th>Tanım</th>';
     let minW = hideKanal ? 1080 : 1200;
@@ -4600,6 +4673,9 @@ function sevkiyatMerkezKapat() {
     if (fc) fc.style.display = 'none';
     try { hideAllDropdowns(); } catch (e) {}
     sevkiyatFormModalSync();
+    /* "… SON HAREKETLER" başlığı depoKomutaListeGorunurluk() tarafından yazılıyor; kapanışta o da
+       çağrılmazsa başlık takılı kalır (setAppMode SEVKIYAT'a girerken yalnız BİR kez "SEVKİYAT" yazar). */
+    if (typeof depoKomutaListeGorunurluk === 'function') depoKomutaListeGorunurluk();
     if (typeof renderSevkiyat === 'function') renderSevkiyat(true);
 }
 try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
@@ -4831,6 +4907,10 @@ function depoKomutaListeGorunurluk() {
         } else {
             lt.innerText = `${g.toUpperCase()} — SON HAREKETLER`;
         }
+    } else if (lt && appMode === 'SEVKIYAT') {
+        /* Sevkiyat merkez formu kapanınca başlık "… SON HAREKETLER" olarak takılı kalıyordu —
+           setAppMode SEVKIYAT'a girerken bunu yalnız BİR kez "SEVKİYAT" yazıyor. */
+        lt.innerText = 'SEVKİYAT';
     }
 }
 function depoKomutaHizliBaslat(grup, tip) {
@@ -10998,10 +11078,55 @@ try { window.erpOrphanAramaDropTemizle = erpOrphanAramaDropTemizle; } catch (e) 
 /* Sevkiyat Genel Merkezi başlık logosu: kamyon simgesi yerine fotoğraf (kullanıcı, 24.09.2026). 96×96 JPEG, 44×44 kutuda gösterilir. */
 const SVK_HERO_LOGO = 'data:image/jpeg;base64,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';
 
+/* Telefon: İplik/Kumaş/Mamül sevkiyat formu açıkken alanda tam Sevkiyat Merkezi (arama + kanallar)
+   yerine yalnız o grubun son 10 hareketi gösterilir — kullanıcı zaten oradan geldi, aynı ekranı
+   ikinci kez görmek istemiyor (25.09.2026: "bir tuşa bastık çıktık, sevkiyat menüsüne basmadıkça
+   tekrar görülmesin"). Form kapanınca (sevkiyatMerkezKapat) normal Sevkiyat Merkezi geri gelir. */
+function sevkiyatMobilSonHareketlerKaynak(grup) {
+    if (grup === 'IPLIK') return (dataCache.iplik_stok || []);
+    if (grup === 'MAMUL_DEPO') return (dataCache.kumas_stok || []).filter(r => typeof kumasStokHareketiMamulDepoMu === 'function' && kumasStokHareketiMamulDepoMu(r));
+    return (dataCache.kumas_stok || []).filter(r => typeof kumasStokHareketiKumasDepoMu === 'function' && kumasStokHareketiKumasDepoMu(r));
+}
+
+function sevkiyatMobilSonHareketlerHtml(grup) {
+    const rows = sevkiyatMobilSonHareketlerKaynak(grup)
+        .slice()
+        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+        .slice(0, 10);
+    const satirlar = rows.map((r) => {
+        const giris = /GİR|GIR/i.test(String(r.islem_turu || ''));
+        const ad = grup === 'IPLIK'
+            ? ([r.iplik_no, r.cins].filter(Boolean).join(' · ') || r.stok_kodu)
+            : (r.kumas_cinsi || r.urun_adi || r.stok_kodu);
+        const miktarN = grup === 'IPLIK' ? (parseFloat(r.miktar_kg) || 0)
+            : grup === 'MAMUL_DEPO' ? (parseInt(r.cuval_sayisi, 10) || 0)
+            : (parseFloat(r.miktar_mt) || 0);
+        const birim = grup === 'IPLIK' ? 'kg' : grup === 'MAMUL_DEPO' ? 'ad' : 'mt';
+        const miktarYazi = Math.abs(miktarN).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+        const tarih = r.created_at ? new Date(r.created_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+        const notMetni = String(r.notlar || '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+        return `<div class="svk-son-hareket-satir">
+            <div class="svk-son-hareket-ust">
+                <span class="svk-son-hareket-ad">${pdfEsc(ad)}</span>
+                <span class="svk-son-hareket-miktar ${giris ? 'is-giris' : 'is-cikis'}">${giris ? '+' : '−'}${miktarYazi} <em>${birim}</em></span>
+            </div>
+            <div class="svk-son-hareket-alt">${pdfEsc(tarih)} · ${pdfEsc(r.updated_by || 'Sistem')}${notMetni ? ' · ' + pdfEsc(notMetni.slice(0, 60)) : ''}</div>
+        </div>`;
+    }).join('');
+    return `<div class="svk-son-hareket-panel">
+        <div class="svk-son-hareket-baslik">Son ${rows.length || 0} hareket</div>
+        ${rows.length ? satirlar : `<div class="svk-son-hareket-bos">Bu grupta henüz depo hareketi yok.</div>`}
+    </div>`;
+}
+
 function sevkiyatRender(opts = {}) {
     try { erpOrphanAramaDropTemizle(); } catch (e) {}
     const out = document.getElementById('sevkiyat-out');
     if (!out || appMode !== 'SEVKIYAT') return;
+    if (window.ERP_MOBIL_LITE && typeof sevkiyatDepoFormGrubuMu === 'function' && sevkiyatDepoFormGrubuMu(sevkiyatMerkezGrup)) {
+        out.innerHTML = sevkiyatMobilSonHareketlerHtml(sevkiyatMerkezGrup);
+        return;
+    }
     const keepFocus = !!(opts && opts.keepFocus);
     const prevAe = keepFocus ? document.activeElement : null;
     const prevId = prevAe && prevAe.id ? prevAe.id : null;
@@ -11127,7 +11252,9 @@ function sevkiyatRender(opts = {}) {
             : ''}
     </div>`;
 
-    const govde = !shown.length
+    /* Telefonda "Aktif sipariş kalemleri" tablosu hiç gösterilmiyor (kullanıcı, 25.09.2026) —
+       satır HTML'i baştan kurulmasın diye boş dizeyle kısa devre. */
+    const govde = window.ERP_MOBIL_LITE ? '' : !shown.length
         ? `<div class="svk-table-wrap">
             <div class="svk-table-head">
                 <div class="svk-table-head__row">
@@ -11242,10 +11369,10 @@ function sevkiyatRender(opts = {}) {
                     <div class="svk-toolbar">
                         <input id="sevkiyat-ara" type="search" class="pro-input" placeholder="Sipariş no, müşteri, ürün, kod, renk…"
                             value="${pdfEsc(_sevkiyatQ)}" oninput="sevkiyatAraYaz(this.value)" autocomplete="off">
-                        ${filtreAktif ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:7px 10px;font-size:10px;border-radius:10px" onclick="sevkiyatFiltreSifirla()">Temizle</button>` : ''}
+                        ${(filtreAktif || window.ERP_MOBIL_LITE) ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:7px 10px;font-size:10px;border-radius:10px" onclick="sevkiyatFiltreSifirla()">Temizle</button>` : ''}
                     </div>
                 </div>
-                <div class="svk-filtre-bar">
+                ${window.ERP_MOBIL_LITE ? '' : `<div class="svk-filtre-bar">
                     <span class="svk-filtre-bar__lbl">Filtre</span>
                     <div class="svk-chips" style="margin-top:0">
                         ${tipChip('TUMU', 'Tümü')}
@@ -11254,8 +11381,8 @@ function sevkiyatRender(opts = {}) {
                         ${tipChip('KUMAS', 'Kumaş')}
                         ${tipChip('URUN', 'Ürün')}
                     </div>
-                </div>
-                <div class="svk-metrics">
+                </div>`}
+                ${window.ERP_MOBIL_LITE ? '' : `<div class="svk-metrics">
                     <div class="svk-metric">
                         <div class="svk-metric__lbl">Satır</div>
                         <div class="svk-metric__big">${kalemAdedi.toLocaleString('tr-TR')} <span>kalem</span></div>
@@ -11282,7 +11409,7 @@ function sevkiyatRender(opts = {}) {
                         <div class="svk-metric__hint">Dokunan − Sevk</div>
                         ${sevkiyatOzetCiftHtml(depoMt, depoAd, depoKg)}
                     </div>
-                </div>
+                </div>`}
             </div>
 
             <div class="svk-channels">
