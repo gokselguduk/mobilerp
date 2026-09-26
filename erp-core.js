@@ -454,9 +454,23 @@ function kartFotografSrc(rec) {
 }
 window.kartFotografSrc = kartFotografSrc;
 
+/* Mobilden varyant fotoğrafı ekleme (kullanıcı, 25.09.2026: "stok kartlarına mobilden her
+   varyant için ayrı ayrı foto yükleyebilelim bu yüklenen fotolar ana programda da görülsün").
+   Yalnız KART_FOTO_EKLE yetkili mobil kullanıcıya gösterilir — masaüstü zaten kart düzenleme
+   formundan fotoğraf ekleyebiliyor, burada değişmez. */
+function kartFotografYukleBtnHtml(record) {
+    const recId = record?.id;
+    if (!window.ERP_MOBIL_LITE || !recId) return '';
+    if (typeof erpUserCan !== 'function' || !erpUserCan('KART_FOTO_EKLE')) return '';
+    const idAttr = String(recId).replace(/"/g, '&quot;');
+    return `<button type="button" class="mamul-talimat-sheet__foto-yukle-btn" onclick="kartFotografSecTetikle(this)">📷 Fotoğraf ekle/değiştir</button>
+        <input type="file" accept="image/*" capture="environment" data-kart-id="${idAttr}" style="display:none" onchange="kartFotografInputDegisti(this)">`;
+}
+
 function kartFotografSheetHtml(record) {
     const list = kartFotografListesi(record);
     const attr = (x) => String(x || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const yukleBtn = kartFotografYukleBtnHtml(record);
     if (list.length) {
         const imgs = list.map((src, i) =>
             `<button type="button" class="mamul-talimat-sheet__foto-btn" onclick="kartFotoBuyut(this.querySelector('img').src)" title="Büyüt">
@@ -467,14 +481,73 @@ function kartFotografSheetHtml(record) {
             <div class="mamul-talimat-sheet__foto-baslik">KUMAŞ ÖRNEĞİ</div>
             ${imgs}
             <div class="mamul-talimat-sheet__foto-ipucu">Tıklayınca büyüt</div>
+            ${yukleBtn}
         </div>`;
     }
     return `<div class="mamul-talimat-sheet__foto mamul-talimat-sheet__foto--bos">
         <div class="mamul-talimat-sheet__foto-baslik">KUMAŞ ÖRNEĞİ</div>
         <div class="mamul-talimat-sheet__foto-yok">${record?.id ? 'Fotoğraf yükleniyor…' : 'Fotoğraf yok'}</div>
+        ${yukleBtn}
     </div>`;
 }
 window.kartFotografSheetHtml = kartFotografSheetHtml;
+
+function kartFotografSecTetikle(btn) {
+    const input = btn && btn.nextElementSibling;
+    if (input && input.tagName === 'INPUT') input.click();
+}
+window.kartFotografSecTetikle = kartFotografSecTetikle;
+
+/** Seçilen dosyayı yükler, kumas_kutuphanesi.fotograf_url'i günceller, sheet'i tazeler.
+ *  Mobil salt okunur kapısı yalnız bu işlem sürerken (window.__erpKartFotoYazma) ve yalnız
+ *  fotoğraf/geçmiş alanlarını yazan güncellemeye izin verir (assets/mobil/mobil-app.js). */
+async function kartFotografKaydet(recId, srcOrBlob) {
+    if (!recId || !sb) return { ok: false, error: 'Kayıt yok' };
+    if (typeof kumasFotoStorageYukle !== 'function') return { ok: false, error: 'Yükleme kapalı' };
+    const user = String((typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || '').trim() || '—';
+    const now = new Date().toISOString();
+    /* Bayrak Storage yüklemesinden ÖNCE açılmalı — mobilde depoya YENİ dosya yazma izni de
+       bu bayrağa bağlı (mobilKartFotoYazmaAcikMi, assets/mobil/mobil-app.js); sonradan açılırsa
+       yükleme daha kapı kapalıyken denenir ve sessizce engellenir. */
+    window.__erpKartFotoYazma = true;
+    try {
+        const url = await kumasFotoStorageYukle(srcOrBlob, `kart-varyant/${recId}`);
+        if (!url) return { ok: false, error: 'Fotoğraf sunucuya yüklenemedi — bağlantıyı kontrol edip tekrar deneyin.' };
+        const { data: eski, error: e0 } = await sb.from('kumas_kutuphanesi').select('id,islem_gecmisi').eq('id', recId).single();
+        if (e0) throw e0;
+        const zaman = new Date().toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const yer = window.ERP_MOBIL_LITE ? 'Mobil' : 'Masaüstü';
+        const gecmis = String(eski?.islem_gecmisi || '') + `\n═══════════════════════════════\n📷 ${zaman} — [${user}] ${yer} · Varyant fotoğrafı eklendi`;
+        const yama = { fotograf_url: url, islem_gecmisi: gecmis, updated_by: user, updated_at: now };
+        const { error } = await sb.from('kumas_kutuphanesi').update(yama).eq('id', recId);
+        if (error) throw error;
+        const cached = (typeof dataCache !== 'undefined' && dataCache.kumas_kutuphanesi || []).find(r => String(r.id) === String(recId));
+        if (cached) { cached.fotograf_url = url; cached.islem_gecmisi = gecmis; cached.updated_by = user; cached.updated_at = now; }
+        return { ok: true, url, record: cached };
+    } catch (e) {
+        return { ok: false, error: e?.message || String(e) };
+    } finally {
+        window.__erpKartFotoYazma = false;
+    }
+}
+window.kartFotografKaydet = kartFotografKaydet;
+
+async function kartFotografInputDegisti(input) {
+    const file = input?.files && input.files[0];
+    const recId = input?.getAttribute('data-kart-id');
+    input.value = '';
+    if (!file || !recId) return;
+    const container = input.closest('.mamul-talimat-sheet__foto');
+    if (typeof erpToast === 'function') erpToast('Fotoğraf yükleniyor…', 'info', 2500);
+    const sonuc = await kartFotografKaydet(recId, file);
+    if (!sonuc.ok) {
+        if (typeof erpToast === 'function') erpToast('Fotoğraf eklenemedi: ' + (sonuc.error || ''), 'error', 6000);
+        return;
+    }
+    if (typeof erpToast === 'function') erpToast('Fotoğraf kaydedildi — ana programda da görünür.', 'success', 3000);
+    if (container && sonuc.record) container.outerHTML = kartFotografSheetHtml(sonuc.record);
+}
+window.kartFotografInputDegisti = kartFotografInputDegisti;
 
 function kartFotoLightboxEnsure() {
     if (document.getElementById('kart-foto-lightbox')) return;
@@ -724,6 +797,10 @@ const ERP_PERM_MODES = [
     ['IPLIK_KART_GIRIS', 'İplik kart'],
     ['KUMAS_KART_GIRIS', 'Kumaş kart'],
     ['MAMUL_KART_GIRIS', 'Mamül kart'],
+    /* Ekran değil, işlem yetkisi: stok kartı varyantına fotoğraf ekler. Mobil salt okunur
+       olsa da bu yetkisi olan kullanıcı mobilden de ekleyebilir (kullanıcı, 25.09.2026:
+       "stok kartlarına mobilden her varyant için ayrı ayrı foto yükleyebilelim"). */
+    ['KART_FOTO_EKLE', 'Stok kartına fotoğraf ekle'],
     ['DIAGNOSTICS', 'Sistem testi']
 ];
 
@@ -735,7 +812,7 @@ const ERP_PERM_GROUP_DEFS = [
     { id: 'dokuma', ad: 'Dokuma', ikon: '🧶', kodlar: ['TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_SEVK_GECMIS', 'DOKUMA_FASON_TAKIP', 'HASIL_TAKIP', 'IPLIK'] },
     { id: 'terbiye', ad: 'Terbiye', ikon: '🎨', kodlar: ['BOYAHANE_URETIM', 'KONFEKSIYON_YIKAMA'] },
     { id: 'konfeksiyon', ad: 'Konfeksiyon', ikon: '🧵', kodlar: ['KONFEKSIYON', 'KONFEKSIYON_KESIM', 'KONFEKSIYON_KALITE', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA'] },
-    { id: 'kart', ad: 'Ürün & Kartlar', ikon: '🗂️', kodlar: ['TEKNIK_FOY', 'URUN_AGACI', 'KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS'] },
+    { id: 'kart', ad: 'Ürün & Kartlar', ikon: '🗂️', kodlar: ['TEKNIK_FOY', 'URUN_AGACI', 'KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'KART_FOTO_EKLE'] },
     { id: 'sistem', ad: 'Sistem', ikon: '🔧', kodlar: ['DIAGNOSTICS'] }
 ];
 
@@ -2174,13 +2251,42 @@ function depoBirimFromNotlar(s) {
 /** Sadece görüntüleme için — TÜM [ANAHTAR:değer] etiketlerini temizler (SEVK_* dahil).
  *  Yazma akışında (depoNotlarWithBirim) KULLANILMAZ — kullanılırsa SEVK_* etiketleri
  *  BİRİM yeniden eklenirken silinir. Yazma tarafı depoNotlarStripBirim kullanır. */
+/** "Sipariş X · Renk Y · kartsız (mamül|kumaş|iplik) sevk" gibi sistemin kendi
+ *  ürettiği açıklama zincirini satır satır ayıklar; kullanıcının gerçekten
+ *  yazdığı notları olduğu gibi bırakır. depoNotlarStripMeta tarafından kullanılır. */
+function depoNotlarStripOtoSevkAciklama(s) {
+    const KARTSIZ_RE = /^kartsız\s+(mamül|mamul|kumaş|kumas|iplik)\s+sevk$/i;
+    const RENK_RE = /^Renk\s+.+$/i;
+    const SIPARIS_RE = /^Sipariş\s+\S+$/i;
+    return String(s || '').split('\n').map(line => {
+        const segs = line.split('·').map(x => x.trim());
+        const out = [];
+        for (let i = 0; i < segs.length; i++) {
+            if (KARTSIZ_RE.test(segs[i])) {
+                if (i >= 1 && RENK_RE.test(segs[i - 1])) {
+                    out.pop();
+                    if (out.length && SIPARIS_RE.test(out[out.length - 1])) out.pop();
+                } else if (i >= 1 && SIPARIS_RE.test(segs[i - 1])) {
+                    out.pop();
+                }
+                continue;
+            }
+            out.push(segs[i]);
+        }
+        return out.filter(Boolean).join(' · ');
+    }).filter(Boolean).join('\n');
+}
+
 function depoNotlarStripMeta(s) {
     let t = String(s || '');
     // CEKI etiketi iç içe köşeli parantez (JSON dizisi) içerebilir — önce onu ayıkla
     t = t.replace(/\s*\[CEKI:\[[\s\S]*?\]\]\s*\n?/gi, '');
     // Kalan basit [ANAHTAR:değer] etiketlerini (değer köşeli parantez içermez) temizle
     t = t.replace(/\s*\[[A-ZÇĞİÖŞÜ_]+:[^\[\]]*\]\s*\n?/gi, '');
-    return t.replace(/\n{2,}/g, '\n').trim();
+    t = t.replace(/\n{2,}/g, '\n').trim();
+    // Sistemin otomatik ürettiği "Sipariş · Renk · kartsız ... sevk" zincirini ayıkla
+    t = depoNotlarStripOtoSevkAciklama(t);
+    return t.trim();
 }
 /** Yalnızca [BİRİM:...] etiketini temizler — depoNotlarWithBirim'in yeniden yazması içindir,
  *  diğer etiketleri (TESLIM_ALAN, SEVK_*, CEKI vb.) korur. */

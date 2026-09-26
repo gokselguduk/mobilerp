@@ -227,6 +227,25 @@ function mobilFotoYazmasiMi(tablo, yontem, payload) {
    Yönetici olmayan ekranı zaten açamaz (mobilKisitEngelMetni). */
 const MOBIL_UA_KD_ALANLARI = ['notlar', 'kalem_ad', 'miktar'];
 const MOBIL_UA_SIPARIS_ALANLARI = ['uretim_yeri', 'updated_by', 'updated_at'];
+/* DÖRDÜNCÜ İSTİSNA — stok kartı varyant fotoğrafı (kullanıcı, 25.09.2026: "stok kartlarına
+   mobilden her varyant için ayrı ayrı foto yükleyebilelim bu yüklenen fotolar ana programda
+   da görülsün"). Şartların HEPSİ: KART_FOTO_EKLE yetkisi + kartFotografKaydet o an çalışıyor
+   (window.__erpKartFotoYazma) + yazılan şey yalnız fotoğraf: kumas-fotograflar kovasına YENİ
+   dosya (upload) ya da kumas_kutuphanesi'nde yalnız fotoğraf/geçmiş alanları — stok kodu,
+   ölçü, renk gibi kart bilgileri hiçbir zaman mobilden değişemez. */
+const MOBIL_KART_FOTO_KOVASI = 'kumas-fotograflar';
+const MOBIL_KART_FOTO_ALANLARI = ['fotograf_url', 'islem_gecmisi', 'updated_by', 'updated_at'];
+function mobilKartFotoYazmaAcikMi() {
+    return window.__erpKartFotoYazma === true
+        && typeof erpUserCan === 'function' && erpUserCan('KART_FOTO_EKLE');
+}
+function mobilKartFotoYazmasiMi(tablo, yontem, payload) {
+    if (tablo !== 'kumas_kutuphanesi' || yontem !== 'update' || !mobilKartFotoYazmaAcikMi()) return false;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+    const alanlar = Object.keys(payload);
+    return alanlar.includes('fotograf_url') && alanlar.every(a => MOBIL_KART_FOTO_ALANLARI.includes(a));
+}
+
 function mobilUrunAgaciYazmasiMi(tablo, yontem, payload) {
     if (typeof appMode === 'undefined' || appMode !== 'URUN_AGACI') return false;
     if (typeof erpIsAdmin !== 'function' || !erpIsAdmin()) return false;
@@ -683,7 +702,8 @@ function mobilSaltOkunurKapisiKur(client) {
             q[yontem] = (payload, ...rest) => {
                 const izin = ((yontem === 'insert' || yontem === 'upsert') && mobilSayimYazmasiMi(tablo, payload))
                     || mobilFotoYazmasiMi(tablo, yontem, payload)
-                    || mobilUrunAgaciYazmasiMi(tablo, yontem, payload);
+                    || mobilUrunAgaciYazmasiMi(tablo, yontem, payload)
+                    || mobilKartFotoYazmasiMi(tablo, yontem, payload);
                 return izin ? asil(payload, ...rest) : mobilSaltOkunurEngelSonucu(tablo + '.' + yontem);
             };
         }
@@ -703,6 +723,7 @@ function mobilSaltOkunurKapisiKur(client) {
                 /* Yalnız siparişe fotoğraf eklerken, yalnız o kovaya YENİ dosya (upload) —
                    silme/taşıma/üzerine yazma hiçbir durumda yok. */
                 s[yontem] = (...args) => ((yontem === 'upload' && kova === MOBIL_FOTO_KOVASI && mobilFotoYazmaAcikMi())
+                    || (yontem === 'upload' && kova === MOBIL_KART_FOTO_KOVASI && mobilKartFotoYazmaAcikMi())
                     ? asil(...args)
                     : mobilSaltOkunurEngelSonucu('storage ' + kova + '.' + yontem));
             }
@@ -9268,18 +9289,35 @@ function loadData(opts) {
         mamulListeGrupluHtml = mamulGruplar.map(mamulStokListeGrupSatirHtml).join('');
     }
 
+    /* Kumaş listesi de (Mamül gibi) VARYANT GRUBU olarak çizilir — ana programla aynı
+       (assets/stok-kart-desktop.js: kumasKartListeGrupSatirHtml). Önceden burada tek tek
+       satır (kumasKartListeSatirHtml) çiziliyordu; o şekil başlıkla (kumasKartListeTabloBaslikHtml)
+       bir sütun kayıyordu — telefonda "stok kodu görünmüyor" sorununun kaynağıydı (25.09.2026). */
+    let kumasListeGrupluHtml = '';
+    if (appMode === 'KART_LISTE' && archiveTab === 'KUMAS' && typeof kumasKartListeGrupSatirHtml === 'function') {
+        const kumasListe = typeof kumasKartListeGosterilebilirMi === 'function'
+            ? currentData.filter(kumasKartListeGosterilebilirMi)
+            : currentData;
+        const kumasGruplar = typeof kumasKartListeGruplariOlustur === 'function'
+            ? kumasKartListeGruplariOlustur(kumasListe)
+            : [];
+        if (typeof kumasKartListeGruplarIdxAyarla === 'function') {
+            currentData = kumasKartListeGruplarIdxAyarla(kumasGruplar);
+        }
+        kumasListeGrupluHtml = kumasGruplar.map(g => kumasKartListeGrupSatirHtml(g)).join('');
+    }
+
     let listeHtml = siparisListeBaslik + stokKartAksiyonBaslik + iplikKartListeBaslik + kumasListeBaslik + mamulListeBaslik + mamulListeToolbarHtml;
     if (appMode === 'KART_LISTE' && archiveTab === 'TUMU') {
         listeHtml += stokKartGrupluHtml;
     } else if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL') {
         listeHtml += mamulListeGrupluHtml;
+    } else if (appMode === 'KART_LISTE' && archiveTab === 'KUMAS' && typeof kumasKartListeGrupSatirHtml === 'function') {
+        listeHtml += kumasListeGrupluHtml;
     } else {
     listeHtml += currentData.map((i, idx) => {
         if (table === 'siparisler') {
             return siparisListeSatirHtml(i, idx);
-        }
-        if (appMode === 'KART_LISTE' && archiveTab === 'KUMAS' && String(i.desen_kodu || '').toUpperCase().startsWith('SM')) {
-            return kumasKartListeSatirHtml(i, idx);
         }
         if (appMode === 'KART_LISTE' && archiveTab === 'IPLIK') {
             return iplikKartListeSatirHtml(i, idx);

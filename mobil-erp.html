@@ -4586,6 +4586,15 @@
 .mamul-talimat-sheet__foto-ipucu { margin-top: 6px; font-size: 8px; color: var(--text3); font-family: 'DM Mono', monospace; text-align: center; }
 .mamul-talimat-sheet__foto-yok { font-size: 9px; color: var(--text3); text-align: center; padding: 20px 8px; font-family: 'DM Mono', monospace; }
 .mamul-talimat-sheet__notlar { padding: 8px 10px; font-size: 10px; color: var(--text); border-top: 1px dashed var(--border); line-height: 1.45; }
+/* Mobilden varyant fotoğrafı ekle/değiştir — yalnız KART_FOTO_EKLE yetkilisine görünür
+   (kartFotografYukleBtnHtml, src/stok/js/01-supabase-auth.js). Masaüstünde hiç render edilmez. */
+.mamul-talimat-sheet__foto-yukle-btn {
+    margin-top: 10px; width: 100%; padding: 9px 10px; border-radius: 8px;
+    border: 1px solid var(--accent2, #22d3ee); background: color-mix(in srgb, var(--accent2, #22d3ee) 10%, transparent);
+    color: var(--accent2, #22d3ee); font-size: 11px; font-weight: 700; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+}
+.mamul-talimat-sheet__foto-yukle-btn:active { opacity: 0.75; }
 .mamul-kart-aksiyon-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: rgba(52,211,153,0.05); }
 #kart-foto-lightbox { display: none; position: fixed; inset: 0; z-index: 2147483645; background: rgba(8,12,24,0.88); align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
 #kart-foto-lightbox.is-open { display: flex; }
@@ -6058,7 +6067,11 @@ body[data-erp-mode="DEPO_HAREKET"] #form-container:has(.mdf) #main-action-btn { 
         .mf-fis-musteri { order: 5; font-size: 10px !important; color: var(--text3) !important; }
         .mf-fis-tarih::after, .mf-fis-tip::after { content: '·'; margin-left: 6px; color: var(--border2); }
         .mf-fis-ozet { order: 6; flex-basis: 100% !important; font-size: 10px !important; color: var(--text3) !important; opacity: .85; }
-        .mf-table tr.mf-fis-detail { display: block !important; margin: -6px 0 8px !important; }
+        /* Yalnız açık (is-open) detay satırı görünür — kapalıyken satırın kendi
+           inline display:none'ı geçerli kalmalı, yoksa "tıklayınca açılıyor
+           tekrar tıklayınca kapanmıyor" oluyor (kullanıcı raporu). */
+        .mf-table tr.mf-fis-detail:not(.is-open) { display: none !important; }
+        .mf-table tr.mf-fis-detail.is-open { display: block !important; margin: -6px 0 8px !important; }
         .mf-table tr.mf-fis-detail > td { display: block !important; padding: 0 !important; }
 
 /* ── SİPARİŞ DURUM İNCELEME · DAR EKRAN ──────────────────────────────────
@@ -7159,41 +7172,117 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
     /* 8 · STOK KARTLARI TABLOSU — telefonda stok sütunu ekranın dışında kalıyordu.
        Kart satırında en gerekli üç alan bırakılır: stok kodu · ad · stok.
        (Veri aynı; gizlenen sütunlar kartı açınca detayda görünür.) */
-    .stok-kart-grup-bolum .mamul-stok-liste-grid { grid-template-columns: 88px 1fr 76px !important; gap: 4px !important; }
+    .mamul-stok-liste-grid { grid-template-columns: 88px 1fr 76px !important; gap: 4px !important; }
     /* İplik: 2 kod · 4 cins · 6 toplam kg */
     .iplik-kart-liste-grid > *:nth-child(1),
     .iplik-kart-liste-grid > *:nth-child(3),
     .iplik-kart-liste-grid > *:nth-child(5),
     .iplik-kart-liste-grid > *:nth-child(7) { display: none !important; }
-    /* Kumaş: 2 kod · 6 desen adı · 8 stok */
+    /* Kumaş (kumasKartListeGrupSatirHtml — "Stok Kartları" ekranında ve TÜMÜ özetinde
+       aynı şekil): 2 kod · 6 desen adı · 8 stok. Önceden ekran burada düz satır
+       (kumasKartListeSatirHtml, başlıkla bir sütun kayan farklı bir şekil) çiziyordu —
+       kullanıcı raporu: "kumaş stok kartlarında stok kodu görülmüyor" (25.09.2026).
+       Mobil artık ana programla aynı gruplu satırı kullanıyor (mobil-app.js). */
     .kumas-stok-liste-grid > *:nth-child(1),
     .kumas-stok-liste-grid > *:nth-child(3),
     .kumas-stok-liste-grid > *:nth-child(4),
     .kumas-stok-liste-grid > *:nth-child(5),
     .kumas-stok-liste-grid > *:nth-child(7),
     .kumas-stok-liste-grid > *:nth-child(9) { display: none !important; }
-    /* Mamül: 2 kod · 6 desen adı · 9 stok */
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(1),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(3),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(4),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(5),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(7),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(8),
-    .stok-kart-grup-bolum--mamul .mamul-stok-liste-grid > *:nth-child(10) { display: none !important; }
-    .stok-kart-grup-bolum .mamul-stok-liste-grid > * { font-size: 11px !important; padding: 6px 4px !important; }
-    .stok-kart-grup-bolum .sk-kart-table-wrap,
-    .stok-kart-grup-bolum .mamul-stok-liste-wrap { overflow-x: hidden !important; }
+    .mamul-stok-liste-wrap, .sk-kart-table-wrap { overflow-x: hidden !important; }
+    /* Mamül (mamulStokListeGrupSatirHtml — "Stok Kartları" ekranında ve TÜMÜ özetinde
+       aynı şekil): 2 kod · 6 desen adı · 9 stok. Önceden yalnız TÜMÜ özetinde
+       (.stok-kart-grup-bolum--mamul kapsamlı) uygulanıyordu; tek başına Mamül sekmesinde
+       (switchArchiveTab('MAMUL')) hiçbir sütun gizlenmiyor, kart kırılmadan taşıyordu. */
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(1),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(3),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(4),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(5),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(7),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(8),
+    .mamul-stok-liste-grid:not(.kumas-stok-liste-grid):not(.iplik-kart-liste-grid) > *:nth-child(10) { display: none !important; }
+    .mamul-stok-liste-grid > * { font-size: 11px !important; padding: 6px 4px !important; }
 }
 
 @media (max-width: 560px) {
     /* Kart ızgarasının masaüstü asgari genişliği telefonda satırı ekran dışına taşıyordu. */
-    .stok-kart-grup-bolum .mamul-stok-liste-grid,
-    .stok-kart-grup-bolum .sk-kart-table-body,
-    .stok-kart-grup-bolum .sk-kart-table-wrap,
-    .stok-kart-grup-bolum .mamul-stok-liste-wrap,
-    .stok-kart-grup-bolum .sk-kart-row,
-    .stok-kart-grup-bolum .mamul-stok-grup { min-width: 0 !important; width: auto !important; }
-    .stok-kart-grup-bolum .mamul-stok-liste-grid { width: 100% !important; }
+    .mamul-stok-liste-grid,
+    .sk-kart-table-body,
+    .sk-kart-table-wrap,
+    .mamul-stok-liste-wrap,
+    .sk-kart-row,
+    .mamul-stok-grup { min-width: 0 !important; width: auto !important; }
+    .mamul-stok-liste-grid { width: 100% !important; }
+}
+
+@media (max-width: 560px) {
+    /* İPLİK STOK KARTLARI — sade kart (kullanıcı, 25.09.2026: "ıplık kartları alanlarını
+       daha mınımalıs ve şık olarak tasarlayacagız"). Veri aynı kalır (iplikKartListeSatirHtml,
+       assets/stok-kart-desktop.js) — yalnız görünüm: kod büyük/kalın üstte, cins altında
+       soluk, toplam kg sağda büyük renkli değer. Dokununca lot listesi aynen açılır. */
+    .iplik-kart-liste-grid.mamul-stok-liste-grid--head { display: none !important; }
+    .iplik-kart-liste-grid:not(.mamul-stok-liste-grid--head) {
+        display: grid !important;
+        grid-template-columns: 1fr auto !important;
+        grid-template-areas: "kod kg" "cins kg" !important;
+        row-gap: 3px !important;
+        column-gap: 10px !important;
+        align-items: center !important;
+        padding: 12px 14px !important;
+        margin: 0 0 8px !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 14px !important;
+        background: var(--surface) !important;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
+    }
+    .iplik-kart-liste-grid.is-open,
+    .sk-kart-row.is-expanded .iplik-kart-liste-grid { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+    .iplik-kart-liste-grid > .mamul-stok-liste-grid__cell--kod {
+        grid-area: kod;
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: var(--amber-c, #f59e0b) !important;
+        font-family: 'DM Mono', monospace !important;
+        letter-spacing: 0 !important;
+    }
+    .iplik-kart-liste-grid > *:nth-child(4) {
+        grid-area: cins;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        color: var(--text3) !important;
+        overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+    }
+    .iplik-kart-liste-grid > *:nth-child(6) {
+        grid-area: kg;
+        font-size: 17px !important;
+        font-weight: 700 !important;
+        font-family: 'DM Sans', sans-serif !important;
+    }
+    .iplik-kart-lot-panel { margin: -8px 0 8px !important; border: 1px solid var(--border) !important; border-top: none !important; border-radius: 0 0 14px 14px !important; }
+    /* Kart açılınca görülen lot tablosu (7 sütun) telefonda üst üste biniyordu —
+       aynı "etiket: değer" dizisine döner (mobilTabloKartlastir ile aynı dil). */
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir {
+        display: flex !important; flex-direction: column !important; gap: 4px !important;
+        padding: 10px 12px !important; border-bottom: 1px solid var(--border) !important;
+        font-size: 12px !important; color: var(--text2) !important;
+    }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir:last-child { border-bottom: none !important; font-weight: 700 !important; background: var(--surface2) !important; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > * {
+        display: flex !important; justify-content: space-between !important; align-items: baseline !important;
+        gap: 10px !important; text-align: right !important; white-space: normal !important; word-break: break-word !important;
+    }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > *::before {
+        flex: 0 0 auto; text-align: left; color: var(--text3); font-size: 9px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.04em; font-family: 'DM Mono', monospace;
+    }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(1)::before { content: 'Lot no'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(2)::before { content: 'Marka'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(3)::before { content: 'Renk'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(4)::before { content: 'Tedarikçi'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(5)::before { content: 'Çuval rengi'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(6)::before { content: 'Çuval'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir > :nth-child(7)::before { content: 'Miktar'; }
+    .iplik-kart-lot-panel .iplik-kart-lot-liste-satir--head { display: none !important; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -7777,7 +7866,7 @@ body[data-erp-mode="DASHBOARD"] #list-section-head { display: none !important; }
   window.ERP_MOBIL_NO_CHARTS = true;
   window.ERP_MOBIL_NO_EXCEL = true;
 
-  var v = '20260925-67998e';
+  var v = '20260925-b3b2fc';
   var zincir = [
     ['erp_auth_tablo_fix.embed.js?v=' + v, 'assets/erp_auth_tablo_fix.embed.js?v=' + v, 'mobil/assets/erp_auth_tablo_fix.embed.js?v=' + v],
     ['kumas-ceki.js?v=' + v, 'assets/kumas-ceki.js?v=' + v, 'mobil/assets/kumas-ceki.js?v=' + v],
