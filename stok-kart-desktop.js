@@ -630,6 +630,28 @@
         return b ? { kg: b.kg, mt: b.mt, adet: b.adet } : erpBakiyeBos();
     }
 
+    /**
+     * Bir kumas_stok satırı hangi bakiyeye girer? Bakiye indeksi ile Raporlar > Stok AYNI kuralı
+     * kullanır (kural tek yerde): { sinif: 'MAMUL', kod } | { sinif: 'KUMAS', ana, vNo, key } | null.
+     * null = bakiyeye girmez (siparişe bağlı hareket ya da kodsuz satır).
+     */
+    function kumasBakiyeSatirSinifi(x) {
+        if (!x) return null;
+        /* Siparişe bağlı hareketler (kumas_stok.siparis_id) genel Simteks bakiyesine karışmasın. */
+        if (x.siparis_id != null && x.siparis_id !== '') return null;
+        /* kumasStokHareketiKumasDepoMu = !MamulDepoMu — tek kontrol yeterli */
+        if (typeof kumasStokHareketiMamulDepoMu === 'function' && kumasStokHareketiMamulDepoMu(x)) {
+            const kod = String(x.stok_kodu || '').trim().toUpperCase();
+            return kod ? { sinif: 'MAMUL', kod } : null;
+        }
+        const hk = kumasStokHareketKoduOku(x);
+        if (!hk) return null;
+        const ana = kumasAnaKodBul(hk);
+        const vNo = kumasVaryantNoBul(hk);
+        return { sinif: 'KUMAS', ana, vNo, key: ana + '|' + vNo };
+    }
+    window.kumasBakiyeSatirSinifi = kumasBakiyeSatirSinifi;
+
     /** kumas_stok tek geçiş: kumaş kodu · kumaş ailesi · mamül kodu indeksleri */
     function kumasBakiyeIndexAl() {
         const src = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.kumas_stok))
@@ -641,26 +663,18 @@
         const kodMap = new Map();
         const aileMap = new Map();
         const mamulMap = new Map();
-        const mamulMu = typeof kumasStokHareketiMamulDepoMu === 'function' ? kumasStokHareketiMamulDepoMu : null;
         for (let n = 0; n < src.length; n++) {
             const x = src[n];
-            if (!x) continue;
-            /* Siparişe bağlı hareketler (kumas_stok.siparis_id) genel Simteks bakiyesine karışmasın. */
-            if (x.siparis_id != null && x.siparis_id !== '') continue;
-            /* kumasStokHareketiKumasDepoMu = !MamulDepoMu — tek kontrol yeterli */
-            if (mamulMu && mamulMu(x)) {
-                const kod = String(x.stok_kodu || '').trim().toUpperCase();
-                if (!kod) continue;
-                let m = mamulMap.get(kod);
-                if (!m) { m = erpBakiyeBos(); mamulMap.set(kod, m); }
+            const s = kumasBakiyeSatirSinifi(x);
+            if (!s) continue;
+            if (s.sinif === 'MAMUL') {
+                let m = mamulMap.get(s.kod);
+                if (!m) { m = erpBakiyeBos(); mamulMap.set(s.kod, m); }
                 erpBakiyeTopla(m, x);
                 continue;
             }
-            const hk = kumasStokHareketKoduOku(x);
-            if (!hk) continue;
-            const ana = kumasAnaKodBul(hk);
-            const vNo = kumasVaryantNoBul(hk);
-            const key = ana + '|' + vNo;
+            const ana = s.ana;
+            const key = s.key;
             let k = kodMap.get(key);
             if (!k) { k = erpBakiyeBos(); kodMap.set(key, k); }
             erpBakiyeTopla(k, x);
@@ -6252,10 +6266,18 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         };
     }
 
-    function kumasStokSiparisKalemBul(stokKodu) {
-        const kod = String(stokKodu || '').trim().toUpperCase();
-        if (!kod) return null;
-        const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
+    /* stok kodu → ilk eşleşen { sip, k, ki } dizini. Eskiden her çağrı 343 siparişin cins
+       JSON'unu baştan çözüyordu: Kumaş Stoğu / Anasayfa açılışında 122 bin çözümleme, ~0,3 sn
+       donma (28.09.2026). Dizin, sipariş listesi ve her siparişin cins METNİ aynı kaldıkça geçerli;
+       yerinde `s.cins = …` değişikliği de yakalanır. cins metin değilse her çağrıda yeniden kurulur. */
+    let _kumasSkDizin = null;
+    function kumasStokSiparisKalemDizini(liste) {
+        const d = _kumasSkDizin;
+        if (d && d.liste === liste && d.sipler.length === liste.length
+            && liste.every((s, i) => s === d.sipler[i] && typeof s.cins === 'string' && s.cins === d.cinsler[i])) {
+            return d.map;
+        }
+        const map = new Map();
         for (let si = 0; si < liste.length; si++) {
             const sip = liste[si];
             let kalemler = typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(sip) : (sip.kalemler || []);
@@ -6268,10 +6290,18 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             for (let ki = 0; ki < kalemler.length; ki++) {
                 const k = kalemler[ki];
                 const kk = String(typeof dtKalemStokKodu === 'function' ? dtKalemStokKodu(k) : (k.kod || k.stok_kodu || '')).trim().toUpperCase();
-                if (kk && kk === kod) return { sip, k, ki };
+                if (kk && !map.has(kk)) map.set(kk, { sip, k, ki });
             }
         }
-        return null;
+        _kumasSkDizin = { liste, sipler: liste.slice(), cinsler: liste.map(s => s.cins), map };
+        return map;
+    }
+
+    function kumasStokSiparisKalemBul(stokKodu) {
+        const kod = String(stokKodu || '').trim().toUpperCase();
+        if (!kod) return null;
+        const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
+        return kumasStokSiparisKalemDizini(liste).get(kod) || null;
     }
 
     function kumasStokHareketRenkKoduHam(x) {

@@ -301,10 +301,6 @@ async function erpRefreshCurrentScreen(opts = {}) {
             else if (typeof renderTezgahPlanlama === 'function') await renderTezgahPlanlama();
             return;
         }
-        if (mode === 'DOKUMA_SEVK_GECMIS') {
-            if (typeof renderDokumaSevkGecmisi === 'function') renderDokumaSevkGecmisi();
-            return;
-        }
         if (mode === 'MUHASEBE_FIS') {
             if (!force && erpIsUserEditingUi()) {
                 erpScheduleDeferredUiRefresh();
@@ -330,6 +326,11 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return;
         }
         if (mode === 'RAPORLAR' || mode === 'RAPOR') {
+            /* Rapor aramasına yazılırken canlı yenileme imleci kaybettirmesin */
+            if (!force && erpIsUserEditingUi()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
             if (typeof renderRaporlar === 'function') renderRaporlar();
             return;
         }
@@ -780,9 +781,7 @@ const ERP_PERM_MODES = [
     ['TEZGAH_PLANLAMA', 'Tezgah planlama'],
     ['DOKUMA_TAKIP', 'Dokuma takip'],
     ['DOKUMA_DEPO', 'Dokuma depo'],
-    ['DOKUMA_SEVK_GECMIS', 'Dokuma sevk geçmişi'],
     ['DOKUMA_FASON_TAKIP', 'Dokuma fason'],
-    ['HASIL_TAKIP', 'Haşıl takip'],
     ['KONFEKSIYON', 'Konfeksiyon'],
     ['KONFEKSIYON_KESIM', 'Konfeksiyon kesim'],
     ['KONFEKSIYON_YIKAMA', 'Yıkama'],
@@ -809,7 +808,7 @@ const ERP_PERM_GROUP_DEFS = [
     { id: 'genel', ad: 'Genel', ikon: '🏠', kodlar: ['DASHBOARD', 'PLANLAMA', 'SEVKIYAT', 'YAPILACAKLAR', 'RAPORLAR'] },
     { id: 'siparis', ad: 'Sipariş', ikon: '📋', kodlar: ['SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'SIPARIS_FOTO_EKLE'] },
     { id: 'depo', ad: 'Stok & Depo', ikon: '📦', kodlar: ['KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'MUHASEBE_FIS', 'STOK_SAYIM'] },
-    { id: 'dokuma', ad: 'Dokuma', ikon: '🧶', kodlar: ['TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_SEVK_GECMIS', 'DOKUMA_FASON_TAKIP', 'HASIL_TAKIP', 'IPLIK'] },
+    { id: 'dokuma', ad: 'Dokuma', ikon: '🧶', kodlar: ['TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_FASON_TAKIP', 'IPLIK'] },
     { id: 'terbiye', ad: 'Terbiye', ikon: '🎨', kodlar: ['BOYAHANE_URETIM', 'KONFEKSIYON_YIKAMA'] },
     { id: 'konfeksiyon', ad: 'Konfeksiyon', ikon: '🧵', kodlar: ['KONFEKSIYON', 'KONFEKSIYON_KESIM', 'KONFEKSIYON_KALITE', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA'] },
     { id: 'kart', ad: 'Ürün & Kartlar', ikon: '🗂️', kodlar: ['TEKNIK_FOY', 'URUN_AGACI', 'KART_LISTE', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'KART_FOTO_EKLE'] },
@@ -820,7 +819,7 @@ const ERP_PERM_GROUP_DEFS = [
 const ERP_PERM_SABLONLAR = [
     { id: 'depocu', ad: 'Depo personeli', kodlar: ['DASHBOARD', 'IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET', 'DEPO_HAREKET_LISTE', 'STOK_SAYIM', 'SEVKIYAT'] },
     { id: 'muhasebe', ad: 'Muhasebe', kodlar: ['DASHBOARD', 'MUHASEBE_FIS', 'DEPO_HAREKET_LISTE', 'SIPARIS_LISTE', 'RAPORLAR'] },
-    { id: 'dokumaci', ad: 'Dokuma', kodlar: ['DASHBOARD', 'TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_SEVK_GECMIS', 'DOKUMA_FASON_TAKIP', 'HASIL_TAKIP', 'IPLIK'] },
+    { id: 'dokumaci', ad: 'Dokuma', kodlar: ['DASHBOARD', 'TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_FASON_TAKIP', 'IPLIK'] },
     { id: 'konfeksiyoncu', ad: 'Konfeksiyon', kodlar: ['DASHBOARD', 'KONFEKSIYON', 'SEVKIYAT', 'FASON_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'SIPARIS_LISTE', 'YAPILACAKLAR'] },
     { id: 'satis', ad: 'Satış / Sipariş', kodlar: ['DASHBOARD', 'SIPARIS_GIRIS', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'RAPORLAR'] },
     { id: 'izleyici', ad: 'Sadece izleme', kodlar: ['DASHBOARD', 'SIPARIS_LISTE', 'KART_LISTE', 'RAPORLAR'] }
@@ -873,17 +872,11 @@ function erpModeAcikMi(mode, modes, isAdmin) {
     if (mode === 'DOKUMA_FASON_TAKIP') {
         return modes.includes('DOKUMA_FASON_TAKIP') || modes.includes('DOKUMA_TAKIP');
     }
-    if (mode === 'HASIL_TAKIP') {
-        return modes.includes('HASIL_TAKIP') || modes.includes('DOKUMA_TAKIP');
-    }
     if (mode === 'DOKUMA_DEPO') {
         return modes.includes('DOKUMA_DEPO') || modes.includes('DOKUMA_TAKIP');
     }
     if (mode === 'TEZGAH_PLANLAMA') {
         return modes.includes('TEZGAH_PLANLAMA') || modes.includes('DOKUMA_TAKIP');
-    }
-    if (mode === 'DOKUMA_SEVK_GECMIS') {
-        return modes.includes('DOKUMA_SEVK_GECMIS') || modes.includes('DOKUMA_DEPO') || modes.includes('DOKUMA_TAKIP');
     }
     if (mode === 'KONFEKSIYON_KESIM' || mode === 'KONFEKSIYON_YIKAMA' || mode === 'KONFEKSIYON_KALITE') {
         // YIKAMA_TAKIP: mobilin eski mod adı, kayıtlı kullanıcılarda hâlâ bulunabilir.
@@ -2849,19 +2842,6 @@ try { window.dokumaDepoTopluSevkKaydet = dokumaDepoTopluSevkKaydet; } catch (e) 
 try { window.dokumaDepoTopluSepetTemizle = dokumaDepoTopluSepetTemizle; } catch (e) {}
 try { window.dokumaDepoTopluSepettenCikar = dokumaDepoTopluSepettenCikar; } catch (e) {}
 
-let _dokumaSevkGecmisAkisCache = null;
-
-function dokumaSevkHedefEtiket(kod) {
-    const k = String(kod || '').trim().toUpperCase();
-    const h = DOKUMA_DEPO_SEVK_HEDEFLER.find(x => x[0] === k);
-    return h ? h[1] : (kod || '—');
-}
-
-function dokumaSevkKdIdFromNotlar(notlar) {
-    const m = String(notlar || '').match(/KD:([^\s·]+)/i);
-    return m ? String(m[1]).trim() : null;
-}
-
 function dokumaSevkSiparisBul(siparisId, lotNo) {
     if (siparisId) {
         const s = (dataCache.siparisler || []).find(x => String(x.id) === String(siparisId));
@@ -2870,318 +2850,6 @@ function dokumaSevkSiparisBul(siparisId, lotNo) {
     const sno = String(lotNo || '').trim().split(',')[0].trim();
     if (!sno) return null;
     return (dataCache.siparisler || []).find(s => String(s.sno || '').trim() === sno) || null;
-}
-
-function dokumaSevkGecmisHamSatirlari() {
-    const out = [];
-    const seen = new Set();
-    const push = (item) => {
-        const key = `${item.tarihMs}|${item.hedef}|${item.kaynak_id || ''}|${item.kg}|${item.mt}|${item.adet}|${item.stok_kodu}|${item.kaynak_tipi}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        out.push(item);
-    };
-
-    (dataCache.kumas_stok || []).forEach(r => {
-        const not = String(r.notlar || '');
-        if (!not.includes('[DOKUMA_DEPO_SEVK]')) return;
-        const kb = String(r.kaynak_birim || '').toUpperCase();
-        const tip = String(r.islem_turu || '').toUpperCase().replace('İ', 'I');
-        if (kb !== 'DEPO_HAREKET_KUMAS' || (tip !== 'ÇIKIŞ' && tip !== 'CIKIS')) return;
-        const hedef = depoNotEtiketOku(not, 'SEVK_YER');
-        const siparisId = depoNotEtiketOku(not, 'SEVK_HEDEF_SIPARIS');
-        const lot = r.lot_no || depoNotEtiketOku(not, 'LOT_NO') || '';
-        const sip = dokumaSevkSiparisBul(siparisId, lot);
-        push({
-            id: r.id,
-            kaynak_tipi: 'cikis',
-            tarihMs: new Date(r.created_at || 0).getTime() || 0,
-            tarih: r.created_at,
-            hedef,
-            hedefLabel: dokumaSevkHedefEtiket(hedef),
-            kaynak_id: depoDokumaSevkKaynakIdFromNotlar(not),
-            siparis_id: siparisId || sip?.id || null,
-            siparis_sno: sip?.sno || String(lot || '').split(',')[0].trim(),
-            musteri: sip?.firma || sip?.musteri || r.firma || '',
-            stok_kodu: r.stok_kodu || '',
-            urun: r.kumas_cinsi || r.urun_adi || '',
-            renk: r.renk || '',
-            kg: Math.abs(parseFloat(r.miktar_kg) || 0),
-            mt: Math.abs(parseFloat(r.miktar_mt) || 0),
-            adet: Math.abs(parseInt(r.cuval_sayisi, 10) || 0),
-            kullanici: r.updated_by || '',
-            notlar: not,
-            islem_gecmisi: r.islem_gecmisi || ''
-        });
-    });
-
-    (dataCache.kumas_stok || []).forEach(r => {
-        const not = String(r.notlar || '');
-        if (!not.includes('[SEVK_YER:')) return;
-        if (not.includes('[DOKUMA_DEPO_SEVK]')) return;
-        const kb = String(r.kaynak_birim || '').toUpperCase();
-        if (kb !== 'DOKUMA_DEPO_SEVK' && kb !== 'DEPO_HAREKET_KUMAS') return;
-        if (depoDokumaSevkKaynakIdFromNotlar(not)) return;
-        const hedef = depoNotEtiketOku(not, 'SEVK_YER');
-        const kdId = dokumaSevkKdIdFromNotlar(not);
-        if (!kdId) return;
-        const lot = r.lot_no || depoNotEtiketOku(not, 'LOT_NO') || '';
-        const sip = dokumaSevkSiparisBul(null, lot);
-        push({
-            id: r.id,
-            kaynak_tipi: 'kd_giris',
-            tarihMs: new Date(r.created_at || 0).getTime() || 0,
-            tarih: r.created_at,
-            hedef,
-            hedefLabel: dokumaSevkHedefEtiket(hedef),
-            kaynak_id: kdId,
-            siparis_id: sip?.id || null,
-            siparis_sno: sip?.sno || String(lot || '').split(',')[0].trim(),
-            musteri: sip?.firma || sip?.musteri || r.firma || '',
-            stok_kodu: r.stok_kodu || '',
-            urun: r.kumas_cinsi || r.urun_adi || '',
-            renk: r.renk || '',
-            kg: Math.abs(parseFloat(r.miktar_kg) || 0),
-            mt: Math.abs(parseFloat(r.miktar_mt) || 0),
-            adet: Math.abs(parseInt(r.cuval_sayisi, 10) || 0),
-            kullanici: r.updated_by || '',
-            notlar: not,
-            islem_gecmisi: r.islem_gecmisi || ''
-        });
-    });
-
-    (_dokumaSevkGecmisAkisCache || []).forEach(r => {
-        const j = r.not_json || {};
-        if (String(j.pipeline || '') !== 'DOKUMA_DEPO_SEVK') return;
-        const sip = dokumaSevkSiparisBul(r.siparis_id, j.lot_no);
-        push({
-            id: r.akis_id || r.id,
-            kaynak_tipi: 'konf_akis',
-            tarihMs: new Date(r.created_at || j.ts || 0).getTime() || 0,
-            tarih: r.created_at || j.ts,
-            hedef: 'KONFEKSIYON',
-            hedefLabel: 'Konfeksiyon',
-            kaynak_id: j.kaynak_id || null,
-            siparis_id: r.siparis_id || sip?.id || null,
-            siparis_sno: sip?.sno || String(j.lot_no || '').split(',')[0].trim(),
-            musteri: sip?.firma || sip?.musteri || j.firma || '',
-            stok_kodu: j.stok_kodu || r.kalem_ad || '',
-            urun: j.kumas_cinsi || r.kalem_ad || '',
-            renk: j.renk || '',
-            kg: Math.abs(parseFloat(j.kg) || 0),
-            mt: Math.abs(parseFloat(j.mt) || 0),
-            adet: Math.abs(parseInt(j.adet, 10) || 0),
-            kullanici: j.user || '',
-            notlar: j.note || '',
-            islem_gecmisi: ''
-        });
-    });
-
-    const cikisKeys = new Set(out.filter(x => x.kaynak_tipi === 'cikis').map(x =>
-        `${x.kaynak_id}|${String(x.hedef || '').toUpperCase()}|${Math.floor((x.tarihMs || 0) / 60000)}`
-    ));
-    return out.filter(x => {
-        if (x.kaynak_tipi !== 'konf_akis') return true;
-        const dk = `${x.kaynak_id}|KONFEKSIYON|${Math.floor((x.tarihMs || 0) / 60000)}`;
-        return !cikisKeys.has(dk);
-    }).sort((a, b) => (b.tarihMs || 0) - (a.tarihMs || 0));
-}
-
-async function dokumaSevkGecmisAkisYukle() {
-    try {
-        const { data, error } = await sb.from('siparis_akis')
-            .select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
-            .eq('islem', 'KUMAS_GELIS')
-            .order('created_at', { ascending: false })
-            .limit(2000);
-        if (error) { _dokumaSevkGecmisAkisCache = []; return; }
-        _dokumaSevkGecmisAkisCache = (data || []).map(raw => {
-            let j = {};
-            try { j = JSON.parse(raw.notlar || '{}'); } catch (e) {}
-            return { ...konfPipelineSatirFromRaw(raw), not_json: j };
-        }).filter(r => String(r.not_json?.pipeline || '') === 'DOKUMA_DEPO_SEVK');
-    } catch (e) {
-        _dokumaSevkGecmisAkisCache = [];
-    }
-}
-
-function dokumaSevkGecmisFiltreleriSifirla() {
-    window._dokumaSevkGecmisFiltre = { hedef: 'HEPSI', bas: '', bit: '', musteri: '', q: '' };
-    const searchInput = document.getElementById('search');
-    if (searchInput) searchInput.value = '';
-    const qEl = document.getElementById('dokuma-sevk-f-q');
-    if (qEl) qEl.value = '';
-    renderDokumaSevkGecmisi();
-}
-
-async function renderDokumaSevkGecmisi() {
-    const list = document.getElementById('main-list');
-    if (!list) return;
-
-    // Filtreleri HTML silinmeden önce oku (loading ekranı input'ları yok eder)
-    if (!window._dokumaSevkGecmisFiltre) window._dokumaSevkGecmisFiltre = { hedef: 'HEPSI', bas: '', bit: '', musteri: '', q: '' };
-    const fPrev = window._dokumaSevkGecmisFiltre;
-    const qLive = document.getElementById('dokuma-sevk-f-q')?.value;
-    const q = String(qLive != null ? qLive : (fPrev.q || '')).toLocaleLowerCase('tr-TR').trim();
-    const fHedef = document.getElementById('dokuma-sevk-f-hedef')?.value || fPrev.hedef || 'HEPSI';
-    const fBas = document.getElementById('dokuma-sevk-f-bas')?.value || fPrev.bas || '';
-    const fBit = document.getElementById('dokuma-sevk-f-bit')?.value || fPrev.bit || '';
-    const fMusteriRaw = document.getElementById('dokuma-sevk-f-musteri')?.value ?? fPrev.musteri ?? '';
-    const fMusteri = String(fMusteriRaw).toLocaleLowerCase('tr-TR').trim();
-    window._dokumaSevkGecmisFiltre = { hedef: fHedef, bas: fBas, bit: fBit, musteri: fMusteriRaw, q: qLive != null ? qLive : (fPrev.q || '') };
-
-    if (!(list.innerHTML || '').trim()) {
-        list.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text3);font-size:11px">Sevk geçmişi yükleniyor…</div>`;
-    }
-    await dokumaSevkGecmisAkisYukle();
-    // Sync sonrası stok cache güncellenmiş olabilir
-    try {
-        if ((!dataCache.kumas_stok || !dataCache.kumas_stok.length) && typeof syncAllData === 'function') {
-            /* no-op — syncAllData ağır; geçmiş akış + mevcut cache yeterli */
-        }
-    } catch (e) {}
-
-    const f = window._dokumaSevkGecmisFiltre;
-
-    const ham = dokumaSevkGecmisHamSatirlari();
-    const rows = ham.filter(row => {
-        if (fHedef !== 'HEPSI' && String(row.hedef || '').toUpperCase() !== fHedef) return false;
-        if (fMusteri && !String(row.musteri || '').toLocaleLowerCase('tr-TR').includes(fMusteri)
-            && !String(row.musteri || row.firma || '').toLocaleLowerCase('tr-TR').includes(fMusteri)) return false;
-        if (fBas || fBit) {
-            const ds = row.tarih ? new Date(row.tarih).toISOString().slice(0, 10) : '';
-            if (!ds) return false;
-            if (fBas && ds < fBas) return false;
-            if (fBit && ds > fBit) return false;
-        }
-        if (!q) return true;
-        const blob = [
-            row.hedefLabel, row.hedef, row.musteri, row.siparis_sno, row.stok_kodu, row.urun, row.renk,
-            row.kullanici, row.notlar, row.islem_gecmisi, row.kaynak_id
-        ].map(x => String(x || '').toLocaleLowerCase('tr-TR')).join(' ');
-        return blob.includes(q);
-    });
-
-    currentData = rows;
-    const ozet = rows.reduce((acc, r) => {
-        acc.kg += r.kg; acc.mt += r.mt; acc.ad += r.adet;
-        acc.hedef[r.hedef || '?'] = (acc.hedef[r.hedef || '?'] || 0) + 1;
-        return acc;
-    }, { kg: 0, mt: 0, ad: 0, hedef: {} });
-
-    const sel = (v, cur) => (v === cur ? 'selected' : '');
-    const fmtTarih = (iso) => {
-        if (!iso) return '—';
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return '—';
-        return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-    const miktarStr = (r) => {
-        const p = [];
-        if (r.mt > 0) p.push(`${r.mt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} m`);
-        if (r.kg > 0) p.push(`${r.kg.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} kg`);
-        if (r.adet > 0) p.push(`${r.adet} ad`);
-        return p.length ? p.join(' · ') : '—';
-    };
-
-    const filtHtml = `
-    <div class="panel-box" style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--border)">
-      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
-        <div style="flex:1;min-width:160px">
-          <label class="pro-label" style="margin-bottom:4px">Ara</label>
-          <input type="text" id="dokuma-sevk-f-q" class="pro-input" style="width:100%;padding:8px 10px;font-size:11px" placeholder="Sipariş, müşteri, ürün, stok kodu…" value="${pdfEsc(f.q || '')}" oninput="debounce('dokuma-sevk-f', () => renderDokumaSevkGecmisi(), 220)">
-        </div>
-        <div>
-          <label class="pro-label" style="margin-bottom:4px">Hedef</label>
-          <select id="dokuma-sevk-f-hedef" class="pro-input" style="min-width:128px;padding:8px 10px;font-size:11px" onchange="renderDokumaSevkGecmisi()">
-            <option value="HEPSI" ${sel('HEPSI', fHedef)}>Hepsi</option>
-            ${DOKUMA_DEPO_SEVK_HEDEFLER.map(([k, l]) => `<option value="${k}" ${sel(k, fHedef)}>${pdfEsc(l)}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="pro-label" style="margin-bottom:4px">Müşteri</label>
-          <input type="text" id="dokuma-sevk-f-musteri" class="pro-input" style="min-width:120px;padding:8px 10px;font-size:11px" placeholder="Firma adı" value="${pdfEsc(fMusteriRaw)}" oninput="debounce('dokuma-sevk-m', () => renderDokumaSevkGecmisi(), 280)">
-        </div>
-        <div>
-          <label class="pro-label" style="margin-bottom:4px">Başlangıç</label>
-          <input type="date" id="dokuma-sevk-f-bas" class="pro-input" style="padding:8px 10px;font-size:11px" value="${pdfEsc(fBas)}" onchange="renderDokumaSevkGecmisi()">
-        </div>
-        <div>
-          <label class="pro-label" style="margin-bottom:4px">Bitiş</label>
-          <input type="date" id="dokuma-sevk-f-bit" class="pro-input" style="padding:8px 10px;font-size:11px" value="${pdfEsc(fBit)}" onchange="renderDokumaSevkGecmisi()">
-        </div>
-        <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:var(--surface2)" onclick="dokumaSevkGecmisFiltreleriSifirla()">Sıfırla</button>
-        <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:rgba(99,102,241,0.12);color:var(--accent)" onclick="renderDokumaSevkGecmisi()">↻ Yenile</button>
-      </div>
-      <div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.45">Dokuma Depo'dan yapılan tüm sevkler: <b>nereye</b>, <b>ne kadar</b>, <b>hangi ürün</b>, <b>hangi müşteri/sipariş</b>, <b>ne zaman</b>. Üstteki hızlı arama da kullanılabilir.</div>
-    </div>`;
-
-    const ozetHtml = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
-      <div style="padding:12px 14px;border-radius:10px;background:rgba(109,113,255,0.06);border:1px solid rgba(109,113,255,0.2)">
-        <div style="font-size:8px;color:var(--accent);font-family:'DM Mono',monospace;text-transform:uppercase">Sevk satırı</div>
-        <div style="font-family:'Instrument Serif',serif;font-size:20px;color:var(--text)">${rows.length}</div>
-      </div>
-      <div style="padding:12px 14px;border-radius:10px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2)">
-        <div style="font-size:8px;color:var(--emerald-c);font-family:'DM Mono',monospace;text-transform:uppercase">Toplam mt / kg</div>
-        <div style="font-size:11px;font-weight:700;color:var(--text);margin-top:4px">${ozet.mt.toLocaleString('tr-TR', { maximumFractionDigits: 0 })} m · ${ozet.kg.toLocaleString('tr-TR', { maximumFractionDigits: 0 })} kg</div>
-      </div>
-      ${DOKUMA_DEPO_SEVK_HEDEFLER.map(([k, l]) => {
-        const n = ozet.hedef[k] || 0;
-        if (!n && fHedef !== k) return '';
-        return `<div style="padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
-          <div style="font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">${pdfEsc(l)}</div>
-          <div style="font-size:16px;font-weight:700;color:var(--text)">${n}</div>
-        </div>`;
-      }).join('')}
-    </div>`;
-
-    const satirlar = rows.map(r => {
-        const hedefRenk = {
-            KONFEKSIYON: 'rgba(139,92,246,0.15)',
-            BOYAHANE: 'rgba(245,158,11,0.15)',
-            GENEL_DEPO: 'rgba(59,130,246,0.12)',
-            MUSTERI: 'rgba(16,185,129,0.12)'
-        }[String(r.hedef || '').toUpperCase()] || 'var(--surface2)';
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;font-size:10px;font-family:'DM Mono',monospace;white-space:nowrap;color:var(--text2)">${pdfEsc(fmtTarih(r.tarih))}</td>
-          <td style="padding:8px 10px"><span style="display:inline-block;padding:3px 8px;border-radius:6px;font-size:9px;font-weight:700;background:${hedefRenk}">${pdfEsc(r.hedefLabel)}</span></td>
-          <td style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--text)">${pdfEsc(r.musteri || '—')}</td>
-          <td style="padding:8px 10px;font-size:10px;font-family:'DM Mono',monospace;color:var(--accent2)">${pdfEsc(r.siparis_sno || '—')}</td>
-          <td style="padding:8px 10px;font-size:10px;color:var(--text2)">${pdfEsc(r.urun || r.stok_kodu || '—')}</td>
-          <td style="padding:8px 10px;font-size:10px;color:var(--text3)">${pdfEsc(r.renk || '—')}</td>
-          <td style="padding:8px 10px;font-size:10px;font-weight:600;color:var(--text)">${pdfEsc(miktarStr(r))}</td>
-          <td style="padding:8px 10px;font-size:9px;color:var(--text3)">${pdfEsc(r.kullanici || '—')}</td>
-          <td style="padding:8px 10px;font-size:9px;font-family:'DM Mono',monospace;color:var(--text3)" title="${pdfEsc(r.notlar || '')}">${pdfEsc(r.kaynak_id ? '#' + r.kaynak_id : '—')}</td>
-        </tr>`;
-    }).join('');
-
-    const tabloHtml = rows.length
-        ? `<div class="panel-box" style="padding:0;overflow:hidden">
-            <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;min-width:920px">
-                <thead>
-                  <tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">TARİH</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">HEDEF</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">MÜŞTERİ</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">SİPARİŞ</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">ÜRÜN</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">RENK</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">MİKTAR</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">KULLANICI</th>
-                    <th style="padding:8px 10px;text-align:left;font-size:8px;color:var(--text3);font-family:'DM Mono',monospace">KAYNAK</th>
-                  </tr>
-                </thead>
-                <tbody>${satirlar}</tbody>
-              </table>
-            </div>
-          </div>`
-        : `<div class="panel-box" style="padding:36px 16px;text-align:center;color:var(--text3);font-size:11px;line-height:1.6">
-            Filtrelere uygun sevk kaydı yok.<br><span style="font-size:10px">Dokuma Depo'dan sevk yaptıkça burada birikir.</span>
-          </div>`;
-
-    list.innerHTML = filtHtml + ozetHtml + tabloHtml;
 }
 
 function depoNotEtiketOku(notlar, anahtar) {
@@ -5147,7 +4815,7 @@ const APP_MODE_WHITELIST = [
     'DASHBOARD','PLANLAMA','SEVKIYAT','DEPO_HAREKET','DEPO_HAREKET_LISTE','MUHASEBE_FIS','STOK_SAYIM','IPLIK','KUMAS','SIPARIS_GIRIS','SIPARIS_LISTE','SIPARIS_KAPANAN','KART_LISTE','MAMUL_DEPO',
     'KART_GIRIS','IPLIK_KART_GIRIS','KUMAS_KART_GIRIS',
     'MAMUL_KART_GIRIS','BOYAHANE_URETIM',
-    'RAPOR','KONFEKSIYON','KONFEKSIYON_KESIM','KONFEKSIYON_YIKAMA','KONFEKSIYON_KALITE','FASON_TAKIP','DOKUMA_FASON_TAKIP','DOKUMA_SIPARIS_GIRIS','HASIL_TAKIP','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','YAPILACAKLAR','RAPORLAR','TEZGAH_PLANLAMA','DOKUMA_TAKIP','DOKUMA_DEPO','DOKUMA_SEVK_GECMIS','DIAGNOSTICS'
+    'RAPOR','KONFEKSIYON','KONFEKSIYON_KESIM','KONFEKSIYON_YIKAMA','KONFEKSIYON_KALITE','FASON_TAKIP','DOKUMA_FASON_TAKIP','DOKUMA_SIPARIS_GIRIS','KONFEKSIYON_PLANLAMA','TEKNIK_FOY','URUN_AGACI','YAPILACAKLAR','RAPORLAR','TEZGAH_PLANLAMA','DOKUMA_TAKIP','DOKUMA_DEPO','DIAGNOSTICS'
 ];
 function handleGlobalSearch(val) {
     debounce('globalSearch', () => {
@@ -7666,6 +7334,18 @@ function toggleNavGroup(groupId) {
 // --- DASHBOARD ---
 let _dashKonfYukleniyor = false;
 
+/**
+ * Yıkama kalem bazında mı sayılmalı? Panel yıkama fişi konf_kesim_yikama'ya kalem kalem yazar
+ * (konfGetKdForSiparis bunu kalem_i.yikama_sevk'e taşır). Hiçbir kalemde yoksa eski sipariş
+ * düzeyi toplam (panel_yikama_sevk) kalemlere orantılanır — Üretim Karşılaştırma ile aynı kural.
+ */
+function planlamaYikamaKalemBazliMi(kdK, kalemSayisi) {
+    for (let i = 0; i < kalemSayisi; i++) {
+        if ((parseInt(((kdK || {})[`kalem_${i}`] || {}).yikama_sevk, 10) || 0) > 0) return true;
+    }
+    return false;
+}
+
 /** Aktif siparişlerden üretim kuyruğu + yıkama özetini hesapla (senkron, cache tabanlı) */
 function dashboardUretimOzetHesapla(aktifSiparisler) {
     const bekleyen = { kesim: 0, yikama: 0, kalite: 0, sevk: 0 };
@@ -7674,9 +7354,11 @@ function dashboardUretimOzetHesapla(aktifSiparisler) {
     for (const s of subset) {
         const kalemler = typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(s) : [];
         if (!kalemler.length) continue;
-        const kdK = (typeof _kdCache !== 'undefined' && _kdCache[`KD_KONFEKSIYON_${s.id}`]) || {};
+        /* KD + panel kesim/yıkama tablosu (dashboardKonfVeriYukle yükler) — Planlama ile aynı kaynak */
+        const kdK = konfGetKdForSiparis(s.id);
         const kdD = (typeof _kdCache !== 'undefined' && _kdCache[`KD_DOKUMA_${s.id}`]) || {};
         const sipAdet = kalemler.reduce((a, k) => a + (parseInt(k.miktar, 10) || 0), 0) || 1;
+        const yikKalemde = planlamaYikamaKalemBazliMi(kdK, kalemler.length);
         kalemler.forEach((k, i) => {
             const hedef = parseInt(k.miktar, 10) || 0;
             const rowK = kdK[`kalem_${i}`] || {};
@@ -7691,7 +7373,9 @@ function dashboardUretimOzetHesapla(aktifSiparisler) {
             const ySevk = parseInt(kdK.panel_yikama_sevk, 10) || 0;
             const yGel = parseInt(kdK.panel_yikama_gelen, 10) || 0;
             const sipSevk = parseInt(kdK.panel_sevk_toplam, 10) || 0;
-            const yBek = Math.max(0, Math.round((ySevk - yGel) * pay));
+            const yBek = yikKalemde
+                ? Math.max(0, (parseInt(rowK.yikama_sevk, 10) || 0) - (parseInt(rowK.yikama_gelen, 10) || 0))
+                : Math.max(0, Math.round((ySevk - yGel) * pay));
             const sevkPr = Math.round(sipSevk * pay);
             const kesBek = Math.max(0, Math.round(dokAdet) - kes);
             const kaliteBek = Math.max(0, dik - kk);
@@ -8846,15 +8530,32 @@ async function sevkiyatSiparisDepoHareketleriYukle(siparisId) {
 try { window.sevkiyatSiparisDepoHareketleriYukle = sevkiyatSiparisDepoHareketleriYukle; } catch (e) {}
 
 /** Operasyon günlüğü KONF_SEVK / SEVK — kalem mutlak yükleme (toplam_sevk) veya delta toplamı. */
+/* Raporlar tüm siparişlerin SEVK / KONF_SEVK günlük satırlarını tek sorguda yükleyip buraya
+   yazar. Sipariş günlüğü (_konfIslemLogCache) yalnız pencere açılınca yüklendiği için, açılmamış
+   siparişte yükleme sayısı eksik çıkıyordu (28.09.2026: SP360 günlük 176 · hesap 0). */
+let _sevkAkisTopluIndeks = null;   // sid → SEVK / KONF_SEVK satırları
+function sevkAkisTopluIndeksYaz(satirlar) {
+    const m = new Map();
+    (satirlar || []).forEach((r) => {
+        const iso = String(r.islem || '').toUpperCase().replace(/İ/g, 'I');
+        if (iso !== 'KONF_SEVK' && iso !== 'SEVK') return;
+        const k = String(r.siparis_id);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(r);
+    });
+    _sevkAkisTopluIndeks = m;
+}
+
 function sevkiyatSiparisKalemYuklemeFromAkis(siparisId, kalemIdx) {
     const sid = String(siparisId || '').trim();
     const ki = parseInt(kalemIdx, 10);
     if (!sid || !Number.isFinite(ki) || ki < 0) return 0;
     const rows = (typeof _konfIslemLogCache !== 'undefined' && _konfIslemLogCache[sid])
         ? _konfIslemLogCache[sid]
-        : [];
+        : ((_sevkAkisTopluIndeks && _sevkAkisTopluIndeks.get(sid)) || []);
     let maxAbs = 0;
     let deltaSum = 0;
+    let kalemler = null;   // satır başına yeniden ayrıştırılmasın (Raporlar'da 5.776 çağrı, ~270 ms)
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         if (typeof konfAkisSatirSilindiMi === 'function' && konfAkisSatirSilindiMi(r)) continue;
@@ -8865,7 +8566,7 @@ function sevkiyatSiparisKalemYuklemeFromAkis(siparisId, kalemIdx) {
             try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) { j = {}; }
         }
         const meta = (typeof konfPipelineKalemMeta === 'function')
-            ? konfPipelineKalemMeta(sid, j, r.kalem_ad)
+            ? konfPipelineKalemMeta(sid, j, r.kalem_ad, kalemler || (kalemler = konfGetSiparisKalemlerById(sid)))
             : { idx: parseInt(j.kalem_idx, 10) };
         if (Number(meta.idx) !== ki) continue;
         const toplam = parseInt(j.toplam_sevk, 10);
@@ -8984,9 +8685,23 @@ function sevkiyatDepoIndeks(rows) {
 }
 
 function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
+    let net = 0;
+    sevkiyatSiparisKalemDepoHareketleri(siparisId, kalemIdx).forEach((h) => { net += h.yon * h.miktar; });
+    return Math.max(0, Math.round(net));
+}
+try { window.sevkiyatSiparisKalemYuklemeFromDepo = sevkiyatSiparisKalemYuklemeFromDepo; } catch (e) {}
+
+/**
+ * Bir sipariş kalemine eşleşen depo hareketleri, satır satır: { row, miktar, yon }.
+ * yon = +1 çıkış (sevk), −1 giriş (iade). Miktar kalemin biriminde (mamül: adet, kumaş: mt/kg).
+ * Sipariş penceresinin yükleme sayısı (sevkiyatSiparisKalemYuklemeFromDepo) ve Raporlar'ın
+ * tarihli sevk kayıtları AYNI eşleştirmeyi kullanır.
+ */
+function sevkiyatSiparisKalemDepoHareketleri(siparisId, kalemIdx) {
     const sid = String(siparisId || '').trim();
     const ki = parseInt(kalemIdx, 10);
-    if (!sid || !Number.isFinite(ki) || ki < 0) return 0;
+    const out = [];
+    if (!sid || !Number.isFinite(ki) || ki < 0) return out;
     const sip = (dataCache.siparisler || []).find(s => String(s.id) === sid);
     const sno = String(sip?.sno || '').trim();
     const kalemler = (typeof siparisListeKalemleriArr === 'function')
@@ -9003,7 +8718,6 @@ function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
     const reMerkez = new RegExp(`SEVK_MERKEZ_ADET:sip=${sidEsc}\\|k=${ki}\\|`, 'i');
     const reKumas = new RegExp(`SEVK_KUMAS:sip=${sidEsc}\\|k=${ki}\\|`, 'i');
     const adTekil = sevkiyatSiparisKalemAdTekilMi(kalemler, ki, kumasKalem);
-    let net = 0;
     const rows = (typeof dataCache !== 'undefined' && dataCache.kumas_stok) ? dataCache.kumas_stok : [];
     const idx = sevkiyatDepoIndeks(rows);
     const aday = [];
@@ -9034,9 +8748,11 @@ function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
             const miktar = birim === 'KG' ? (n.kg || n.mt) : (n.mt || n.kg);
             if (!(miktar > 0)) continue;
             const signed = birim === 'KG' ? n.signedKg : n.signedMt;
-            if (n.isCikis || signed < 0) net += miktar;
-            else if (n.isGiris || signed > 0) net -= miktar;
-            else net += (signed < 0 ? miktar : -miktar);
+            let yon;
+            if (n.isCikis || signed < 0) yon = 1;
+            else if (n.isGiris || signed > 0) yon = -1;
+            else yon = signed < 0 ? 1 : -1;
+            out.push({ row: rows[aday[j]], miktar, yon });
             continue;
         }
 
@@ -9055,13 +8771,15 @@ function sevkiyatSiparisKalemYuklemeFromDepo(siparisId, kalemIdx) {
         const ad = Math.abs(n.cuval);
         if (!ad) continue;
         const signed = n.cuval;
-        if (n.isCikis || signed < 0) net += ad;
-        else if (n.isGiris || signed > 0) net -= ad;
-        else net += (signed < 0 ? ad : -ad);
+        let yon;
+        if (n.isCikis || signed < 0) yon = 1;
+        else if (n.isGiris || signed > 0) yon = -1;
+        else yon = signed < 0 ? 1 : -1;
+        out.push({ row: rows[aday[j]], miktar: ad, yon });
     }
-    return Math.max(0, Math.round(net));
+    return out;
 }
-try { window.sevkiyatSiparisKalemYuklemeFromDepo = sevkiyatSiparisKalemYuklemeFromDepo; } catch (e) {}
+try { window.sevkiyatSiparisKalemDepoHareketleri = sevkiyatSiparisKalemDepoHareketleri; } catch (e) {}
 
 /** Durum inceleme günlüğü: sevkiyat/depo çıkışları. Kullanıcı yalnız stok satırındaki updated_by. */
 function siparisDurumDepoSevkGunlukSatirlari(siparis) {
@@ -10714,6 +10432,13 @@ async function renderPlanlama() {
     if (aktifSip.length > MAX_SIP) {
         console.warn(`[Planlama] ${aktifSip.length} aktif siparişin ilk ${MAX_SIP}'ü işlendi.`);
     }
+    /* Konfeksiyon Panel kesim/yıkamayı yalnız konf_kesim_yikama'ya yazar; KD kopyası geride
+       kalabiliyor (28.09.2026: 20 kalem). Sayılar konfGetKdForSiparis ile birleşik okunur —
+       tablo KD çekimiyle paralel yüklenir, TTL'li önbellek. */
+    const konfKaynakHazir = Promise.all([
+        konfLoadKesimGecmis({ skipRotaDuzelt: true }),
+        konfLoadGlobalKumasGelis({ skipUa: true })
+    ]).catch(() => {});
     if (typeof sbKdGetMany === 'function') {
         for (const tip of ['KD_KONFEKSIYON', 'KD_DOKUMA', 'KD_URUN_AGACI']) {
             const eksik = sipSubset.filter(s => _kdCache[`${tip}_${s.id}`] === undefined).map(s => s.id);
@@ -10734,6 +10459,7 @@ async function renderPlanlama() {
             } catch (e) {}
         }
     }
+    await konfKaynakHazir;
 
     const urunSatirlari = [];
     let yikBekUrunTop = 0;
@@ -10745,12 +10471,13 @@ async function renderPlanlama() {
     for (const s of sipSubset) {
         const kalemler = siparisListeKalemleriArr(s);
         if (!kalemler.length) continue;
-        const kdK = _kdCache[`KD_KONFEKSIYON_${s.id}`] || {};
+        const kdK = konfGetKdForSiparis(s.id);
         const kdD = _kdCache[`KD_DOKUMA_${s.id}`] || {};
         const sipAdet = kalemler.reduce((a, k) => a + (parseInt(k.miktar, 10) || 0), 0) || 1;
         const ySevk = parseInt(kdK.panel_yikama_sevk, 10) || 0;
         const yGel = parseInt(kdK.panel_yikama_gelen, 10) || 0;
         const sipSevk = parseInt(kdK.panel_sevk_toplam, 10) || 0;
+        const yikKalemde = planlamaYikamaKalemBazliMi(kdK, kalemler.length);
         kalemler.forEach((k, i) => {
             const hedef = parseInt(k.miktar, 10) || 0;
             const rowK = kdK[`kalem_${i}`] || {};
@@ -10765,9 +10492,9 @@ async function renderPlanlama() {
             const kol = parseInt(rowK.kolide, 10) || 0;
             const pay = sipAdet > 0 ? hedef / sipAdet : 0;
             const sevkPr = Math.round(sipSevk * pay);
-            const ySevkPr = Math.round(ySevk * pay);
-            const yGelPr = Math.round(yGel * pay);
-            const yBek = Math.max(0, Math.round((ySevk - yGel) * pay));
+            const ySevkPr = yikKalemde ? (parseInt(rowK.yikama_sevk, 10) || 0) : Math.round(ySevk * pay);
+            const yGelPr = yikKalemde ? (parseInt(rowK.yikama_gelen, 10) || 0) : Math.round(yGel * pay);
+            const yBek = yikKalemde ? Math.max(0, ySevkPr - yGelPr) : Math.max(0, Math.round((ySevk - yGel) * pay));
             yikBekUrunTop += yBek;
             const sevkYuzde = planlamaSevkTamamlanma(hedef, sevkPr);
             const kolaySkor = planlamaKapatmaKolaylikSkoru(hedef, dokAdet, kes, dik, kk, kol, sevkPr);
@@ -17604,8 +17331,9 @@ function konfPipelineKalemIdxFromDepoRow(siparisId, row) {
     return konfFindKalemIndexEsnek(kalemler, etiket);
 }
 
-function konfPipelineKalemMeta(siparisId, j, kalemAd) {
-    const kalemler = konfGetSiparisKalemlerById(siparisId);
+/** kalemlerHazir: aynı siparişin satırlarını döngüde işleyen çağıran listeyi bir kez verir (yalnız okunur). */
+function konfPipelineKalemMeta(siparisId, j, kalemAd, kalemlerHazir) {
+    const kalemler = kalemlerHazir || konfGetSiparisKalemlerById(siparisId);
     let idx = parseInt(j?.kalem_idx, 10);
     if (!Number.isFinite(idx) || idx < 0 || idx >= kalemler.length) {
         if (j?.kalem_key) {
@@ -17748,11 +17476,14 @@ async function konfDurumTabYenile(siparisId) {
 }
 
 /** Akış notundan silinmiş / iptal satır mı? (panel soft-delete) */
+/* iptal: Konfeksiyon Paneli'nde iptal edilen giriş (KALİTE KONTROL satırı yerinde işaretlenir).
+   28.09.2026'ya kadar yalnız silindi bakılıyordu; iptal edilen kalite, sipariş penceresi her
+   açıldığında KD'ye geri yazılıyordu (SP691 kalem 5: 62 adet iptal → pencerede 62). */
 function konfAkisSatirSilindiMi(r) {
     const j = r?.not_json || (() => {
         try { return JSON.parse(r?.notlar || '{}') || {}; } catch (e) { return {}; }
     })();
-    return !!(j.panel_silindi || j.silindi);
+    return !!(j.panel_silindi || j.silindi || j.iptal);
 }
 
 /**
@@ -17789,7 +17520,7 @@ async function konfPipelineSiparisDurumSenkron(siparisId, opts = {}) {
     (data || []).forEach(r => {
         let j = {};
         try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
-        if (j.panel_silindi || j.silindi) return;
+        if (j.panel_silindi || j.silindi || j.iptal) return;   // iptal edilen giriş KD'ye geri yazılmasın
         const islem = String(r.islem || '').toUpperCase().replace(/İ/g, 'I');
         const meta = konfPipelineKalemMeta(siparisId, j, r.kalem_ad);
         const ki = meta.idx;
@@ -17881,7 +17612,7 @@ async function konfPipelineSiparisDurumSenkron(siparisId, opts = {}) {
     (data || []).forEach(r => {
         let j = {};
         try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
-        if (j.panel_silindi || j.silindi) return;
+        if (j.panel_silindi || j.silindi || j.iptal) return;   // iptal edilen giriş KD'ye geri yazılmasın
         const islem = String(r.islem || '').toUpperCase().replace(/İ/g, 'I');
         if (islem !== 'KUMAS_GELIS') return;
         const meta = konfPipelineKalemMeta(siparisId, j, r.kalem_ad);
@@ -17981,13 +17712,33 @@ async function konfPipelineSiparisDurumSenkron(siparisId, opts = {}) {
  * sbKdGet ile ayrıca okur, bu fonksiyondan etkilenmez; çifte sayım riski yok.
  * MOBİLLE BİREBİR AYNI OLMAK ZORUNDA (assets/mobil/mobil-app.js).
  */
+/* Sipariş başına satır dizini. Kesim ve pipeline önbellekleri her güncellemede YENİDEN
+   atanıyor (yerinde push yok), bu yüzden dizi kimliği değişince dizin yeniden kurulur.
+   Eskiden her çağrı tüm tabloyu (~730 satır) tarıyordu; Planlama/Anasayfa sipariş başına çağırır. */
+const _konfSidDizinKy = { arr: null, map: null };
+const _konfSidDizinPipe = { arr: null, map: null };
+function konfSiparisSatirDizini(kutu, arr) {
+    if (kutu.arr !== arr) {
+        const map = new Map();
+        (arr || []).forEach((r) => {
+            const k = String(r.siparis_id);
+            const liste = map.get(k);
+            if (liste) liste.push(r); else map.set(k, [r]);
+        });
+        kutu.arr = arr;
+        kutu.map = map;
+    }
+    return kutu.map;
+}
+
 function konfGetKdForSiparis(siparisId) {
     const base = _kdCache[`KD_KONFEKSIYON_${siparisId}`] || {};
     const sid = String(siparisId);
 
     const kesPer = {}, kyYikSevk = {}, kyYikGel = {};
-    (typeof _konfKesimGecmisCache !== 'undefined' ? _konfKesimGecmisCache || [] : []).forEach((k) => {
-        if (String(k.siparis_id) !== sid || k.aktif === false) return;
+    const kyArr = typeof _konfKesimGecmisCache !== 'undefined' ? _konfKesimGecmisCache || [] : [];
+    (konfSiparisSatirDizini(_konfSidDizinKy, kyArr).get(sid) || []).forEach((k) => {
+        if (k.aktif === false) return;
         let ki = parseInt(k.kalem_idx, 10);
         if (!Number.isFinite(ki) || ki < 0) {
             ki = typeof konfUaKalemIdxCoz === 'function' ? konfUaKalemIdxCoz(siparisId, k.kalem_idx, k.desen) : -1;
@@ -18000,8 +17751,8 @@ function konfGetKdForSiparis(siparisId) {
     });
 
     const pipePer = {};
-    (typeof _konfGlobalKumasGelisCache !== 'undefined' ? _konfGlobalKumasGelisCache || [] : []).forEach((r) => {
-        if (String(r.siparis_id) !== sid) return;
+    const pipeArr = typeof _konfGlobalKumasGelisCache !== 'undefined' ? _konfGlobalKumasGelisCache || [] : [];
+    (konfSiparisSatirDizini(_konfSidDizinPipe, pipeArr).get(sid) || []).forEach((r) => {
         const ki = parseInt(r.kalem_idx, 10);
         if (!Number.isFinite(ki) || ki < 0) return;
         const p = pipePer[ki] || (pipePer[ki] = { kesilen: 0, yikSevk: 0, yikGel: 0, kkGec: 0, sevk: 0 });
@@ -18076,6 +17827,46 @@ function konfSiparisUretimToplam(siparisId, kdKonf, kalemSayisi) {
     return t;
 }
 
+/**
+ * Bir sipariş kaleminin TÜM aşama sayıları — sipariş penceresi (Özet) ve Raporlar > Siparişler
+ * aynı fonksiyonu çağırır, iki ekran farklı sayı gösteremez.
+ *   ürün kalemi : konfKalemUretimSayilari (KD + konf_kesim_yikama + pipeline, tek kural)
+ *   kumaş kalemi: dokunan / sevk / hazır metrajı (siparisKalemKumasMetrajOzet)
+ *   dokuma      : dokumaUrunIkinciOzet · sevk/yükleme: planlamaIhtiyacSevkAdet
+ * 28.09.2026: pencere yıkamayı tabloyu okumayan konfManuelYikamaKalemOzet'ten alıyordu —
+ * 1203 ürün kaleminin 24'ünde yıkamaya giden, 10'unda gelen eksikti (SP510 HAKİ 0 / gerçek 87).
+ */
+function siparisKalemAsamaSayilari(sip, ix, kalem) {
+    const sid = sip && sip.id;
+    const k = kalem || (typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(sip || {})[ix] : null) || {};
+    const rowK = ((_kdCache[`KD_KONFEKSIYON_${sid}`] || {})[`kalem_${ix}`]) || {};
+    const urunler = (_kdCache[`KD_DOKUMA_${sid}`] || {}).urunler || {};
+    const u = urunler[ix] || urunler[String(ix)] || {};
+    const kumas = siparisKalemKumasMi(k);
+    const out = {
+        kumas,
+        birim: siparisKalemBirim(k),
+        siparis: parseFloat(k.miktar) || 0,
+        dokuma: dokumaUrunIkinciOzet(u, k),
+        sevk: planlamaIhtiyacSevkAdet(sid, ix, rowK)
+    };
+    if (kumas) {
+        out.metraj = siparisKalemKumasMetrajOzet(sid, ix, k, u, rowK);
+        return out;
+    }
+    const t = konfKalemUretimSayilari(sid, ix);
+    out.kesim = t.kesim;
+    out.yikSevk = t.yikSevk;
+    out.yikGel = t.yikGel;
+    out.dikim = t.dikim;
+    out.kalite = t.kalite;
+    out.koli = t.koli;
+    out.ikiKalite = t.ikiKalite;
+    out.tamir = t.tamir;
+    out.imha = t.imha;
+    return out;
+}
+
 
 
 // ════════════════════════════════════════════════════════
@@ -18088,18 +17879,6 @@ let dokumaDepoFiltre = { q: '', durum: 'HEPSI', siparisId: '' };
 let _dokumaDepoKdSatirlariCache = [];
 const DT_OPS_LS_KEY = 'erp_dt_ops_v3';
 const DT_HAREKET_MAX = 3000;
-let dtHareketFiltre = {
-    tarih_bas: '',
-    tarih_bit: '',
-    kullanici: '',
-    birim: '',
-    surec: '',
-    dosya: '',
-    islem: '',
-    siparis: '',
-    urun: '',
-    detay: ''
-};
 
 // dtGetKd/dtSetKd — Supabase'e geçildi (sbKdGet/sbKdSet)
 async function dtGetKd(id) { return await sbKdGet(id, 'KD_DOKUMA'); }
@@ -18129,21 +17908,187 @@ function dtToplamMetreFromKd(kd) {
     return Object.values(kd.urunler).reduce((a, u) => a + (parseFloat(u?.toplam_metre) || 0), 0);
 }
 
-function dtSiparisOptionHtml(s) {
-    const kd = _kdCache[`KD_DOKUMA_${s.id}`];
-    const topMetre = kd ? dtToplamMetreFromKd(kd) : null;
-    const mark = topMetre != null ? (topMetre > 0 ? '✓' : '○') : '○';
-    const sel = String(dtSeciliSiparisId) === String(s.id) ? 'selected' : '';
-    return `<option value="${s.id}" ${sel}>${mark} ${pdfEsc(s.sno || '?')} — ${pdfEsc(s.firma || '?')}</option>`;
+/* ── Dokuma Takip sipariş arama motoru ─────────────────────────────────
+   Uzun açılır liste yerine tek arama kutusu. Birden çok kelime yazılabilir; her
+   kelime siparişte bir yerde geçmeli (sipariş no, müşteri, grup, durum, termin,
+   kalemlerin kod/ad/renk/renk kodu/ebat/desen/grup). Türkçe karakter şart değil
+   (planlamaTodoAramaNorm). Kelimelerin hepsi aynı kalemde geçiyorsa o kalem
+   sonuçta gösterilir. Kapsam eski listeyle aynı: TAMAMLANDI dışındaki siparişler. */
+const DT_ARA_SONUC_MAX = 30;
+let _dtAraSonuc = [];
+let _dtAraAktif = -1;
+const _dtAraHaystack = new Map();
+
+function dtAraKalemMetni(k) {
+    const rk = typeof siparisKalemRenkKoduMetni === 'function' ? siparisKalemRenkKoduMetni(k) : (k.rkod || '');
+    return [k.kod, k.ad, k.renk, rk, k.ebat, k.olcu, k.desen, k.grup].filter(Boolean).join(' ');
 }
 
+function dtAraHaystack(s) {
+    const key = String(s.id);
+    const onceki = _dtAraHaystack.get(key);
+    if (onceki && onceki.v === s.updated_at && onceki.cins === s.cins) return onceki;
+    const kalemler = typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(s) : [];
+    const terminIso = String(s.ttarih || '').slice(0, 10);
+    const terminTr = /^\d{4}-\d{2}-\d{2}$/.test(terminIso) ? terminIso.split('-').reverse().join('.') : '';
+    const kalemH = kalemler.map(k => planlamaTodoAramaNorm(dtAraKalemMetni(k)));
+    const h = planlamaTodoAramaNorm([s.sno, s.firma, s.musteri, s.siparis_grubu, s.durum, terminIso, terminTr].join(' '))
+        + ' ' + kalemH.join(' ');
+    const kayit = { v: s.updated_at, cins: s.cins, h, sno: planlamaTodoAramaNorm(s.sno), kalemler, kalemH };
+    _dtAraHaystack.set(key, kayit);
+    return kayit;
+}
+
+function dtAraSiparisler() {
+    return (dataCache.siparisler || []).filter(s => String(s.durum || '').toUpperCase() !== 'TAMAMLANDI');
+}
+
+/** Sonuçlar: önce sipariş no eşleşmesi, sonra en yeni sipariş. */
+function dtAra(q) {
+    const kelimeler = planlamaTodoAramaNorm(q).split(/\s+/).filter(Boolean);
+    const snoSira = (a, b) => String(b.s.sno || '').localeCompare(String(a.s.sno || ''), 'tr', { numeric: true });
+    if (!kelimeler.length) return dtAraSiparisler().map(s => ({ s, puan: 0, kalem: null })).sort(snoSira);
+    const out = [];
+    dtAraSiparisler().forEach(s => {
+        const hs = dtAraHaystack(s);
+        if (!kelimeler.every(k => hs.h.includes(k))) return;
+        let puan = 0;
+        if (hs.sno === kelimeler.join(' ')) puan += 100;
+        else if (kelimeler.some(k => hs.sno.startsWith(k))) puan += 50;
+        else if (kelimeler.some(k => hs.sno.includes(k))) puan += 20;
+        /* Kalem, ancak en az bir kelime gerçekten o kalemde geçiyorsa gösterilir (yalnız sipariş no aramasında değil) */
+        const kalemIdx = hs.kalemH.findIndex(kh => kelimeler.some(k => kh.includes(k))
+            && kelimeler.every(k => kh.includes(k) || hs.sno.includes(k)));
+        out.push({ s, puan, kalem: kalemIdx >= 0 ? hs.kalemler[kalemIdx] : null });
+    });
+    return out.sort((a, b) => (b.puan - a.puan) || snoSira(a, b));
+}
+
+function dtAraIsaret(s) {
+    const kd = _kdCache[`KD_DOKUMA_${s.id}`];
+    const topMetre = kd ? dtToplamMetreFromKd(kd) : null;
+    return topMetre != null && topMetre > 0
+        ? '<span title="Dokuma girişi var" style="color:var(--emerald-c)">✓</span>'
+        : '<span title="Dokuma girişi yok / henüz yüklenmedi" style="color:var(--text3)">○</span>';
+}
+
+function dtAraDropHazirla() {
+    let drop = document.getElementById('dt-ara-drop');
+    if (!drop) {
+        drop = document.createElement('div');
+        drop.id = 'dt-ara-drop';
+        document.body.appendChild(drop);
+    }
+    /* body'ye taşınır: .panel-box overflow:hidden listeyi keserdi (planlamaTodoSipDropHazirla ile aynı) */
+    const inp = document.getElementById('dt-siparis-ara');
+    if (inp) {
+        const r = inp.getBoundingClientRect();
+        const altBosluk = window.innerHeight - r.bottom - 10;
+        const genislik = Math.min(Math.max(r.width, 420), window.innerWidth - 16);
+        Object.assign(drop.style, {
+            position: 'fixed', zIndex: '200000',
+            top: (r.bottom + 4) + 'px',
+            left: Math.max(8, Math.min(r.left, window.innerWidth - 8 - genislik)) + 'px',
+            width: genislik + 'px',
+            maxHeight: Math.min(420, Math.max(160, altBosluk)) + 'px',
+            overflow: 'auto', background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: '10px', boxShadow: '0 10px 28px rgba(0,0,0,.22)'
+        });
+    }
+    return drop;
+}
+
+function dtAraGoster() {
+    const inp = document.getElementById('dt-siparis-ara');
+    if (!inp) return;
+    const drop = dtAraDropHazirla();
+    const tum = dtAra(inp.value);
+    _dtAraSonuc = tum.slice(0, DT_ARA_SONUC_MAX);
+    if (_dtAraAktif >= _dtAraSonuc.length) _dtAraAktif = _dtAraSonuc.length - 1;
+    if (!_dtAraSonuc.length) {
+        drop.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">Eşleşen aktif sipariş yok</div>`;
+        drop.style.display = 'block';
+        return;
+    }
+    const fazla = tum.length - _dtAraSonuc.length;
+    drop.innerHTML = _dtAraSonuc.map((r, i) => {
+        const s = r.s;
+        const termin = s.ttarih ? new Date(s.ttarih).toLocaleDateString('tr-TR') : '';
+        const secili = String(dtSeciliSiparisId) === String(s.id);
+        const kalemTxt = r.kalem ? [r.kalem.ad || r.kalem.kod, r.kalem.renk, r.kalem.ebat || r.kalem.olcu].filter(Boolean).join(' · ') : '';
+        return `<div class="dt-ara-satir" data-i="${i}" onmousedown="event.preventDefault();dtAraSec(${i})" onmousemove="dtAraAktifYap(${i})"
+            style="padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--border);${i === _dtAraAktif ? 'background:var(--surface2);' : ''}${secili ? 'border-left:3px solid var(--cyan-c);' : ''}">
+            <div style="display:flex;gap:8px;align-items:baseline">
+                <span style="font-size:11px;flex-shrink:0">${dtAraIsaret(s)}</span>
+                <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0">${pdfEsc(s.sno || '—')}</span>
+                <span style="font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${pdfEsc(s.firma || '—')}</span>
+                ${termin ? `<span style="font-size:9px;color:var(--text3);flex-shrink:0">Termin ${pdfEsc(termin)}</span>` : ''}
+            </div>
+            ${kalemTxt ? `<div style="font-size:10px;color:var(--text2);margin:2px 0 0 19px">↳ ${pdfEsc(kalemTxt)}</div>` : ''}
+        </div>`;
+    }).join('') + (fazla > 0 ? `<div style="padding:8px;text-align:center;font-size:10px;color:var(--text3)">+${fazla} sipariş daha — aramayı daraltın</div>` : '');
+    drop.style.display = 'block';
+}
+
+function dtAraKapat() {
+    const drop = document.getElementById('dt-ara-drop');
+    if (drop) drop.style.display = 'none';
+    _dtAraAktif = -1;
+}
+try {
+    window.addEventListener('scroll', (e) => { if (!e.target?.closest?.('#dt-ara-drop')) dtAraKapat(); }, true);
+    window.addEventListener('resize', () => dtAraKapat());
+} catch (e) {}
+
+function dtAraAktifYap(i) {
+    if (_dtAraAktif === i) return;
+    _dtAraAktif = i;
+    document.querySelectorAll('#dt-ara-drop .dt-ara-satir').forEach(el => {
+        el.style.background = Number(el.dataset.i) === i ? 'var(--surface2)' : '';
+    });
+}
+
+function dtAraYaz() { _dtAraAktif = 0; dtAraGoster(); }
+
+function dtAraTus(e) {
+    const drop = document.getElementById('dt-ara-drop');
+    const acik = drop && drop.style.display === 'block';
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!acik) { dtAraGoster(); return; }
+        const n = _dtAraSonuc.length;
+        if (!n) return;
+        dtAraAktifYap(e.key === 'ArrowDown' ? (_dtAraAktif + 1) % n : (_dtAraAktif - 1 + n) % n);
+        drop.querySelector(`.dt-ara-satir[data-i="${_dtAraAktif}"]`)?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (acik && _dtAraSonuc.length) dtAraSec(Math.max(0, _dtAraAktif));
+    } else if (e.key === 'Escape') {
+        dtAraKapat();
+        e.target.blur();
+    }
+}
+
+function dtAraSec(i) {
+    const r = _dtAraSonuc[i];
+    if (!r) return;
+    dtAraKapat();
+    const inp = document.getElementById('dt-siparis-ara');
+    if (inp) { inp.value = `${r.s.sno || ''} · ${r.s.firma || ''}`; inp.blur(); }
+    dtSelectSiparis(r.s.id);
+}
+
+function dtAraTemizle() {
+    const inp = document.getElementById('dt-siparis-ara');
+    if (inp) { inp.value = ''; inp.focus(); }
+    dtAraYaz();
+}
+
+/** Açık arama listesindeki ✓ işaretlerini tazeler (eski <select> seçeneklerinin yerine). */
 function dtRefreshSiparisSelMarks() {
-    const sel = document.getElementById('dt-siparis-sel');
-    if (!sel || appMode !== 'DOKUMA_TAKIP') return;
-    const siparisler = (dataCache.siparisler || []).filter(s => String(s.durum || '').toUpperCase() !== 'TAMAMLANDI');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">— Seçin —</option>' + siparisler.map(dtSiparisOptionHtml).join('');
-    if (cur) sel.value = cur;
+    if (appMode !== 'DOKUMA_TAKIP') return;
+    const drop = document.getElementById('dt-ara-drop');
+    if (drop && drop.style.display === 'block') dtAraGoster();
 }
 
 function dtPrefetchSeciliKd() {
@@ -18222,266 +18167,280 @@ function dtSiparisAkisDokumaHareketindeGoster(r) {
     return false;
 }
 
-async function renderDokumaHareketListesi() {
-    const data = dtLoadOpsData();
-    const localSrc = Array.isArray(data.hareketler) ? data.hareketler : [];
-    let dbSrc = [];
+/* ── Hareket Kayıtları = dokuma giriş raporu ─────────────────────────
+   28.09.2026: Liste YALNIZ dokuma top girişlerini gösterir — her siparişin KD_DOKUMA
+   kaydındaki urunler[i].girisler[] (Dokuma Takip elle girişi, Excel aktarımı, Dokuma
+   Paneli, Tezgah Planlama). Stok / iplik / kart / tezgah değişiklikleri buraya girmez.
+   Günlük / haftalık (Pazartesi başlar) / aylık dönemde: özet, kaynak dağılımı, gün gün
+   dağılım, sipariş+ürün toplamı ve tek tek girişler. Veri tek sorguyla bir kez çekilir,
+   DT_RAPOR_TTL_MS boyunca bellekten süzülür; "↻ Yenile" zorla tazeler. Tamamlanan
+   siparişlerin girişleri de rapora dahildir (geçmiş dönemler eksik çıkmasın). */
+const DT_RAPOR_TTL_MS = 60000;
+const DT_HAREKET_SAYFA = 300;
+let _dtRaporVeri = { ts: 0, girisler: null, tarihsiz: 0, bekleyen: null };
+let dtRapor = { donem: 'GUN', tarih: '', kaynak: '', q: '', goster: DT_HAREKET_SAYFA };
+const DT_RAPOR_KAYNAKLAR = [
+    ['PROGRAM', 'Program (elle)'],
+    ['EXCEL', 'Excel aktarımı'],
+    ['PANEL', 'Dokuma Paneli'],
+    ['TEZGAH', 'Tezgah Planlama']
+];
+
+function dtRaporKaynakKod(g) {
+    const k = String(g?.kaynak || '').toUpperCase();
+    if (k === 'DOKUMA_PANEL') return 'PANEL';
+    if (k === 'GENEL_DURUM_EXCEL') return 'EXCEL';
+    if (k === 'TEZGAH_PLANLAMA') return 'TEZGAH';
+    return 'PROGRAM';
+}
+function dtRaporKaynakAd(kod) { return (DT_RAPOR_KAYNAKLAR.find(x => x[0] === kod) || [kod, kod])[1]; }
+
+/** hazirSatirlar: Raporlar kendi toplu KD_DOKUMA çekimini verir (tek sorgu, aynı seçim kuralı). */
+async function dtRaporGirisleriCek(hazirSatirlar) {
+    const satirlar = Array.isArray(hazirSatirlar) ? hazirSatirlar : [];
+    for (let f = 0; !Array.isArray(hazirSatirlar); f += 1000) {
+        const { data, error } = await sb.from('siparis_akis')
+            .select('id,siparis_id,kalem_ad,notlar,created_at')
+            .eq('islem', 'KD_DOKUMA')
+            .order('created_at', { ascending: false })
+            .range(f, f + 999);
+        if (error) throw error;
+        satirlar.push(...(data || []));
+        if (!data || data.length < 1000) break;
+    }
+    const bySid = new Map();
+    satirlar.forEach(r => {
+        const k = String(r.siparis_id);
+        if (!bySid.has(k)) bySid.set(k, []);
+        bySid.get(k).push(r);
+    });
     const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
-    const konfIslemSet = new Set(['KESIM','DİKİM','DIKIM','KALITE','KALITE KONTROL','KK_GECEN','PAKET','KOLI','YIKAMA_SEVK','YIKAMA_GELEN','SEVK']);
-    const birimLabel = (kb = '', fallback = 'GENEL') => {
-        const n = dtNormTxt(kb || '');
-        if (!n) return fallback;
-        if (n.includes('DOKUMA')) return 'DOKUMA';
-        if (n.includes('KONFEKSIYON') || n.includes('KONF')) return 'KONFEKSIYON';
-        if (n.includes('BOYAHANE')) return 'BOYAHANE';
-        if (n.includes('IPLIK')) return 'IPLIK';
-        if (n.includes('MAMUL')) return 'MAMUL';
-        if (n.includes('DEPO_HAREKET')) return 'DEPO';
-        if (n.includes('SIPARIS')) return 'SIPARIS';
-        if (n.includes('TEZGAH')) return 'TEZGAH';
-        return n;
-    };
-    const parseLogHead = (txt = '') => {
-        const first = String(txt || '').split('\n').map(s => s.trim()).find(Boolean) || '';
-        const m = first.match(/\[(.*?)\]/);
-        return m?.[1] || '';
-    };
-    const pushGenRows = (rows = [], table = '', opts = {}) => {
-        const out = [];
-        (rows || []).forEach(r => {
-            const recId = String(r?.id || '').trim();
-            const recCode = String(
-                r?.stok_kodu || r?.sno || r?.desen_kodu || r?.iplik_no || r?.tezgah_no || r?.task || recId || '—'
-            ).trim();
-            const urun = String(
-                r?.urun_adi || r?.desen_adi || r?.kumas_cinsi || r?.kalem_ad || r?.task || r?.firma || recCode || '—'
-            ).trim();
-            const miktar = parseFloat(r?.miktar || r?.miktar_kg || r?.miktar_mt || 0) || 0;
-            const kb = String(r?.kaynak_birim || opts.kaynak_birim || table || '').trim();
-            const userFromLog = parseLogHead(r?.islem_gecmisi || '');
-            const user = String(r?.updated_by || userFromLog || '—').trim() || '—';
-            out.push({
-                ts: r?.updated_at || r?.created_at || '',
-                kullanici: user,
-                birim: birimLabel(kb, birimLabel(table, 'GENEL')),
-                surec: opts.surec || (birimLabel(kb, '').includes('KONFEKSIYON') ? 'KONFEKSIYON' : (birimLabel(kb, '').includes('DOKUMA') ? 'DOKUMA' : 'DIGER')),
-                dosya: String(table || 'SIPARIS').toUpperCase(),
-                islem: String(r?.islem_turu || opts.islem || 'Güncelleme'),
-                siparis: recCode,
-                urun,
-                miktar,
-                detay: [String(r?.islem_gecmisi || '').trim(), String(r?.notlar || '').trim()].filter(Boolean).join(' · ')
+    const out = [];
+    let tarihsiz = 0;
+    bySid.forEach((list, sid) => {
+        const kd = sbKdSatirlardanSec(list, 'KD_DOKUMA');
+        const sip = sipMap.get(sid);
+        const kalemler = sip && typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(sip) : [];
+        Object.entries(kd.urunler || {}).forEach(([idx, u]) => {
+            const i = parseInt(idx, 10);
+            const k = kalemler[i] || {};
+            const urun = [k.ad || k.kod || `Kalem ${i + 1}`, k.renk, k.ebat || k.olcu].filter(Boolean).join(' · ');
+            (u?.girisler || []).forEach(g => {
+                const d = dtDokumaDepoTarihParse(dtDokumaDepoGirisTarihDegeri(g));
+                if (!d) { tarihsiz++; return; }
+                out.push({
+                    ms: d.getTime(), sid, sno: sip?.sno || sid, firma: sip?.firma || sip?.musteri || '', urun, ki: i,
+                    metre: parseFloat(g.metre) || 0, kg: parseFloat(g.kg) || 0, adet: parseInt(g.adet, 10) || 0,
+                    kaynak: dtRaporKaynakKod(g), user: String(g.user || g.kullanici || '').trim(), gid: g.gid || ''
+                });
             });
         });
-        return out;
-    };
-    try {
-        if (typeof sb !== 'undefined' && sb?.from) {
-            const { data: rows, error } = await sb
-                .from('kumas_stok')
-                .select('created_at,updated_by,islem_gecmisi,notlar,stok_kodu,kaynak_birim,islem_turu,firma,miktar_kg,miktar_mt')
-                .order('created_at', { ascending: false })
-                .limit(5000);
-            if (!error && Array.isArray(rows)) {
-                dbSrc = rows.map(r => ({
-                    ts: r.created_at || '',
-                    kullanici: String(r.updated_by || '').trim() || '—',
-                    birim: birimLabel(r.kaynak_birim, 'DEPO'),
-                    dosya: 'SIPARIS',
-                    islem: String(r.islem_turu || 'Stok hareketi'),
-                    siparis: String(r.stok_kodu || '').trim(),
-                    surec: String(r.kaynak_birim || '').toUpperCase().includes('DOKUMA') ? 'DOKUMA' : 'DIGER',
-                    urun: String(r.stok_kodu || '').trim() || String(r.firma || '').trim() || '—',
-                    miktar: parseFloat(r.miktar_kg || r.miktar_mt || 0) || 0,
-                    detay: [String(r.kaynak_birim || '').trim(), String(r.firma || '').trim(), String(r.islem_gecmisi || r.notlar || '').trim()].filter(Boolean).join(' · ')
-                }));
-            }
-
-            // Sipariş akışındaki operasyonları da tek listede göster.
-            const { data: akisRows, error: akisErr } = await sb
-                .from('siparis_akis')
-                .select('created_at,siparis_id,islem,kalem_ad,miktar,notlar')
-                .order('created_at', { ascending: false })
-                .limit(3000);
-            if (!akisErr && Array.isArray(akisRows)) {
-                dbSrc = dbSrc.concat(akisRows.filter(dtSiparisAkisDokumaHareketindeGoster).map(r => {
-                    const sip = sipMap.get(String(r.siparis_id || ''));
-                    const sipNo = String(sip?.sno || r.siparis_id || '').trim();
-                    const islem = String(r.islem || 'Sipariş akışı').trim();
-                    const islemNorm = dtNormTxt(islem).replaceAll('İ', 'I');
-                    let j = {};
-                    try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
-                    const surec = konfIslemSet.has(islemNorm)
-                        ? 'KONFEKSIYON'
-                        : (islemNorm.includes('DOKUMA') ? 'DOKUMA' : 'DIGER');
-                    return {
-                        ts: r.created_at || '',
-                        kullanici: String(j.user || j.kullanici || '').trim() || '—',
-                        birim: surec === 'KONFEKSIYON' ? 'KONFEKSIYON' : 'SIPARIS',
-                        dosya: 'SIPARIS',
-                        islem,
-                        siparis: sipNo,
-                        surec,
-                        urun: String(r.kalem_ad || '').trim() || '—',
-                        miktar: parseFloat(r.miktar || 0) || 0,
-                        detay: [String(r.notlar || '').trim()].filter(Boolean).join(' · ')
-                    };
-                }));
-            }
-
-            const [iplikRes, kutuphaneRes, tezgahRes] = await Promise.all([
-                sb.from('iplik_stok').select('*').order('created_at', { ascending: false }).limit(2000),
-                sb.from('kumas_kutuphanesi').select('id,created_at,updated_at,updated_by,islem_gecmisi,notlar,desen_kodu,desen_adi,urun_adi,kaynak_birim,firma').order('created_at', { ascending: false }).limit(1500),
-                // tezgahlar tablosunda updated_at / islem_gecmisi kolonu yok.
-                sb.from('tezgahlar').select('*').order('created_at', { ascending: false }).limit(1000)
-            ]);
-            if (!iplikRes.error && Array.isArray(iplikRes.data)) dbSrc = dbSrc.concat(pushGenRows(iplikRes.data, 'iplik_stok'));
-            if (!kutuphaneRes.error && Array.isArray(kutuphaneRes.data)) dbSrc = dbSrc.concat(pushGenRows(kutuphaneRes.data, 'kumas_kutuphanesi'));
-            if (!tezgahRes.error && Array.isArray(tezgahRes.data)) dbSrc = dbSrc.concat(pushGenRows(tezgahRes.data, 'tezgahlar', { surec: 'DOKUMA' }));
-        }
-    } catch (e) {}
-    const konfKayitDisi = row => {
-        const sur = dtNormTxt(row?.surec || '');
-        const bir = dtNormTxt(row?.birim || '');
-        if (sur === 'KONFEKSIYON' || bir.includes('KONFEKSIYON')) return false;
-        return true;
-    };
-    const src = [...dbSrc, ...localSrc].filter(konfKayitDisi).sort((a, b) => String(b?.ts || '').localeCompare(String(a?.ts || '')));
-    const sayac = depoSevkeHazirSayaçOzet(dataCache.kumas_stok || []);
-    const f = dtHareketFiltre || {};
-    const fTarihBas = String(f.tarih_bas || '').trim();
-    const fTarihBit = String(f.tarih_bit || '').trim();
-    const fKul = dtNormTxt(f.kullanici || '');
-    const fBir = dtNormTxt(f.birim || '');
-    const fSur = dtNormTxt(f.surec || '');
-    const fDos = dtNormTxt(f.dosya || '');
-    const fIsl = dtNormTxt(f.islem || '');
-    const fSip = dtNormTxt(f.siparis || '');
-    const fUrun = dtNormTxt(f.urun || '');
-    const fDet = dtNormTxt(f.detay || '');
-    const rows = src.filter(r => {
-        const d = String(r?.ts || '').slice(0, 10);
-        const k = dtNormTxt(r?.kullanici || '');
-        const bir = dtNormTxt(r?.birim || '');
-        const sur = dtNormTxt(r?.surec || '');
-        const dos = dtNormTxt(r?.dosya || '');
-        const isl = dtNormTxt(r?.islem || '');
-        const sip = dtNormTxt(r?.siparis || '');
-        const urun = dtNormTxt(r?.urun || '');
-        const det = dtNormTxt([r?.detay, r?.alan, r?.eski, r?.yeni].join(' '));
-        if (fTarihBas && d < fTarihBas) return false;
-        if (fTarihBit && d > fTarihBit) return false;
-        if (fKul && !k.includes(fKul)) return false;
-        if (fBir && !bir.includes(fBir)) return false;
-        if (fSur && sur !== fSur) return false;
-        if (fDos && dos !== fDos) return false;
-        if (fIsl && !isl.includes(fIsl)) return false;
-        if (fSip && !sip.includes(fSip)) return false;
-        if (fUrun && !urun.includes(fUrun)) return false;
-        if (fDet && !det.includes(fDet)) return false;
-        return true;
     });
-    return `
-    <div class="panel-box" style="padding:10px 12px;margin-bottom:10px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.06)">
-        <div style="font-size:9px;font-weight:700;color:var(--emerald-c);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">Sevke Hazır Sayaç</div>
-        <div style="font-size:10px;color:var(--text2);margin-top:4px">Dokuma giriş: ${sayac.dokumaGirisToplam} · Sevk edilen: ${sayac.sevkEdilen} · Bekleyen: ${sayac.bekleyen}</div>
-        <div style="font-size:9px;color:var(--text3);margin-top:2px">Dokuma ve dokuma kaynaklı stok hareketleri; konfeksiyon paneli kayıtları bu listede yer almaz.</div>
-    </div>
-    <div class="panel-box" style="padding:0;overflow:hidden">
-        <div class="panel-head">
-            <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>Hareket Kayıtları</span>
-            <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${rows.length} kayıt</span>
-        </div>
-        <div style="overflow:auto;max-height:68vh">
-            <table class="dt-table" style="min-width:1200px">
-                <thead>
-                    <tr>
-                        <th style="text-align:left">Tarih/Saat</th>
-                        <th style="text-align:left">Kullanıcı</th>
-                        <th style="text-align:left">Birim</th>
-                        <th style="text-align:left">Süreç</th>
-                        <th style="text-align:left">Dosya</th>
-                        <th style="text-align:left">İşlem</th>
-                        <th style="text-align:left">Stok / Sipariş</th>
-                        <th style="text-align:left">Ürün</th>
-                        <th style="text-align:right">Miktar</th>
-                        <th style="text-align:left">Detay</th>
-                    </tr>
-                    <tr>
-                        <th>
-                            <div style="display:flex;gap:4px;align-items:center">
-                                <input type="date" value="${pdfEsc(f.tarih_bas || '')}" onchange="dtSetHareketFiltre('tarih_bas', this.value)" class="pro-input" style="padding:4px 6px;font-size:10px;min-width:132px" title="Başlangıç tarihi">
-                                <span style="font-size:10px;color:var(--text3)">→</span>
-                                <input type="date" value="${pdfEsc(f.tarih_bit || '')}" onchange="dtSetHareketFiltre('tarih_bit', this.value)" class="pro-input" style="padding:4px 6px;font-size:10px;min-width:132px" title="Bitiş tarihi">
-                            </div>
-                        </th>
-                        <th><input id="dt-hf-kullanici" value="${pdfEsc(f.kullanici || '')}" oninput="dtSetHareketFiltre('kullanici', this.value)" class="pro-input" placeholder="Kullanıcı" style="padding:4px 6px;font-size:10px"></th>
-                        <th><input id="dt-hf-birim" value="${pdfEsc(f.birim || '')}" oninput="dtSetHareketFiltre('birim', this.value)" class="pro-input" placeholder="Birim" style="padding:4px 6px;font-size:10px"></th>
-                        <th>
-                            <select class="pro-input" onchange="dtSetHareketFiltre('surec', this.value)" style="padding:4px 6px;font-size:10px">
-                                <option value="" ${!f.surec ? 'selected' : ''}>Tümü</option>
-                                <option value="DOKUMA" ${f.surec==='DOKUMA'?'selected':''}>Dokuma</option>
-                                <option value="KONFEKSIYON" ${f.surec==='KONFEKSIYON'?'selected':''}>Konfeksiyon</option>
-                                <option value="DIGER" ${f.surec==='DIGER'?'selected':''}>Diğer</option>
-                            </select>
-                        </th>
-                        <th>
-                            <select class="pro-input" onchange="dtSetHareketFiltre('dosya', this.value)" style="padding:4px 6px;font-size:10px">
-                                <option value="" ${!f.dosya ? 'selected' : ''}>Tümü</option>
-                                <option value="SIPARIS" ${f.dosya==='SIPARIS'?'selected':''}>Sipariş Takip</option>
-                            </select>
-                        </th>
-                        <th><input id="dt-hf-islem" value="${pdfEsc(f.islem || '')}" oninput="dtSetHareketFiltre('islem', this.value)" class="pro-input" placeholder="İşlem" style="padding:4px 6px;font-size:10px"></th>
-                        <th><input id="dt-hf-siparis" value="${pdfEsc(f.siparis || '')}" oninput="dtSetHareketFiltre('siparis', this.value)" class="pro-input" placeholder="Sipariş No" style="padding:4px 6px;font-size:10px"></th>
-                        <th><input id="dt-hf-urun" value="${pdfEsc(f.urun || '')}" oninput="dtSetHareketFiltre('urun', this.value)" class="pro-input" placeholder="Ürün" style="padding:4px 6px;font-size:10px"></th>
-                        <th></th>
-                        <th><input id="dt-hf-detay" value="${pdfEsc(f.detay || '')}" oninput="dtSetHareketFiltre('detay', this.value)" class="pro-input" placeholder="Detay ara" style="padding:4px 6px;font-size:10px"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows.length ? rows.map(r => {
-                        const dt = r.ts ? new Date(r.ts) : null;
-                        const dtTxt = (dt && !isNaN(dt.getTime()))
-                            ? dt.toLocaleString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                            : '—';
-                        return `
-                    <tr>
-                        <td class="mono">${pdfEsc(dtTxt)}</td>
-                        <td>${pdfEsc(r.kullanici || '—')}</td>
-                        <td><span class="pill pill-gray" style="font-size:9px">${pdfEsc(r.birim || '—')}</span></td>
-                        <td><span class="pill pill-gray" style="font-size:9px">${pdfEsc(r.surec || '—')}</span></td>
-                        <td><span class="pill pill-gray" style="font-size:9px">${pdfEsc(r.dosya || '—')}</span></td>
-                        <td>${pdfEsc(r.islem || '—')}</td>
-                        <td class="mono">${pdfEsc(r.siparis || '—')}</td>
-                        <td>${pdfEsc(r.urun || '—')}</td>
-                        <td class="mono" style="text-align:right">${Number.isFinite(parseFloat(r.miktar)) ? Number(r.miktar).toLocaleString('tr-TR') : '—'}</td>
-                        <td style="font-size:11px;color:var(--text2)">${pdfEsc(r.detay || [r.alan, r.eski, r.yeni].filter(Boolean).join(' · ') || '—')}</td>
-                    </tr>`;
-                    }).join('') : `<tr><td colspan="9" style="padding:16px;color:var(--text3)">Kayıt bulunamadı. Tarih filtresini temizleyin veya senkronize edin.</td></tr>`}
-                </tbody>
-            </table>
-        </div>
-    </div>`;
-    if (dtDosyaAktif === 'HAREKET' && window._dtHareketFocus?.key) {
-        const map = {
-            kullanici: 'dt-hf-kullanici',
-            birim: 'dt-hf-birim',
-            islem: 'dt-hf-islem',
-            siparis: 'dt-hf-siparis',
-            urun: 'dt-hf-urun',
-            detay: 'dt-hf-detay'
-        };
-        const id = map[window._dtHareketFocus.key];
-        const el = id ? document.getElementById(id) : null;
-        if (el) {
-            el.focus();
-            const p = window._dtHareketFocus.pos;
-            if (typeof p === 'number') {
-                const safe = Math.max(0, Math.min(p, String(el.value || '').length));
-                el.setSelectionRange(safe, safe);
-            }
-        }
+    out.sort((a, b) => b.ms - a.ms);
+    out.forEach(r => { r.ara = planlamaTodoAramaNorm([r.sno, r.firma, r.urun, r.user, dtRaporKaynakAd(r.kaynak)].join(' ')); });
+    return { girisler: out, tarihsiz };
+}
+
+async function dtRaporVeriYukle() {
+    if (_dtRaporVeri.girisler && Date.now() - _dtRaporVeri.ts < DT_RAPOR_TTL_MS) return;
+    if (_dtRaporVeri.bekleyen) return _dtRaporVeri.bekleyen;
+    _dtRaporVeri.bekleyen = dtRaporGirisleriCek().then(v => {
+        _dtRaporVeri = { ts: Date.now(), girisler: v.girisler, tarihsiz: v.tarihsiz, bekleyen: null };
+    }, e => { _dtRaporVeri.bekleyen = null; throw e; });
+    return _dtRaporVeri.bekleyen;
+}
+
+function dtRaporGunIso(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dtRaporAralik() {
+    const t = dtRapor.tarih ? new Date(dtRapor.tarih + 'T00:00:00') : new Date();
+    t.setHours(0, 0, 0, 0);
+    let bas = new Date(t), bit;
+    if (dtRapor.donem === 'HAFTA') {
+        bas.setDate(t.getDate() - ((t.getDay() + 6) % 7));   // Pazartesi
+        bit = new Date(bas); bit.setDate(bas.getDate() + 7);
+    } else if (dtRapor.donem === 'AY') {
+        bas = new Date(t.getFullYear(), t.getMonth(), 1);
+        bit = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+    } else {
+        bit = new Date(bas); bit.setDate(bas.getDate() + 1);
     }
+    return { bas, bit };
+}
+function dtRaporEtiket({ bas, bit }) {
+    const son = new Date(bit); son.setDate(son.getDate() - 1);
+    if (dtRapor.donem === 'AY') return bas.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+    if (dtRapor.donem === 'HAFTA') {
+        return `${bas.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} – ${son.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    }
+    return bas.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+}
+
+function dtRaporDonem(d) { dtRapor.donem = d; dtRapor.goster = DT_HAREKET_SAYFA; renderDokumaTakip(); }
+function dtRaporKaydir(yon) {
+    const t = dtRapor.tarih ? new Date(dtRapor.tarih + 'T00:00:00') : new Date();
+    if (dtRapor.donem === 'AY') t.setMonth(t.getMonth() + yon, 1);
+    else t.setDate(t.getDate() + yon * (dtRapor.donem === 'HAFTA' ? 7 : 1));
+    dtRapor.tarih = dtRaporGunIso(t);
+    dtRapor.goster = DT_HAREKET_SAYFA;
+    renderDokumaTakip();
+}
+function dtRaporTarih(v) { dtRapor.tarih = v || ''; dtRapor.goster = DT_HAREKET_SAYFA; renderDokumaTakip(); }
+function dtRaporBugun() { dtRapor.tarih = ''; dtRapor.goster = DT_HAREKET_SAYFA; renderDokumaTakip(); }
+function dtRaporKaynak(v) { dtRapor.kaynak = v || ''; dtRapor.goster = DT_HAREKET_SAYFA; dtRaporGovdeYenile(); }
+function dtRaporAra(v) {
+    dtRapor.q = String(v || '');
+    dtRapor.goster = DT_HAREKET_SAYFA;
+    debounce('dt-rapor-ara', dtRaporGovdeYenile, 150);
+}
+function dtRaporDahaFazla() { dtRapor.goster += DT_HAREKET_SAYFA; dtRaporGovdeYenile(); }
+function dtHareketYenile() { _dtRaporVeri = { ts: 0, girisler: null, tarihsiz: 0, bekleyen: null }; renderDokumaTakip(); }
+
+/** Arama/kaynak değişince yalnız sonuç alanı yenilenir — arama kutusu odağı kaybetmez. */
+function dtRaporGovdeYenile() {
+    const el = document.getElementById('dt-rapor-govde');
+    if (el) el.innerHTML = dtRaporGovdeHtml();
+}
+
+function dtRaporGovdeHtml() {
+    const veri = _dtRaporVeri.girisler || [];
+    const aralik = dtRaporAralik();
+    const basMs = aralik.bas.getTime(), bitMs = aralik.bit.getTime();
+    const kelimeler = planlamaTodoAramaNorm(dtRapor.q).split(/\s+/).filter(Boolean);
+    const donemde = veri.filter(r => r.ms >= basMs && r.ms < bitMs && kelimeler.every(k => r.ara.includes(k)));
+    const liste = dtRapor.kaynak ? donemde.filter(r => r.kaynak === dtRapor.kaynak) : donemde;
+    const topla = (l) => l.reduce((a, r) => { a.top++; a.m += r.metre; a.kg += r.kg; a.ad += r.adet; return a; }, { top: 0, m: 0, kg: 0, ad: 0 });
+    const fmt = (n, b = 1) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: b });
+    const t = topla(liste);
+    const kart = (etiket, deger, renk) => `<div style="padding:12px 14px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+        <div style="font-size:8px;color:${renk};font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em">${etiket}</div>
+        <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--text)">${deger}</div></div>`;
+    const miktarHucre = (x) => `<td class="mono" style="text-align:right">${x.m ? fmt(x.m) : '—'}</td>
+        <td class="mono" style="text-align:right">${x.kg ? fmt(x.kg) : '—'}</td>
+        <td class="mono" style="text-align:right">${x.ad ? fmt(x.ad, 0) : '—'}</td>`;
+    const miktarBaslik = `<th style="text-align:right">Metre</th><th style="text-align:right">KG</th><th style="text-align:right">Adet</th>`;
+
+    /* Kaynak dağılımı — kaynak süzgecinden bağımsız, dönemin tamamı */
+    const kaynakHtml = DT_RAPOR_KAYNAKLAR.map(([kod, ad]) => {
+        const x = topla(donemde.filter(r => r.kaynak === kod));
+        if (!x.top) return '';
+        const secili = dtRapor.kaynak === kod;
+        return `<button type="button" onclick="dtRaporKaynak('${secili ? '' : kod}')" title="${secili ? 'Süzgeci kaldır' : 'Yalnız bu kaynağı göster'}"
+            style="padding:6px 10px;border-radius:8px;border:1px solid ${secili ? 'var(--cyan-c)' : 'var(--border)'};background:${secili ? 'rgba(34,211,238,0.1)' : 'var(--surface2)'};color:var(--text2);font-size:10px;cursor:pointer;text-align:left">
+            <b style="color:var(--text)">${pdfEsc(ad)}</b> · ${x.top} top · ${fmt(x.m)} m${x.kg ? ` · ${fmt(x.kg)} kg` : ''}${x.ad ? ` · ${fmt(x.ad, 0)} adet` : ''}</button>`;
+    }).join('');
+
+    /* Gün gün dağılım (haftalık / aylık) — girişi olmayan günler de satır olarak görünür */
+    let gunHtml = '';
+    if (dtRapor.donem !== 'GUN') {
+        const gunler = [];
+        for (let d = new Date(aralik.bas); d < aralik.bit; d.setDate(d.getDate() + 1)) gunler.push(new Date(d));
+        const gunMap = new Map();
+        liste.forEach(r => {
+            const k = dtRaporGunIso(new Date(r.ms));
+            if (!gunMap.has(k)) gunMap.set(k, []);
+            gunMap.get(k).push(r);
+        });
+        gunHtml = `<div class="panel-box" style="padding:0;overflow:hidden">
+            <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Gün gün</span></div>
+            <div style="overflow:auto;max-height:46vh"><table class="dt-table" style="min-width:520px">
+                <thead><tr><th style="text-align:left">Gün</th><th style="text-align:right">Top</th>${miktarBaslik}</tr></thead>
+                <tbody>${gunler.map(g => {
+                    const x = topla(gunMap.get(dtRaporGunIso(g)) || []);
+                    return `<tr style="${x.top ? '' : 'opacity:.45'}">
+                        <td>${pdfEsc(g.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short' }))}</td>
+                        <td class="mono" style="text-align:right">${x.top || '—'}</td>${miktarHucre(x)}</tr>`;
+                }).join('')}</tbody>
+                <tfoot><tr style="font-weight:700"><td>Toplam</td><td class="mono" style="text-align:right">${t.top}</td>${miktarHucre(t)}</tr></tfoot>
+            </table></div></div>`;
+    }
+
+    /* Sipariş + ürün bazında */
+    const grupMap = new Map();
+    liste.forEach(r => {
+        const k = r.sid + '|' + r.urun;
+        if (!grupMap.has(k)) grupMap.set(k, { sno: r.sno, firma: r.firma, urun: r.urun, top: 0, m: 0, kg: 0, ad: 0 });
+        const x = grupMap.get(k);
+        x.top++; x.m += r.metre; x.kg += r.kg; x.ad += r.adet;
+    });
+    const gruplar = [...grupMap.values()].sort((a, b) => b.m - a.m || b.top - a.top);
+    const grupHtml = `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Sipariş / ürün bazında</span>
+            <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${gruplar.length} ürün</span></div>
+        <div style="overflow:auto;max-height:46vh"><table class="dt-table" style="min-width:760px">
+            <thead><tr><th style="text-align:left">Sipariş</th><th style="text-align:left">Müşteri</th><th style="text-align:left">Ürün</th><th style="text-align:right">Top</th>${miktarBaslik}</tr></thead>
+            <tbody>${gruplar.map(x => `<tr><td class="mono">${pdfEsc(x.sno)}</td><td>${pdfEsc(x.firma || '—')}</td><td>${pdfEsc(x.urun)}</td>
+                <td class="mono" style="text-align:right">${x.top}</td>${miktarHucre(x)}</tr>`).join('')}</tbody>
+        </table></div></div>`;
+
+    /* Tek tek girişler */
+    const gosterilen = liste.slice(0, dtRapor.goster);
+    const detayHtml = `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>Girişler</span>
+            <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${liste.length} top${liste.length > gosterilen.length ? ` · ilk ${gosterilen.length} gösteriliyor` : ''}</span></div>
+        <div style="overflow:auto;max-height:60vh"><table class="dt-table" style="min-width:980px">
+            <thead><tr><th style="text-align:left">Tarih / saat</th><th style="text-align:left">Sipariş</th><th style="text-align:left">Müşteri</th><th style="text-align:left">Ürün</th>${miktarBaslik}<th style="text-align:left">Kaynak</th><th style="text-align:left">Giren</th></tr></thead>
+            <tbody>${gosterilen.map(r => `<tr>
+                <td class="mono">${pdfEsc(new Date(r.ms).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td>
+                <td class="mono">${pdfEsc(r.sno)}</td><td>${pdfEsc(r.firma || '—')}</td><td>${pdfEsc(r.urun)}</td>
+                ${miktarHucre({ m: r.metre, kg: r.kg, ad: r.adet })}
+                <td><span class="pill pill-gray" style="font-size:9px">${pdfEsc(dtRaporKaynakAd(r.kaynak))}</span></td>
+                <td>${pdfEsc(r.user || '—')}</td></tr>`).join('')}</tbody>
+        </table>
+        ${liste.length > gosterilen.length ? `<div style="padding:12px;text-align:center"><button type="button" onclick="dtRaporDahaFazla()" class="btn-pro" style="padding:6px 16px;font-size:10px">Daha fazla göster (kalan ${liste.length - gosterilen.length})</button></div>` : ''}
+        </div></div>`;
+
+    if (!liste.length) {
+        return `<div class="panel-box" style="padding:40px 16px;text-align:center;color:var(--text3);font-size:11px">
+            Bu dönemde${dtRapor.kaynak ? ` (${pdfEsc(dtRaporKaynakAd(dtRapor.kaynak))})` : ''}${kelimeler.length ? ' aramaya uyan' : ''} dokuma girişi yok.
+            ${kaynakHtml ? `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:12px">${kaynakHtml}</div>` : ''}</div>`;
+    }
+    return `<div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+            ${kart('Top', fmt(t.top, 0), 'var(--accent2)')}${kart('Metre', fmt(t.m), 'var(--cyan-c)')}
+            ${t.kg ? kart('KG', fmt(t.kg), 'var(--emerald-c)') : ''}${t.ad ? kart('Adet', fmt(t.ad, 0), 'var(--amber-c)') : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${kaynakHtml}</div>
+        ${gunHtml}${grupHtml}${detayHtml}
+    </div>`;
+}
+
+async function renderDokumaHareketListesi() {
+    let hata = '';
+    try { await dtRaporVeriYukle(); } catch (e) { hata = e?.message || String(e); }
+    const aralik = dtRaporAralik();
+    const bugunIcinde = Date.now() >= aralik.bas.getTime() && Date.now() < aralik.bit.getTime();
+    const donemBtn = (kod, ad) => `<button type="button" onclick="dtRaporDonem('${kod}')"
+        style="padding:6px 12px;border:none;background:${dtRapor.donem === kod ? 'var(--cyan-c)' : 'transparent'};color:${dtRapor.donem === kod ? '#fff' : 'var(--text2)'};font-size:10px;font-weight:700;cursor:pointer">${ad}</button>`;
+    const saat = _dtRaporVeri.ts ? new Date(_dtRaporVeri.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `
+    <div class="panel-box" style="padding:12px 16px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+                ${donemBtn('GUN', 'Günlük')}${donemBtn('HAFTA', 'Haftalık')}${donemBtn('AY', 'Aylık')}
+            </div>
+            <button type="button" onclick="dtRaporKaydir(-1)" class="btn-pro" style="padding:5px 10px;font-size:11px" title="Önceki dönem">◀</button>
+            <div style="font-size:12px;font-weight:700;color:var(--text);min-width:170px;text-align:center">${pdfEsc(dtRaporEtiket(aralik))}</div>
+            <button type="button" onclick="dtRaporKaydir(1)" class="btn-pro" style="padding:5px 10px;font-size:11px" title="Sonraki dönem">▶</button>
+            <button type="button" onclick="dtRaporBugun()" class="btn-pro" style="padding:5px 10px;font-size:10px" ${bugunIcinde ? 'disabled' : ''}>Bugün</button>
+            <input type="date" class="pro-input" value="${pdfEsc(dtRapor.tarih || dtRaporGunIso(new Date()))}" onchange="dtRaporTarih(this.value)" style="padding:5px 8px;font-size:10px;width:auto" title="Tarihe git">
+            <select class="pro-input" onchange="dtRaporKaynak(this.value)" style="padding:5px 8px;font-size:10px;width:auto">
+                <option value="">Tüm kaynaklar</option>
+                ${DT_RAPOR_KAYNAKLAR.map(([kod, ad]) => `<option value="${kod}" ${dtRapor.kaynak === kod ? 'selected' : ''}>${pdfEsc(ad)}</option>`).join('')}
+            </select>
+            <input type="text" class="pro-input" value="${pdfEsc(dtRapor.q)}" oninput="dtRaporAra(this.value)" autocomplete="off"
+                placeholder="🔍 Sipariş, müşteri, ürün, giren…" style="flex:1;min-width:180px;padding:6px 10px;font-size:11px">
+            <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${saat ? `${pdfEsc(saat)} itibarıyla` : ''}</span>
+            <button type="button" onclick="dtHareketYenile()" class="btn-pro" style="padding:5px 10px;font-size:10px" title="Girişleri veritabanından yeniden çek">↻ Yenile</button>
+        </div>
+        <div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.45">
+            Yalnız dokuma top girişleri: Dokuma Takip'ten elle, Excel aktarımı, Dokuma Paneli ve Tezgah Planlama. Tamamlanan siparişler dahil.
+            ${_dtRaporVeri.tarihsiz ? `<b style="color:var(--amber-c)">${_dtRaporVeri.tarihsiz} tarihsiz giriş rapora alınamadı.</b>` : ''}
+        </div>
+    </div>
+    ${hata ? `<div class="panel-box" style="padding:16px;color:var(--rose-c);font-size:11px">Girişler okunamadı: ${pdfEsc(hata)} — ↻ Yenile ile tekrar deneyin.</div>` : ''}
+    <div id="dt-rapor-govde">${hata && !_dtRaporVeri.girisler ? '' : dtRaporGovdeHtml()}</div>`;
 }
 
 async function renderDokumaTakip() {
@@ -18502,7 +18461,8 @@ async function renderDokumaTakip() {
         icerikHtml = await renderDokumaHareketListesi();
         if (token !== _dtRenderToken) return;
     } else {
-        const sipOpts = siparisler.map(s => dtSiparisOptionHtml(s));
+        const seciliSip = dtSeciliSiparisId ? siparisler.find(x => String(x.id) === String(dtSeciliSiparisId)) : null;
+        const araDeger = seciliSip ? `${seciliSip.sno || ''} · ${seciliSip.firma || ''}` : '';
 
         let dtFormHtml = `
                 <div class="empty-pro" style="padding:60px 20px">
@@ -18521,11 +18481,15 @@ async function renderDokumaTakip() {
             <div class="panel-box" style="padding:12px 16px">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                     <div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.1em;font-family:'DM Mono',monospace">Sipariş</div>
-                    <select id="dt-siparis-sel" onchange="dtSelectSiparis(this.value)"
-                        class="pro-input" style="min-width:220px;width:auto;padding:6px 10px">
-                        <option value="">— Seçin —</option>
-                        ${sipOpts.join('')}
-                    </select>
+                    <div style="position:relative;flex:1;min-width:260px;max-width:560px">
+                        <input id="dt-siparis-ara" type="text" class="pro-input" autocomplete="off" spellcheck="false"
+                            value="${pdfEsc(araDeger)}"
+                            placeholder="🔍 Sipariş no, müşteri, ürün, renk, ebat, kod… (birden çok kelime yazılabilir)"
+                            onfocus="this.select();dtAraYaz()" oninput="dtAraYaz()" onkeydown="dtAraTus(event)" onblur="setTimeout(dtAraKapat,120)"
+                            style="width:100%;padding:7px 30px 7px 10px;font-size:12px">
+                        <button type="button" onmousedown="event.preventDefault();dtAraTemizle()" title="Temizle"
+                            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:none;border-radius:50%;background:var(--surface2);color:var(--text3);font-size:11px;cursor:pointer;line-height:1;padding:0">✕</button>
+                    </div>
                     ${dtSeciliSiparisId ? (() => {
                         const s = siparisler.find(x => x.id == dtSeciliSiparisId);
                         return `<span class="pill pill-cyan" style="margin-left:auto">${pdfEsc(s?.sno || '')}${s?.sno && s?.firma ? ' · ' : ''}${pdfEsc(s?.firma || '—')}</span>`;
@@ -18668,8 +18632,9 @@ function dtDokumaStokSatirBirlestirAnahtari(row) {
 }
 
 /** Depo satırının kaydedildiği sipariş no (birleşik lot_no listesinden değil, siparis_id'den) */
-function dokumaDepoSatirKayitSno(row) {
-    const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
+/** sipMap verilirse (liste çizimi bir kez kurar) her satırda 343 siparişlik harita yeniden kurulmaz. */
+function dokumaDepoSatirKayitSno(row, sipMapHazir) {
+    const sipMap = sipMapHazir || new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
     if (row?.siparis_id != null && row.siparis_id !== '') {
         const sip = sipMap.get(String(row.siparis_id));
         if (sip?.sno) return String(sip.sno).trim();
@@ -19036,6 +19001,7 @@ async function dtDokumaDepoKdTopluYukle() {
     const siparisler = dataCache.siparisler || [];
     const sipMap = new Map(siparisler.map(s => [String(s.id), s]));
     const kdBySiparis = new Map();
+    let topluTam = false;
 
     try {
         const { data, error } = await erpWithTimeout(
@@ -19046,6 +19012,8 @@ async function dtDokumaDepoKdTopluYukle() {
             'dtDokumaDepoKdBulk'
         );
         if (!error && Array.isArray(data)) {
+            /* Sunucu satır sınırına (1000) takılmadıysa tüm KD_DOKUMA satırları geldi */
+            topluTam = data.length < 1000;
             const grouped = new Map();
             data.forEach(r => {
                 const sid = String(r.siparis_id || '');
@@ -19082,10 +19050,15 @@ async function dtDokumaDepoKdTopluYukle() {
         console.warn('dtDokumaDepoKdTopluYukle bulk', e);
     }
 
-    const eksik = siparisler.filter(s => !kdBySiparis.has(String(s.id)) && _kdCache[`KD_DOKUMA_${s.id}`] === undefined);
-    await Promise.all(eksik.slice(0, 80).map(s => sbKdGet(s.id, 'KD_DOKUMA').then(kd => {
-        if (kd?.urunler) kdBySiparis.set(String(s.id), kd);
-    })));
+    /* Yedek yol yalnız toplu çekim başarısız ya da kesik geldiyse. Eskiden toplu çekim tam
+       gelse de dokuması OLMAYAN her sipariş için ayrı istek atılıyordu (ekran başına 80,
+       açılışta 224 istek — hiçbiri veri getirmiyordu). Seçim kuralı aynı (sbKdSatirlardanSec). */
+    if (!topluTam) {
+        const eksik = siparisler.filter(s => !kdBySiparis.has(String(s.id)) && _kdCache[`KD_DOKUMA_${s.id}`] === undefined);
+        await Promise.all(eksik.slice(0, 80).map(s => sbKdGet(s.id, 'KD_DOKUMA').then(kd => {
+            if (kd?.urunler) kdBySiparis.set(String(s.id), kd);
+        })));
+    }
 
     siparisler.forEach(s => {
         const sid = String(s.id);
@@ -19299,10 +19272,20 @@ async function renderDokumaDepoIcerik(opts) {
         return new Date(b.created_at || 0) - new Date(a.created_at || 0);
     });
 
+    /* Kayıt sno'su satır başına BİR kez hesaplanır. Eskiden sıralama karşılaştırıcısı ve grup
+       süzmesi içinde tekrar tekrar çağrılıyordu (372 satırda 35.764 çağrı, her biri 343 siparişlik
+       harita kurarak) — filtre değişimi ~0,8 sn sürüyordu (28.09.2026). */
+    const ddSipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
+    const ddKayitSno = new Map();
+    const kayitSnoAl = (r) => {
+        if (!ddKayitSno.has(r)) ddKayitSno.set(r, dokumaDepoSatirKayitSno(r, ddSipMap));
+        return ddKayitSno.get(r);
+    };
+
     const q = String(f.q || '').trim().toLowerCase();
     if (q) {
         rows = rows.filter(r => {
-            const sno = (typeof dokumaDepoSatirKayitSno === 'function') ? dokumaDepoSatirKayitSno(r) : (r.siparis_sno || '');
+            const sno = kayitSnoAl(r);
             const blob = [r.lot_no, r.stok_kodu, r.kumas_cinsi, r.firma, r.marka, r.renk, sno, r.siparis_id]
                 .map(x => String(x || '').toLowerCase()).join(' ');
             return q.split(/\s+/).filter(Boolean).every(t => blob.includes(t));
@@ -19360,7 +19343,6 @@ async function renderDokumaDepoIcerik(opts) {
         <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:var(--surface2)" onclick="dokumaDepoFiltre={q:'',durum:'HEPSI',siparisId:''};dokumaDepoYenileAktifEkran()">Filtreleri sıfırla</button>
         <button type="button" class="btn-pro btn-primary-pro" style="padding:8px 14px;font-size:10px" onclick="dtDokumaDepoYenile()">↻ Yenile</button>
         ${embed ? '' : `<button type="button" onclick="erpGeciciDokumaDepoSifirla()" class="btn-pro" title="Geçici — sipariş dokuma toplamına dokunmaz" style="padding:8px 12px;font-size:10px;background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.35);font-weight:700">🗑 Depo mallarını sıfırla</button>`}
-        <button type="button" class="pro-input" style="cursor:pointer;padding:8px 14px;font-weight:600;border-radius:8px;background:rgba(99,102,241,0.1);color:var(--accent)" onclick="setAppMode('DOKUMA_SEVK_GECMIS')">📋 Sevk geçmişi</button>
         ${!sevkGirisAktif ? `<button type="button" class="btn-pro btn-primary-pro" style="padding:8px 14px;font-size:10px" onclick="sevkiyatMerkezAc('DOKUMA_DEPO')">🚚 Sevkiyat Genel Merkezi</button>` : ''}
       </div>
       <div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.45">Güncel dönem Dokuma Takip kayıtları listelenir. Sevkiyat Merkezi'nde kalemleri <strong>+ Ekle</strong> ile toplu listeye alıp tek seferde sevk edebilirsiniz. <strong>Aynı sipariş + ürün + renk</strong> tek satırda toplanır.</div>
@@ -19398,8 +19380,8 @@ async function renderDokumaDepoIcerik(opts) {
     const satirlar = rows.length ? (() => {
         // Sipariş bazlı grup: kaydın yazıldığı sno · müşteri
         const sorted = [...rows].sort((a, b) => {
-            const sa = dokumaDepoSatirKayitSno(a);
-            const sb = dokumaDepoSatirKayitSno(b);
+            const sa = kayitSnoAl(a);
+            const sb = kayitSnoAl(b);
             const c1 = String(sa).localeCompare(String(sb), 'tr', { numeric: true, sensitivity: 'base' });
             if (c1) return c1;
             const c2 = String(a.firma || '').localeCompare(String(b.firma || ''), 'tr');
@@ -19410,13 +19392,13 @@ async function renderDokumaDepoIcerik(opts) {
         const out = [];
         let grupIdx = 0;
         sorted.forEach(r => {
-            const kayitSno = dokumaDepoSatirKayitSno(r);
+            const kayitSno = kayitSnoAl(r);
             const firma = String(r.firma || '—').trim() || '—';
             const grupKey = `${kayitSno}||${firma}`;
             if (grupKey !== sonGrup) {
                 sonGrup = grupKey;
                 grupIdx += 1;
-                const grupRows = sorted.filter(x => dokumaDepoSatirKayitSno(x) === kayitSno && (String(x.firma || '—').trim() || '—') === firma);
+                const grupRows = sorted.filter(x => kayitSnoAl(x) === kayitSno && (String(x.firma || '—').trim() || '—') === firma);
                 const firmaMt = grupRows.reduce((a, x) => a + Math.abs(parseFloat(x.miktar_mt) || 0), 0);
                 const dataKey = 'g' + grupIdx;
                 const adet = grupRows.length;
@@ -19547,17 +19529,6 @@ function dtSetDosya(dosya) {
     renderDokumaTakip();
 }
 
-function dtSetHareketFiltre(key, value) {
-    if (!dtHareketFiltre || typeof dtHareketFiltre !== 'object') return;
-    if (!(key in dtHareketFiltre)) return;
-    dtHareketFiltre[key] = String(value ?? '');
-    const el = document.activeElement;
-    window._dtHareketFocus = {
-        key,
-        pos: (el && typeof el.selectionStart === 'number') ? el.selectionStart : null
-    };
-    debounce('dt-hareket-filtre', () => renderDokumaTakip(), 180);
-}
 
 function dtLoadOpsData() {
     try {
@@ -20877,23 +20848,6 @@ async function dtExcelDosyaOku(input) {
     reader.readAsArrayBuffer(file);
 }
 
-let raporTab = 'YONETICI_OZET';
-let raporFiltre = { donem: 'ay', bas: '', bitis: '', firma: '' };
-let raporHareketOzet = { kesilenAdet: 0, kesimAkisAdet: 0, kesimKdLogAdet: 0 };
-let raporHareketOzetCacheKey = '';
-let raporTekSeciliSiparisId = null;
-let raporArkaplanYuklemeCalisiyor = false;
-let raporArkaplanYenidenCalistir = false;
-let _raporTekSiparisChartAsama = null;
-let _raporTekSiparisChartKalem = null;
-/** Rapor > Ürün özeti: siparis_grubu (GIDA/HALI/EV_TEKSTILI/…), ürün arama, konfeksiyon üretim yeri */
-let raporUrunOzetSiparisGrubu = '';
-let raporUrunOzetUretimYeri = '';
-let raporUrunOzetUrunArama = '';
-/** Konfeksiyon işlem raporu: toplam (dönem içi birleşik) | gunluk */
-let raporKonfIslemKirilim = 'toplam';
-let raporKonfIslemCache = { key: '', rows: [], yukleniyor: false, hata: '' };
-
 function raporLocalDateStr(v) {
     try {
         if (!v) return '';
@@ -20906,692 +20860,6 @@ function raporLocalDateStr(v) {
     } catch (e) {
         return '';
     }
-}
-
-function raporParseAnyDate(v) {
-    try {
-        if (!v) return null;
-        if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
-        const s = String(v).trim();
-        if (!s) return null;
-        // tr-TR locale string: 14.04.2026 11:22:33
-        const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
-        if (m) {
-            const d = new Date(
-                parseInt(m[3], 10),
-                parseInt(m[2], 10) - 1,
-                parseInt(m[1], 10),
-                parseInt(m[4] || '0', 10),
-                parseInt(m[5] || '0', 10),
-                parseInt(m[6] || '0', 10)
-            );
-            return Number.isNaN(d.getTime()) ? null : d;
-        }
-        const d = new Date(s);
-        return Number.isNaN(d.getTime()) ? null : d;
-    } catch (e) {
-        return null;
-    }
-}
-
-
-
-async function renderRaporlar() {
-    const list = document.getElementById('main-list');
-    if (!list) return;
-
-    const siparisler  = dataCache.siparisler  || [];
-    const iplikStok   = dataCache.iplik_stok  || [];
-    const kumasStok   = dataCache.kumas_stok  || [];
-    const numuneler   = (dataCache.kumas_kutuphanesi || []).filter(k => k.ana_grup === 'NUMUNE' || (k.desen_kodu||'').startsWith('NU'));
-    const firmalar    = [...new Set(siparisler.map(s => s.firma).filter(Boolean))].sort();
-
-    const tabs = [
-        { id:'YONETICI_OZET', label:'🧭 Yönetici Özeti' },
-        { id:'SIPARIS',       label:'📋 Sipariş Genel' },
-        { id:'SIPARIS_TEK',   label:'📑 Tek Sipariş Detay' },
-        { id:'IPLIK_STOK',    label:'🧶 İplik Stok Durumu' },
-        { id:'KUMAS_STOK',    label:'🏁 Kumaş Stok Durumu' },
-        { id:'DOKUMA',        label:'🧵 Dokuma Performansı' },
-        { id:'KONFEKSIYON',   label:'👕 Konfeksiyon Performansı' },
-        { id:'KONF_ISLEM',    label:'📒 Konfeksiyon İşlem' },
-        { id:'KONF_KESIM',    label:'✂️ Kesim Detay' },
-        { id:'AKIS_KIYAS',    label:'⚖️ Üretim Karşılaştırma' },
-        { id:'TERMIN',        label:'⏱️ Termin Performansı' },
-        { id:'FIRE',          label:'🔥 Fire Analizi' },
-        { id:'URUN_OZET',     label:'🧮 Ürün Özeti' },
-    ];
-    const tabRenk = (id) => ({
-        YONETICI_OZET: '#6366f1',
-        SIPARIS: '#3b82f6',
-        SIPARIS_TEK: '#8b5cf6',
-        IPLIK_STOK: '#14b8a6',
-        KUMAS_STOK: '#10b981',
-        DOKUMA: '#06b6d4',
-        KONFEKSIYON: '#ec4899',
-        KONF_ISLEM: '#db2777',
-        KONF_KESIM: '#10b981',
-        AKIS_KIYAS: '#0ea5e9',
-        TERMIN: '#ef4444',
-        FIRE: '#f97316',
-        URUN_OZET: '#84cc16'
-    }[id] || '#6366f1');
-
-    list.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:14px;padding:8px;border-radius:16px;background:linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(16,185,129,0.08) 48%, rgba(236,72,153,0.08) 100%)" id="rapor-root">
-
-        <!-- FİLTRE & TAB BAR -->
-        <div class="panel-box" style="padding:12px 16px;background:linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,255,0.88));border:1px solid rgba(99,102,241,0.18)">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-
-                <!-- Dönem hızlı seç -->
-                <div style="display:flex;align-items:center;gap:2px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:9px;padding:3px">
-                    ${['bugün','hafta','ay','yıl'].map(d=>`
-                    <button onclick="raporDonemSec('${d}')" id="rd-${d}"
-                        style="font-size:10px;font-weight:700;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;transition:all 0.12s;font-family:'DM Sans',sans-serif;${raporFiltre.donem===d?'background:linear-gradient(135deg,#6366f1,#14b8a6);color:#fff':'background:transparent;color:var(--text2)'}">
-                        ${d==='bugün'?'Bugün':d==='hafta'?'Hafta':d==='ay'?'Ay':'Yıl'}
-                    </button>`).join('')}
-                </div>
-
-                <!-- Tarih aralığı -->
-                <div style="display:flex;align-items:center;gap:6px">
-                    <input type="date" id="rf-bas" value="${raporFiltre.bas}" onchange="raporFiltre.bas=this.value;raporFiltre.donem='ozel';renderRaporlar()"
-                        class="pro-input" style="width:auto;padding:5px 10px;font-size:10px">
-                    <span style="color:var(--text3)">—</span>
-                    <input type="date" id="rf-bit" value="${raporFiltre.bitis}" onchange="raporFiltre.bitis=this.value;raporFiltre.donem='ozel';renderRaporlar()"
-                        class="pro-input" style="width:auto;padding:5px 10px;font-size:10px">
-                </div>
-
-                <!-- Firma filtre -->
-                <select id="rf-firma" onchange="raporFiltre.firma=this.value;renderRaporlar()" class="pro-input" style="width:auto;padding:5px 10px;font-size:10px">
-                    <option value="">Tüm Firmalar</option>
-                    ${firmalar.map(f=>`<option value="${f}" ${raporFiltre.firma===f?'selected':''}>${f}</option>`).join('')}
-                </select>
-                <button onclick="raporFiltre={donem:'ay',bas:'',bitis:'',firma:''};renderRaporlar()" class="pro-input" style="padding:5px 10px;font-size:10px;cursor:pointer;background:var(--surface2)">Filtre temizle</button>
-
-                <!-- Export -->
-                <div style="margin-left:auto;display:flex;gap:6px">
-                    <button onclick="raporPDF()" class="btn-pro btn-danger-pro" style="padding:5px 12px;font-size:10px">PDF</button>
-                    <button onclick="raporExcel()" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:8px;font-size:10px;font-weight:500;cursor:pointer;background:rgba(52,211,153,0.1);color:var(--emerald-c);border:1px solid rgba(52,211,153,0.2);font-family:'DM Sans',sans-serif">Excel</button>
-                </div>
-            </div>
-
-            <!-- Sekme Butonları -->
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(99,102,241,0.18)">
-                ${tabs.map(t=>`
-                <button onclick="raporTab='${t.id}';renderRaporlar()" id="rtab-${t.id}"
-                    style="font-size:10px;font-weight:700;padding:6px 14px;border-radius:999px;border:1px solid ${raporTab===t.id?'transparent':'rgba(99,102,241,0.25)'};cursor:pointer;transition:all 0.12s;font-family:'DM Sans',sans-serif;background:${raporTab===t.id?`linear-gradient(135deg, ${tabRenk(t.id)}, #0ea5e9)`:'rgba(255,255,255,0.86)'};color:${raporTab===t.id?'#fff':'#344054'};box-shadow:${raporTab===t.id?'0 6px 18px rgba(79,70,229,0.25)':'none'}">
-                    ${t.label}
-                </button>`).join('')}
-            </div>
-            <div style="font-size:9px;color:#475467;margin-top:8px;line-height:1.45">Önce <b>Yönetici Özeti</b> sekmesinden genel durumu görün; sonra aşağıdaki sekmelerle detay analiz yapın.</div>
-        </div>
-
-        <!-- Rapor İçeriği -->
-        <div id="rapor-icerik" style="padding:4px;border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.7), rgba(248,250,255,0.75))">
-            ${renderRaporIcerik(siparisler, iplikStok, kumasStok, numuneler)}
-        </div>
-
-    </div>`;
-
-    const filtreliSiparis = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-    const filtreliIplik = (raporTab === 'IPLIK_STOK' || raporTab === 'STOK')
-        ? raporIplikStokFiltrele(iplikStok)
-        : raporFiltrele(iplikStok, { dateKeys: ['created_at'] });
-    const filtreliKumas = (raporTab === 'KUMAS_STOK' || raporTab === 'STOK')
-        ? raporKumasStokFiltrele(kumasStok)
-        : raporFiltrele(kumasStok, { dateKeys: ['created_at'] });
-    const filtreliNumune = raporFiltrele(numuneler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-
-    // Chart'ları çiz; tek sipariş sekmesinde son seçimi yeniden yükle
-    requestAnimationFrame(() => {
-        raporChartlariCiz(filtreliSiparis, filtreliIplik, filtreliKumas, filtreliNumune);
-        if (raporTab === 'SIPARIS_TEK' && raporTekSeciliSiparisId) raporTekSiparisYukle();
-    });
-    raporArkaplanYuklemeBaslat();
-}
-
-function raporIcerikVeChartYenile() {
-    if (appMode !== 'RAPORLAR') return;
-    const raporIcerik = document.getElementById('rapor-icerik');
-    if (!raporIcerik) return;
-    const siparisler = dataCache.siparisler || [];
-    const iplikStok = dataCache.iplik_stok || [];
-    const kumasStok = dataCache.kumas_stok || [];
-    const numuneler = (dataCache.kumas_kutuphanesi || []).filter(k => k.ana_grup === 'NUMUNE' || (k.desen_kodu || '').startsWith('NU'));
-    raporIcerik.innerHTML = renderRaporIcerik(siparisler, iplikStok, kumasStok, numuneler);
-    const filtreliSiparis = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-    const filtreliIplik = (raporTab === 'IPLIK_STOK' || raporTab === 'STOK')
-        ? raporIplikStokFiltrele(iplikStok)
-        : raporFiltrele(iplikStok, { dateKeys: ['created_at'] });
-    const filtreliKumas = (raporTab === 'KUMAS_STOK' || raporTab === 'STOK')
-        ? raporKumasStokFiltrele(kumasStok)
-        : raporFiltrele(kumasStok, { dateKeys: ['created_at'] });
-    const filtreliNumune = raporFiltrele(numuneler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-    /* Üretim Karşılaştırma arama kutusu: yeniden çizimde imleç kaybolmasın */
-    if (window._raporKiyasAramaFocus) {
-        const kutu = document.getElementById('rapor-kiyas-ara');
-        if (kutu) {
-            const p = window._raporKiyasAramaFocus.pos;
-            kutu.focus();
-            try { kutu.setSelectionRange(p, p); } catch (e) {}
-        }
-        window._raporKiyasAramaFocus = null;
-    }
-    requestAnimationFrame(() => {
-        raporChartlariCiz(filtreliSiparis, filtreliIplik, filtreliKumas, filtreliNumune);
-        if (raporTab === 'SIPARIS_TEK' && raporTekSeciliSiparisId) raporTekSiparisYukle();
-    });
-}
-
-async function raporArkaplanYuklemeBaslat() {
-    if (raporArkaplanYuklemeCalisiyor) {
-        raporArkaplanYenidenCalistir = true;
-        return;
-    }
-    raporArkaplanYuklemeCalisiyor = true;
-    do {
-        raporArkaplanYenidenCalistir = false;
-        const siparisler = dataCache.siparisler || [];
-        const aktifTab = raporTab;
-        const hareketKey = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-
-        if (aktifTab === 'SIPARIS') {
-            const filtreliSiparisler = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-            /* 40'lık toplu çekim — eskiden sipariş başına ayrı istek atılıyordu */
-            if (typeof sbKdGetMany === 'function') {
-                try { await sbKdGetMany(filtreliSiparisler.map(s => s.id).filter(Boolean), 'KD_KONFEKSIYON'); } catch (e) {}
-            } else {
-                for (let i = 0; i < filtreliSiparisler.length; i += 20) {
-                    const chunk = filtreliSiparisler.slice(i, i + 20);
-                    await Promise.allSettled(chunk.map(s => {
-                        if (_kdCache[`KD_KONFEKSIYON_${s.id}`] !== undefined) return Promise.resolve(null);
-                        return sbKdGet(s.id, 'KD_KONFEKSIYON');
-                    }));
-                }
-            }
-        }
-
-        if (hareketKey !== raporHareketOzetCacheKey) {
-            try {
-                const { data, error } = await sb.from('siparis_akis')
-                    .select('siparis_id,islem,miktar,created_at')
-                    .order('created_at', { ascending: false })
-                    .limit(12000);
-                if (!error) {
-                    const sipMap = new Map((siparisler || []).map(s => [String(s.id), s]));
-                    const rows = (data || []).filter(r => {
-                        const islemNorm = planlamaNormIslem(r?.islem);
-                        if (islemNorm !== 'KESIM') return false;
-                        const t = raporLocalDateStr(r?.created_at);
-                        if (raporFiltre.bas && (!t || t < raporFiltre.bas)) return false;
-                        if (raporFiltre.bitis && (!t || t > raporFiltre.bitis)) return false;
-                        if (!raporFiltre.firma) return true;
-                        const sip = sipMap.get(String(r.siparis_id));
-                        return String(sip?.firma || '') === String(raporFiltre.firma);
-                    });
-                    const akisKesimSiparisIds = new Set(rows.map(r => String(r?.siparis_id || '')));
-                    let kdLogKesim = 0;
-                    const filtreliSiparisler = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-                    for (const s of (filtreliSiparisler || [])) {
-                        if (akisKesimSiparisIds.has(String(s?.id || ''))) continue;
-                        const kd = _kdCache[`KD_KONFEKSIYON_${s.id}`] || {};
-                        Object.keys(kd).forEach(k => {
-                            if (!/^log_\d+_kesilen$/.test(k)) return;
-                            const arr = Array.isArray(kd[k]) ? kd[k] : [];
-                            arr.forEach(it => {
-                                const d = raporParseAnyDate(it?.tarih);
-                                const t = raporLocalDateStr(d);
-                                if (raporFiltre.bas && (!t || t < raporFiltre.bas)) return;
-                                if (raporFiltre.bitis && (!t || t > raporFiltre.bitis)) return;
-                                kdLogKesim += parseFloat(it?.miktar) || 0;
-                            });
-                        });
-                    }
-                    const akisToplam = Math.round(rows.reduce((a, r) => a + (parseFloat(r.miktar) || 0), 0));
-                    const kdToplam = Math.round(kdLogKesim);
-                    raporHareketOzet = { kesilenAdet: akisToplam + kdToplam, kesimAkisAdet: akisToplam, kesimKdLogAdet: kdToplam };
-                    raporHareketOzetCacheKey = hareketKey;
-                }
-            } catch (e) {}
-        }
-
-        if (aktifTab === 'KONFEKSIYON' || aktifTab === 'FIRE') {
-            /* Rapor, kendisine gelen siparişlerin TAMAMINI dolaşır (durum süzmesi yok).
-               Veri de aynı küme için yüklenmeli — eskiden yalnız "tamamlanmamış" siparişler
-               yükleniyordu, bu yüzden tamamlanmış siparişler (305'in 211'i) rapora sıfır
-               olarak giriyordu; üretim geçmişi en dolu olanlar tam da onlardır. */
-            const kdSiparisleri = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-            const kdIdler = kdSiparisleri.map(s => s.id).filter(Boolean);
-            if (typeof sbKdGetMany === 'function') {
-                /* 40'lı toplu çekim — tek tek istek atmak 300+ sorgu demek olurdu */
-                try { await sbKdGetMany(kdIdler, 'KD_KONFEKSIYON'); } catch (e) {}
-                try { await sbKdGetMany(kdIdler, 'KD_URUN_AGACI'); } catch (e) {}
-            } else {
-                for (let i = 0; i < kdSiparisleri.length; i += 10) {
-                    const chunk = kdSiparisleri.slice(i, i + 10);
-                    await Promise.allSettled(chunk.flatMap(s => {
-                        const jobs = [];
-                        if (_kdCache[`KD_KONFEKSIYON_${s.id}`] === undefined) jobs.push(sbKdGet(s.id, 'KD_KONFEKSIYON'));
-                        if (_kdCache[`KD_URUN_AGACI_${s.id}`] === undefined) jobs.push(sbKdGet(s.id, 'KD_URUN_AGACI'));
-                        return jobs;
-                    }));
-                }
-            }
-        }
-
-        if (aktifTab === 'KONF_ISLEM') {
-            await raporKonfIslemVeriYukle();
-        }
-
-        if (aktifTab === 'KONF_KESIM') {
-            await raporKonfKesimVeriYukle();
-        }
-
-        if (aktifTab === 'AKIS_KIYAS') {
-            /* Dokunan KD_DOKUMA'dan, kesim/kalite KD_KONFEKSIYON'dan, kesim/yıkama ayrıca
-               konf_kesim_yikama tablosundan gelir (Konfeksiyon Panel yalnız oraya yazar). */
-            const kiyasSip = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-            const kiyasIdler = kiyasSip.map(s => s.id).filter(Boolean);
-            if (typeof sbKdGetMany === 'function') {
-                try { await sbKdGetMany(kiyasIdler, 'KD_DOKUMA'); } catch (e) {}
-                try { await sbKdGetMany(kiyasIdler, 'KD_KONFEKSIYON'); } catch (e) {}
-            }
-            try { await raporAkisKiyasKyYukle(); } catch (e) {}
-        }
-
-        if (aktifTab === 'URUN_OZET') {
-            const filtreliUrun = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-            if (typeof sbKdGetMany === 'function') {
-                try { await sbKdGetMany(filtreliUrun.map(s => s.id).filter(Boolean), 'KD_URUN_AGACI'); } catch (e) {}
-            } else {
-                for (let i = 0; i < filtreliUrun.length; i += 12) {
-                    const chunk = filtreliUrun.slice(i, i + 12);
-                    await Promise.allSettled(chunk.map(s => {
-                        if (_kdCache[`KD_URUN_AGACI_${s.id}`] !== undefined) return Promise.resolve(null);
-                        return sbKdGet(s.id, 'KD_URUN_AGACI');
-                    }));
-                }
-            }
-        }
-
-        if (!raporArkaplanYenidenCalistir) debounce('rapor-arkaplan-yenile', () => raporIcerikVeChartYenile(), 60);
-    } while (raporArkaplanYenidenCalistir);
-    raporArkaplanYuklemeCalisiyor = false;
-}
-
-function raporDonemSec(donem) {
-    raporFiltre.donem = donem;
-    const bugun = new Date();
-    const bugunStr = raporLocalDateStr(bugun);
-    if (donem === 'bugün') {
-        raporFiltre.bas = raporFiltre.bitis = bugunStr;
-    } else if (donem === 'hafta') {
-        const hBas = new Date(bugun); hBas.setDate(bugun.getDate() - bugun.getDay() + 1);
-        raporFiltre.bas = raporLocalDateStr(hBas);
-        raporFiltre.bitis = bugunStr;
-    } else if (donem === 'ay') {
-        raporFiltre.bas = raporLocalDateStr(new Date(bugun.getFullYear(), bugun.getMonth(), 1));
-        raporFiltre.bitis = bugunStr;
-    } else if (donem === 'yıl') {
-        raporFiltre.bas = raporLocalDateStr(new Date(bugun.getFullYear(), 0, 1));
-        raporFiltre.bitis = bugunStr;
-    }
-    renderRaporlar();
-}
-
-function raporFiltrele(liste, opts = {}) {
-    const dateKeys = Array.isArray(opts.dateKeys) && opts.dateKeys.length ? opts.dateKeys : ['created_at'];
-    const firmaKey = opts.firmaKey || null;
-    return (liste || []).filter(s => {
-        const tarihRaw = dateKeys.map(k => s?.[k]).find(v => String(v || '').trim() !== '') || '';
-        const tarih = raporLocalDateStr(tarihRaw);
-        if (raporFiltre.bas && (!tarih || tarih < raporFiltre.bas)) return false;
-        if (raporFiltre.bitis && (!tarih || tarih > raporFiltre.bitis)) return false;
-        if (firmaKey && raporFiltre.firma && String(s?.[firmaKey] || '') !== String(raporFiltre.firma)) return false;
-        return true;
-    });
-}
-
-/** İplik raporu: depo hareketi + kart açılış stoğu (sentetik / KART_AKTARIM). */
-function raporIplikHareketTip(rec) {
-    if (typeof depoHareketDefterIslemTip === 'function') {
-        const tip = depoHareketDefterIslemTip(rec);
-        if (tip) return tip;
-    }
-    const kg = parseFloat(rec?.miktar_kg) || 0;
-    return kg < 0 ? 'ÇIKIŞ' : (kg > 0 ? 'GİRİŞ' : '');
-}
-
-function raporIplikHareketKg(rec) {
-    return Math.abs(parseFloat(rec?.miktar_kg) || 0);
-}
-
-function raporIplikAcilisKaydiMi(rec) {
-    const not = String(rec?.notlar || '');
-    if (not.includes('[KART_AKTARIM:')) return true;
-    if (rec?._fromKart || String(rec?.kaynak_birim || '').toUpperCase() === 'IPLIK_KART_STOK') return true;
-    return false;
-}
-
-function raporIplikStokHazirla(hamListe) {
-    const src = hamListe || (typeof dataCache !== 'undefined' ? dataCache.iplik_stok : []) || [];
-    if (typeof iplikDepoStokHareketleriHazirla === 'function') {
-        return iplikDepoStokHareketleriHazirla(src);
-    }
-    return src.filter(r => !(typeof iplikKartTanimKaydiMi === 'function' && iplikKartTanimKaydiMi(r)));
-}
-
-function raporIplikStokFiltrele(hamListe) {
-    const hazir = raporIplikStokHazirla(hamListe);
-    const bas = raporFiltre.bas;
-    const bit = raporFiltre.bitis;
-    if (!bas && !bit) return hazir;
-
-    const tarihIcinde = (r) => {
-        const tarih = raporLocalDateStr(r?.created_at);
-        if (bas && (!tarih || tarih < bas)) return false;
-        if (bit && (!tarih || tarih > bit)) return false;
-        return true;
-    };
-
-    const donem = hazir.filter(tarihIcinde);
-    const kodSet = new Set(donem.map(r => String(r.stok_kodu || '').trim().toUpperCase()).filter(Boolean));
-    const acilis = hazir.filter(r => {
-        if (tarihIcinde(r)) return false;
-        const kod = String(r.stok_kodu || '').trim().toUpperCase();
-        if (!kod || !kodSet.has(kod)) return false;
-        if (raporIplikAcilisKaydiMi(r)) return true;
-        return raporIplikHareketTip(r) === 'GİRİŞ' && raporIplikHareketKg(r) > 0;
-    });
-    return donem.concat(acilis);
-}
-
-function raporIplikBakiyeHesapla(iplikStok) {
-    const bakiye = {};
-    (iplikStok || []).forEach(i => {
-        const k = i.stok_kodu || i.iplik_no || 'Bilinmeyen';
-        if (!bakiye[k]) {
-            bakiye[k] = { ad: i.cins || i.iplik_no || k, lot: i.lot_no || '—', marka: i.marka || '—', kg: 0, giris: 0, cikis: 0, hareketler: 0 };
-        }
-        const tip = raporIplikHareketTip(i);
-        const m = raporIplikHareketKg(i);
-        if (!tip || m <= 0) return;
-        bakiye[k].hareketler++;
-        if (tip === 'GİRİŞ') {
-            bakiye[k].giris += m;
-            bakiye[k].kg += m;
-        } else if (tip === 'ÇIKIŞ') {
-            bakiye[k].cikis += m;
-            bakiye[k].kg -= m;
-        }
-    });
-    Object.values(bakiye).forEach(d => {
-        if (d.giris > 1e-9) return;
-        if (d.cikis <= 0) return;
-        if (Math.abs(d.kg + d.cikis) < 1e-6) {
-            d.giris = d.cikis;
-            d.kg = 0;
-        } else if (d.kg < -1e-9) {
-            const eksik = Math.round((d.cikis + d.kg) * 1000) / 1000;
-            if (eksik > 0) {
-                d.giris += eksik;
-                d.kg += eksik;
-            }
-        }
-    });
-    return bakiye;
-}
-
-function raporKumasGrupBul(rec) {
-    const tryNorm = (v) => {
-        const g = normSiparisGrubu(v);
-        return g && SIPARIS_GRUP_FILTRE.some(x => x.kod === g) ? g : '';
-    };
-    let g = tryNorm(rec?.ana_grup);
-    if (g) return g;
-    const kod = String(rec?.stok_kodu || rec?.desen_kodu || '').trim();
-    if (kod && typeof kumasKutuphanesiKartBul === 'function') {
-        const kart = kumasKutuphanesiKartBul(kod);
-        if (kart) {
-            const ag = typeof kumasAlan === 'function' ? kumasAlan(kart, 'ana_grup', '') : (kart.ana_grup || '');
-            g = tryNorm(ag);
-            if (g) return g;
-        }
-    }
-    g = tryNorm(rec?.kumas_cinsi) || tryNorm(rec?.urun_adi) || tryNorm(rec?.firma);
-    return g || 'EV_TEKSTILI';
-}
-
-function raporKumasStokHazirla(hamListe) {
-    return (hamListe || []).filter(r => {
-        if (typeof kumasStokHareketiKumasDepoMu === 'function') return kumasStokHareketiKumasDepoMu(r);
-        if (typeof kumasStokHareketiMamulDepoMu === 'function') return !kumasStokHareketiMamulDepoMu(r);
-        return true;
-    });
-}
-
-function raporKumasStokFiltrele(hamListe) {
-    return raporFiltrele(raporKumasStokHazirla(hamListe), { dateKeys: ['created_at'] });
-}
-
-function raporKumasHareketTip(rec) {
-    if (typeof depoHareketDefterIslemTip === 'function') {
-        const tip = depoHareketDefterIslemTip(rec);
-        if (tip) return tip;
-    }
-    const kg = parseFloat(rec?.miktar_kg) || 0;
-    const mt = parseFloat(rec?.miktar_mt) || 0;
-    return kg < 0 || mt < 0 ? 'ÇIKIŞ' : (kg > 0 || mt > 0 ? 'GİRİŞ' : '');
-}
-
-function raporKumasBakiyeHesapla(kumasStok) {
-    const bakiye = {};
-    (kumasStok || []).forEach(k => {
-        const kod = k.stok_kodu || k.kumas_cinsi || 'Bilinmeyen';
-        if (!bakiye[kod]) {
-            const grup = raporKumasGrupBul(k);
-            bakiye[kod] = {
-                ad: k.kumas_cinsi || k.urun_adi || kod,
-                renk: k.renk || '—',
-                grup,
-                grupLbl: siparisGrubuEtiket(grup),
-                kg: 0, mt: 0,
-                girisKg: 0, cikisKg: 0, girisMt: 0, cikisMt: 0
-            };
-        }
-        const tip = raporKumasHareketTip(k);
-        const signedKg = parseFloat(k.miktar_kg) || 0;
-        const signedMt = parseFloat(k.miktar_mt) || 0;
-        if (!tip && signedKg === 0 && signedMt === 0) return;
-        const tipFinal = tip || (signedKg < 0 || signedMt < 0 ? 'ÇIKIŞ' : 'GİRİŞ');
-        const absKg = Math.abs(signedKg);
-        const absMt = Math.abs(signedMt);
-        if (tipFinal === 'GİRİŞ') {
-            bakiye[kod].girisKg += absKg;
-            bakiye[kod].girisMt += absMt;
-        } else if (tipFinal === 'ÇIKIŞ') {
-            bakiye[kod].cikisKg += absKg;
-            bakiye[kod].cikisMt += absMt;
-        }
-        bakiye[kod].kg += signedKg;
-        bakiye[kod].mt += signedMt;
-    });
-    const duzelt = (d, suffix) => {
-        const key = suffix.toLowerCase();
-        const giris = d['giris' + suffix];
-        const cikis = d['cikis' + suffix];
-        const bal = d[key];
-        if (giris > 1e-9) return;
-        if (cikis <= 0) return;
-        if (Math.abs(bal + cikis) < 1e-6) {
-            d['giris' + suffix] = cikis;
-            d[key] = 0;
-        } else if (bal < -1e-9) {
-            const eksik = Math.round((cikis + bal) * 1000) / 1000;
-            if (eksik > 0) {
-                d['giris' + suffix] += eksik;
-                d[key] += eksik;
-            }
-        }
-    };
-    Object.values(bakiye).forEach(d => {
-        duzelt(d, 'Kg');
-        duzelt(d, 'Mt');
-    });
-    return bakiye;
-}
-
-function raporKumasGrupOzet(bakiye) {
-    const out = {};
-    SIPARIS_GRUP_FILTRE.forEach(g => {
-        out[g.kod] = { lbl: g.etiket, girisKg: 0, cikisKg: 0, kg: 0, girisMt: 0, cikisMt: 0, mt: 0, kalem: 0 };
-    });
-    Object.values(bakiye || {}).forEach(d => {
-        const g = out[d.grup] ? d.grup : 'EV_TEKSTILI';
-        const o = out[g];
-        o.girisKg += d.girisKg;
-        o.cikisKg += d.cikisKg;
-        o.kg += d.kg;
-        o.girisMt += d.girisMt;
-        o.cikisMt += d.cikisMt;
-        o.mt += d.mt;
-        o.kalem++;
-    });
-    return out;
-}
-
-function raporFmtKgMt(kg, mt, opts) {
-    opts = opts || {};
-    const fmtKg = n => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-    const fmtMt = n => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: opts.mtDec != null ? opts.mtDec : 1 });
-    const parts = [];
-    if (opts.kg !== false) parts.push(`${fmtKg(kg)} kg`);
-    if (opts.mt !== false && (Math.abs(mt) > 1e-9 || opts.mtAlways)) parts.push(`${fmtMt(mt)} mt`);
-    return parts.join(' · ') || '0';
-}
-
-function renderRaporSekmeAciklama(tabId) {
-    const meta = {
-        YONETICI_OZET: ['Yönetici Özeti', 'Öncelikli aksiyon alanlarını tek ekranda gösterir.'],
-        SIPARIS: ['Sipariş Genel', 'Sipariş adetleri, firma dağılımı ve üretim akışının özet görünümü.'],
-        SIPARIS_TEK: ['Tek Sipariş Detay', 'Seçilen siparişin dokuma, konfeksiyon ve sevk adımlarını detaylı izler.'],
-        IPLIK_STOK: ['İplik Stok Durumu', 'İplik giriş/çıkış dengesini ve kritik kalemleri takip eder.'],
-        KUMAS_STOK: ['Kumaş Stok Durumu', 'Kumaş stok hareketlerini kg ve mt olarak; Halıcı, Gıda, Ev tekstili ve Koltuk örtüsü gruplarına göre gösterir.'],
-        DOKUMA: ['Dokuma Performansı', 'Dokuma verimliliği ve siparişe göre üretim tamamlanma durumunu verir.'],
-        KONFEKSIYON: ['Konfeksiyon Performansı', 'Kesim-dikim-kalite-koli-sevk akışını üretim çıktıları ile raporlar.'],
-        KONF_ISLEM: ['Konfeksiyon İşlem', 'Seçilen dönemde kesim, yıkama, kalite ve sevk işlemlerini sipariş + ürün bazında toplar.'],
-        KONF_KESIM: ['Kesim Detay', 'Her kesim girişini ayrı satırda listeler: sipariş, müşteri, desen, ebat, renk ve kesilen adet.'],
-        TERMIN: ['Termin Performansı', 'Geciken ve yaklaşan terminleri erken uyarı mantığıyla izletir.'],
-        AKIS_KIYAS: ['Üretim Karşılaştırma', 'Sipariş → dokuma → kesim → yıkama → kalite adetlerini yan yana karşılaştırır; her aşamadaki kaybı gösterir.'],
-        FIRE: ['Fire Analizi', 'Fire kaynaklarını ve sipariş bazlı kayıp oranlarını görünür kılar.'],
-        URUN_OZET: ['Ürün Özeti', 'Ürün gruplarını, üretim yerlerini ve sipariş yoğunluklarını özetler.']
-    };
-    const [title, desc] = meta[tabId] || ['Rapor', ''];
-    const renk = ({
-        YONETICI_OZET: '#6366f1',
-        SIPARIS: '#3b82f6',
-        SIPARIS_TEK: '#8b5cf6',
-        IPLIK_STOK: '#14b8a6',
-        KUMAS_STOK: '#10b981',
-        DOKUMA: '#06b6d4',
-        KONFEKSIYON: '#ec4899',
-        KONF_ISLEM: '#db2777',
-        KONF_KESIM: '#10b981',
-        AKIS_KIYAS: '#0ea5e9',
-        TERMIN: '#ef4444',
-        FIRE: '#f97316',
-        URUN_OZET: '#84cc16'
-    }[tabId] || '#6366f1');
-    return `
-    <div class="panel-box" style="padding:10px 12px;border-left:4px solid ${renk};margin-bottom:10px;background:linear-gradient(135deg, ${renk}1A, rgba(255,255,255,0.92));border-color:${renk}44">
-        <div style="font-size:10px;font-weight:800;color:${renk};text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">${title}</div>
-        <div style="font-size:10px;color:#475467;margin-top:3px;line-height:1.45">${desc}</div>
-    </div>`;
-}
-
-function renderRaporIcerik(siparisler, iplikStok, kumasStok, numuneler) {
-    const filtreliSiparis = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-    const filtreliIplik = (raporTab === 'IPLIK_STOK' || raporTab === 'STOK')
-        ? raporIplikStokFiltrele(iplikStok)
-        : raporFiltrele(iplikStok, { dateKeys: ['created_at'] });
-    const filtreliKumas = raporTab === 'KUMAS_STOK'
-        ? raporKumasStokFiltrele(kumasStok)
-        : raporFiltrele(kumasStok, { dateKeys: ['created_at'] });
-    const filtreliNumune = raporFiltrele(numuneler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-    let content = '';
-    if (raporTab === 'YONETICI_OZET') content = renderRaporYoneticiOzeti(filtreliSiparis, filtreliIplik, filtreliKumas, filtreliNumune);
-    else if (raporTab === 'SIPARIS') content = renderRaporUstSerit(filtreliSiparis, filtreliIplik, filtreliKumas, filtreliNumune) + renderRaporSiparis(filtreliSiparis);
-    else if (raporTab === 'SIPARIS_TEK') content = renderRaporSiparisTekil(filtreliSiparis);
-    else if (raporTab === 'IPLIK_STOK') content = renderRaporIplikStok(filtreliIplik);
-    else if (raporTab === 'KUMAS_STOK') content = renderRaporKumasStok(filtreliKumas);
-    else if (raporTab === 'DOKUMA') content = renderRaporDokuma(filtreliIplik, filtreliSiparis);
-    else if (raporTab === 'KONFEKSIYON') content = renderRaporKonfeksiyon(filtreliSiparis);
-    else if (raporTab === 'KONF_ISLEM') content = renderRaporKonfIslem();
-    else if (raporTab === 'KONF_KESIM') content = renderRaporKonfKesim();
-    else if (raporTab === 'AKIS_KIYAS') content = renderRaporAkisKiyas(filtreliSiparis);
-    else if (raporTab === 'TERMIN') content = renderRaporTermin(filtreliSiparis);
-    else if (raporTab === 'FIRE') content = renderRaporFire(filtreliSiparis);
-    else if (raporTab === 'URUN_OZET') content = renderRaporUrunOzet(filtreliSiparis);
-    else if (raporTab === 'STOK') content = renderRaporStok(filtreliIplik, filtreliKumas);
-    return renderRaporSekmeAciklama(raporTab) + content;
-}
-
-function renderRaporYoneticiOzeti(siparisler, iplikStok, kumasStok, numuneler) {
-    const bugun = new Date();
-    const aktifSip = siparisler.filter(s => String(s.durum || '').toUpperCase() !== 'TAMAMLANDI');
-    const geciken = aktifSip.filter(s => s.ttarih && new Date(s.ttarih) < bugun);
-    const yaklasan = aktifSip.filter(s => {
-        if (!s.ttarih) return false;
-        const gun = Math.ceil((new Date(s.ttarih) - bugun) / 86400000);
-        return gun >= 0 && gun <= 7;
-    });
-    const sevkHazir = (kumasStok || []).filter(r => {
-        const kb = String(r?.kaynak_birim || '').toUpperCase();
-        const tip = String(r?.islem_turu || '').toUpperCase();
-        const not = String(r?.notlar || '').toUpperCase();
-        return kb === 'DOKUMA_TAKIP' && (tip === 'GİRİŞ' || tip === 'GIRIS' || !tip) && !not.includes('[SEVK_KAPANDI]');
-    });
-    const sevkHazirKg = sevkHazir.reduce((a, r) => a + Math.max(0, parseFloat(r.miktar_kg) || 0), 0);
-    const sevkHazirMt = sevkHazir.reduce((a, r) => a + Math.max(0, parseFloat(r.miktar_mt) || 0), 0);
-    const sevkHazirAd = sevkHazir.reduce((a, r) => a + Math.max(0, parseInt(r.cuval_sayisi || 0, 10) || 0), 0);
-    const topIplikKg = iplikStok.reduce((a, i) => a + (parseFloat(i.miktar_kg) || 0), 0);
-    const topKumasKg = kumasStok.reduce((a, i) => a + (parseFloat(i.miktar_kg) || 0), 0);
-    const kesilen = parseInt(raporHareketOzet.kesilenAdet || 0, 10) || 0;
-    const gecikenRows = geciken
-        .sort((a, b) => new Date(a.ttarih || 0) - new Date(b.ttarih || 0))
-        .slice(0, 8)
-        .map(s => {
-            const gun = Math.abs(Math.ceil((bugun - new Date(s.ttarih)) / 86400000));
-            return `<tr><td>${pdfEsc(s.sno || '—')}</td><td>${pdfEsc(s.firma || '—')}</td><td>${pdfEsc(s.ttarih || '—')}</td><td style="text-align:right;color:var(--rose-c);font-weight:700">${gun} gün</td></tr>`;
-        }).join('');
-    const firmaMap = {};
-    aktifSip.forEach(s => { firmaMap[s.firma || 'Bilinmeyen'] = (firmaMap[s.firma || 'Bilinmeyen'] || 0) + 1; });
-    const firmaRows = Object.entries(firmaMap).sort((a, b) => b[1] - a[1]).slice(0, 8)
-        .map(([f, n]) => `<tr><td>${pdfEsc(f)}</td><td style="text-align:right;font-weight:700">${n}</td></tr>`).join('');
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="panel-box" style="padding:12px 14px;border-left:3px solid var(--accent)">
-            <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">Yönetici Özeti</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:4px;line-height:1.45">Bu ekran, üretim ve sevk tarafının güncel durumunu tek bakışta verir. Kırmızı değerler öncelikli aksiyon gerektirir.</div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
-            <div class="panel-box" style="padding:12px 14px"><div style="font-size:9px;color:var(--text3)">Aktif sipariş</div><div style="font-size:26px;font-family:'Instrument Serif',serif">${aktifSip.length}</div><div style="font-size:9px;color:var(--rose-c)">Geciken: ${geciken.length}</div></div>
-            <div class="panel-box" style="padding:12px 14px"><div style="font-size:9px;color:var(--text3)">Sevke hazır havuz</div><div style="font-size:26px;font-family:'Instrument Serif',serif">${sevkHazir.length}</div><div style="font-size:9px;color:var(--text2)">${sevkHazirKg.toFixed(1)} kg · ${sevkHazirMt.toFixed(1)} mt · ${sevkHazirAd} adet</div></div>
-            <div class="panel-box" style="padding:12px 14px"><div style="font-size:9px;color:var(--text3)">Stok net</div><div style="font-size:26px;font-family:'Instrument Serif',serif">${Math.round(topIplikKg).toLocaleString('tr-TR')} / ${Math.round(topKumasKg).toLocaleString('tr-TR')}</div><div style="font-size:9px;color:var(--text2)">İplik kg / Kumaş kg</div></div>
-            <div class="panel-box" style="padding:12px 14px"><div style="font-size:9px;color:var(--text3)">Kalite & üretim</div><div style="font-size:26px;font-family:'Instrument Serif',serif">${kesilen.toLocaleString('tr-TR')}</div><div style="font-size:9px;color:var(--text2)">Kesilen adet</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px">
-            <div class="panel-box">
-                <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--rose-c)"></span>Aksiyon Listesi — Geciken Siparişler</span><span style="font-size:9px;color:var(--text3)">Yaklaşan: ${yaklasan.length}</span></div>
-                <div style="overflow:auto"><table class="dt-table" style="min-width:520px"><thead><tr><th>Sipariş</th><th>Firma</th><th>Termin</th><th style="text-align:right">Gecikme</th></tr></thead><tbody>${gecikenRows || `<tr><td colspan="4" style="padding:12px;color:var(--text3)">Geciken sipariş yok.</td></tr>`}</tbody></table></div>
-            </div>
-            <div class="panel-box">
-                <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>Aktif Sipariş Yükü (Firma)</span></div>
-                <div style="overflow:auto"><table class="dt-table"><thead><tr><th>Firma</th><th style="text-align:right">Adet</th></tr></thead><tbody>${firmaRows || `<tr><td colspan="2" style="padding:12px;color:var(--text3)">Veri yok.</td></tr>`}</tbody></table></div>
-            </div>
-        </div>
-    </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -24618,1367 +23886,7 @@ function tpGanttHtml() {
         </div>` : ''}
     </div>`;
 }
-
-// ── 0. ÜST ÖZET ŞERİDİ (Sipariş tab'ında gösterilir) ──────
-function renderRaporUstSerit(siparisler, iplikStok, kumasStok, numuneler) {
-    const aktifSip    = siparisler.filter(s => s.durum !== 'TAMAMLANDI').length;
-    const topIplikKg  = iplikStok.reduce((a,i) => a + (parseFloat(i.miktar_kg)||0), 0);
-    const topKumasKg  = kumasStok.reduce((a,k) => a + (parseFloat(k.miktar_kg)||0), 0);
-    const bugun       = new Date();
-    const gecikmis    = siparisler.filter(s => s.durum !== 'TAMAMLANDI' && s.ttarih && new Date(s.ttarih) < bugun).length;
-    const numOnay     = numuneler.filter(n => n.kalite === 'ONAYLANDI').length;
-    const numTop      = numuneler.length;
-
-    // Dokuma hareketleri (iplik_stok'tan - kaynak_birim DOKUMA veya tezgah)
-    const dokumaGiris = iplikStok.filter(i => (i.aciklama||'').includes('DOKUMA') || (i.kaynak_birim||'').includes('DOKUMA')).reduce((a,i) => a + Math.abs(parseFloat(i.miktar_kg)||0), 0);
-    let dokunanAdet = 0;
-    let kesilenAdet = 0;
-    siparisler.forEach(s => {
-        const kdD = _kdCache[`KD_DOKUMA_${s.id}`] || {};
-        const urunler = kdD.urunler || {};
-        Object.values(urunler).forEach(u => { dokunanAdet += parseInt(u?.toplam_adet, 10) || 0; });
-        const kdK = _kdCache[`KD_KONFEKSIYON_${s.id}`] || {};
-        kesilenAdet += parseInt(kdK.kesim_toplam, 10) || 0;
-    });
-    // Kayıt zamanı bazlı kesin değer varsa onu kullan.
-    const hareketKey = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-    if (raporHareketOzetCacheKey === hareketKey) {
-        kesilenAdet = parseInt(raporHareketOzet.kesilenAdet, 10) || 0;
-    }
-    const kesimKaynakNotu = `Akış: ${(parseInt(raporHareketOzet.kesimAkisAdet,10)||0).toLocaleString('tr-TR')} · KD Log: ${(parseInt(raporHareketOzet.kesimKdLogAdet,10)||0).toLocaleString('tr-TR')}`;
-
-    const kartlar = [
-        { ikon:'📋', etiket:'Aktif Sipariş',   deger: aktifSip,                       renk:'var(--accent)',    birim:'', badge: gecikmis > 0 ? `<span style="font-size:9px;color:var(--rose-c);font-family:'DM Mono',monospace;margin-top:2px">⚠ ${gecikmis} gecikmiş</span>` : `<span style="font-size:9px;color:var(--emerald-c)">✅ zamanında</span>` },
-        { ikon:'🧶', etiket:'İplik Stok Net',   deger: Math.round(topIplikKg),         renk:'var(--accent2)',   birim:'kg', badge: '' },
-        { ikon:'🏁', etiket:'Kumaş Stok Net',   deger: Math.round(Math.abs(topKumasKg)),renk:'var(--cyan-c)',   birim:'kg', badge: '' },
-        { ikon:'🧵', etiket:'Dokunan',          deger: Math.round(dokunanAdet),        renk:'var(--emerald-c)', birim:'adet', badge: `<span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${Math.round(dokumaGiris)} kg hareket</span>` },
-        { ikon:'✂️', etiket:'Kesilen',          deger: Math.round(kesilenAdet),        renk:'var(--violet-c)',  birim:'adet', badge: `<span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${kesimKaynakNotu}</span>` },
-    ];
-
-    return `
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:2px">
-        ${kartlar.map(k => `
-        <div class="panel-box" style="padding:14px 16px;border-left:3px solid ${k.renk}">
-            <div style="font-size:18px;margin-bottom:6px">${k.ikon}</div>
-            <div style="font-family:'Instrument Serif',serif;font-size:26px;color:${k.renk};line-height:1">
-                ${typeof k.deger === 'number' ? k.deger.toLocaleString('tr-TR') : k.deger}
-                <span style="font-size:13px;color:var(--text3);font-family:'DM Sans',sans-serif">${k.birim}</span>
-            </div>
-            <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-top:4px">${k.etiket}</div>
-            ${k.badge}
-        </div>`).join('')}
-    </div>`;
-}
-
-// ── 1. SİPARİŞ ÖZETİ ──────────────────────────────────────
-function renderRaporSiparis(siparisler) {
-    const toplamSiparis = siparisler.length;
-    const aktif     = siparisler.filter(s => s.durum !== 'TAMAMLANDI').length;
-    const tamamlandi = siparisler.filter(s => s.durum === 'TAMAMLANDI').length;
-    const topAdet   = siparisler.reduce((a,s) => {
-        let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){}
-        return a + k.reduce((b,i)=>b+(parseInt(i.miktar)||0),0);
-    }, 0);
-
-    // Firma bazlı dağılım
-    const firmaMap = {};
-    siparisler.forEach(s => {
-        const f = s.firma || 'Bilinmeyen';
-        if (!firmaMap[f]) firmaMap[f] = { sayi:0, adet:0 };
-        firmaMap[f].sayi++;
-        let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){}
-        firmaMap[f].adet += k.reduce((b,i)=>b+(parseInt(i.miktar)||0),0);
-    });
-    const firmaSirali = Object.entries(firmaMap).sort((a,b)=>b[1].adet-a[1].adet).slice(0,8);
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <!-- KPI Kartları -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${[
-                {l:'Toplam Sipariş', v:toplamSiparis, ikon:'📋', c:'indigo'},
-                {l:'Aktif',          v:aktif,         ikon:'🔄', c:'amber'},
-                {l:'Tamamlanan',     v:tamamlandi,    ikon:'✅', c:'emerald'},
-                {l:'Toplam Adet',    v:topAdet.toLocaleString(), ikon:'👕', c:'violet'},
-            ].map(x=>`
-            <div class="rounded-2xl" style="background:var(--surface)">
-                <div class="text-2xl mb-1">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:26px;font-weight:300;color:var(--text)">${x.v}</div>
-                <div class="text-[9px] font-black text-slate-400 uppercase mt-0.5">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Grafikler -->
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">📊 Firma Bazlı Sipariş Dağılımı</div>
-                <div style="height:220px"><canvas id="chart-firma-dagilim"></canvas></div>
-            </div>
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">📈 Aylık Sipariş Trendi</div>
-                <div style="height:220px"><canvas id="chart-aylik-trend"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Firma tablosu -->
-        <div class="panel-box">
-            <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>🏢 Firma Bazlı Detay</span></div>
-            <div class="overflow-x-auto"><table class="w-full text-[10px]">
-                <thead style="background:var(--surface2)"><tr>
-                    <th class="text-left px-4 py-2 font-bold">Firma</th>
-                    <th class="text-right px-4 py-2 font-bold">Sipariş</th>
-                    <th class="text-right px-4 py-2 font-black text-violet-600">Toplam Adet</th>
-                    <th class="text-right px-4 py-2 font-black text-slate-400">Pay %</th>
-                </tr></thead>
-                <tbody >
-                    ${firmaSirali.map(([f,d])=>`
-                    <tr >
-                        <td class="px-4 py-2 font-bold">${f}</td>
-                        <td class="px-4 py-2 text-right font-bold text-slate-600">${d.sayi}</td>
-                        <td class="px-4 py-2 text-right font-bold text-violet-600">${d.adet.toLocaleString()}</td>
-                        <td class="px-4 py-2 text-right font-bold text-slate-400">${topAdet>0?Math.round(d.adet/topAdet*100):0}%</td>
-                    </tr>`).join('')}
-                </tbody>
-            </table></div>
-        </div>
-    </div>`;
-}
-
-// ── 1b. TEK SİPARİŞ RAPORU (detaylı üretim özeti + şemalar) ──
-function renderRaporSiparisTekil(filtreliSiparisler) {
-    const liste = (filtreliSiparisler && filtreliSiparisler.length)
-        ? filtreliSiparisler
-        : (dataCache.siparisler || []);
-    const sirali = liste.slice().sort((a, b) => String(a.sno || '').localeCompare(String(b.sno || ''), 'tr', { numeric: true }));
-    const opts = sirali.map(s => {
-        const id = String(s.id);
-        const sel = raporTekSeciliSiparisId != null && String(raporTekSeciliSiparisId) === id ? ' selected' : '';
-        const tt = (s.ttarih || '').slice(0, 10);
-        return `<option value="${id}"${sel}>${pdfEsc(s.sno || id)} — ${pdfEsc(s.firma || '—')}${tt ? ' · ' + pdfEsc(tt) : ''}</option>`;
-    }).join('');
-    return `
-    <div style="display:flex;flex-direction:column;gap:14px" id="rapor-tek-wrap">
-        <div class="panel-box" style="padding:14px 18px;border:1px solid rgba(99,102,241,0.35);background:linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(15,23,42,0.02) 50%, rgba(236,72,153,0.06) 100%)">
-            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between">
-                <div>
-                    <div style="font-size:9px;font-weight:800;color:var(--accent2);text-transform:uppercase;letter-spacing:0.14em;font-family:'DM Mono',monospace;margin-bottom:6px">Tek sipariş üretim raporu</div>
-                    <div style="font-size:15px;font-weight:800;color:var(--text);letter-spacing:-0.02em">Dokuma · kesim · dikim · kalite · koli · sevk — tek sayfada</div>
-                    <div style="font-size:10px;color:var(--text3);margin-top:4px;max-width:520px;line-height:1.45">Seçilen sipariş için Supabase’teki dokuma ve konfeksiyon özetleri ile operasyon günlüğü bir arada; aşama halkaları ve grafikler üretim ilerlemesini gösterir.</div>
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                    <select id="rapor-tek-sip-select" class="pro-input" style="min-width:260px;max-width:min(420px,92vw);padding:8px 12px;font-size:11px;font-weight:600">
-                        <option value="">— Sipariş seçin —</option>
-                        ${opts}
-                    </select>
-                    <button type="button" onclick="raporTekSiparisYukle()" class="btn-pro btn-primary-pro" style="padding:8px 16px;font-size:10px;font-weight:800;white-space:nowrap">Raporu oluştur</button>
-                    <button type="button" onclick="raporTekSiparisPdf()" class="btn-pro btn-ghost-pro" style="padding:8px 14px;font-size:10px;border:1px solid var(--border)">PDF (bu rapor)</button>
-                </div>
-            </div>
-        </div>
-        <div id="rapor-tek-siparis-out">
-            <div class="panel-box" style="padding:40px 24px;text-align:center">
-                <div style="font-size:36px;margin-bottom:10px;opacity:0.85">📑</div>
-                <div style="font-size:13px;font-weight:700;color:var(--text2)">Sipariş seçip «Raporu oluştur»a basın</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:6px">Üstteki tarih / firma filtreleri bu listeyi daraltır.</div>
-            </div>
-        </div>
-    </div>`;
-}
-
-function raporTekOranYuzde(cur, tgt) {
-    const c = Number(cur) || 0;
-    const t = Number(tgt) || 0;
-    if (t <= 0) return c > 0 ? 100 : 0;
-    return Math.min(100, Math.round((c / t) * 100));
-}
-
-function raporTekAggregateFromKd(siparis, kdK, kdD) {
-    let kalemler = [];
-    try {
-        kalemler = typeof siparis.cins === 'string' ? JSON.parse(siparis.cins) : (Array.isArray(siparis.cins) ? siparis.cins : []);
-    } catch (e) { kalemler = []; }
-    const sipAdet = kalemler.reduce((a, k) => a + (parseInt(k.miktar, 10) || 0), 0);
-    const urunler = (kdD && kdD.urunler) ? kdD.urunler : {};
-    let dokAdet = 0;
-    let dokM = 0;
-    let dokKg = 0;
-    let dokAdRaw = 0;
-    let dokIkinciTip = null;
-    kalemler.forEach((k, i) => {
-        const u = urunler[i] || urunler[String(i)] || {};
-        const o = dokumaUrunIkinciOzet(u, k);
-        dokAdet += o.ikinci;
-        dokM += o.metre;
-        dokKg += o.kg;
-        dokAdRaw += o.adet;
-        if (!dokIkinciTip) dokIkinciTip = o.tip;
-        else if (dokIkinciTip !== o.tip) dokIkinciTip = 'MIX';
-    });
-    /* Tek kural (konfSiparisUretimToplam) — sipariş detayı ve Konfeksiyon Panel ile aynı sayı. */
-    const ut = konfSiparisUretimToplam(siparis.id, kdK, kalemler.length);
-    const kes = ut.kesim;
-    const dik = ut.dikim;
-    const kk = ut.kalite;
-    const kol = ut.koli;
-    const ySevk = ut.yikSevk;
-    const yGel = ut.yikGel;
-    const sevk = parseInt(kdK?.panel_sevk_toplam, 10) || 0;
-    const hatali = parseInt(kdK?.hatali_toplam, 10) || 0;
-    return { kalemler, sipAdet, dokAdet, dokM, dokKg, dokAdRaw, dokIkinciTip: dokIkinciTip || 'ADET', kes, dik, kk, kol, ySevk, yGel, sevk, hatali };
-}
-
-function raporTekHalkaHtml(pct, renk, ikon, baslik, alt) {
-    const p = Math.max(0, Math.min(100, pct));
-    const grad = `conic-gradient(${renk} ${p}%, var(--surface2) 0)`;
-    return `
-    <div style="text-align:center;min-width:72px;flex:1;max-width:120px">
-        <div style="position:relative;width:64px;height:64px;margin:0 auto 8px;border-radius:50%;background:${grad};display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.12)">
-            <div style="width:48px;height:48px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:20px">${ikon}</div>
-        </div>
-        <div style="font-size:8px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace">${pdfEsc(baslik)}</div>
-        <div style="font-size:11px;font-weight:800;color:var(--text);font-family:'DM Mono',monospace;margin-top:3px">${pdfEsc(alt)}</div>
-        <div style="font-size:9px;color:var(--accent2);font-weight:700;margin-top:2px">%${p}</div>
-    </div>`;
-}
-
-async function raporTekSiparisYukle() {
-    const sel = document.getElementById('rapor-tek-sip-select');
-    const out = document.getElementById('rapor-tek-siparis-out');
-    if (!sel || !out) return;
-    const idRaw = sel.value;
-    if (!idRaw) {
-        alert('Lütfen listeden bir sipariş seçin.');
-        return;
-    }
-    raporTekSeciliSiparisId = idRaw;
-    const siparis = (dataCache.siparisler || []).find(s => String(s.id) === String(idRaw));
-    if (!siparis) {
-        out.innerHTML = '<div class="panel-box" style="padding:24px;color:var(--rose-c)">Sipariş bulunamadı. Senkronize edin.</div>';
-        return;
-    }
-    out.innerHTML = '<div class="panel-box" style="padding:32px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">⏳</div>Veriler yükleniyor…</div>';
-    try {
-        await sbKdGet(siparis.id, 'KD_KONFEKSIYON', true);
-        await sbKdGet(siparis.id, 'KD_DOKUMA', true);
-        await sbKdGet(siparis.id, 'KD_URUN_AGACI', true);
-        await konfLoadIslemLog(siparis.id);
-        await Promise.all([konfLoadKesimGecmis({ skipRotaDuzelt: true }), konfLoadGlobalKumasGelis({ skipUa: true })]);
-        const kdK = _kdCache[`KD_KONFEKSIYON_${siparis.id}`] || {};
-        const kdD = _kdCache[`KD_DOKUMA_${siparis.id}`] || {};
-        const rows = _konfIslemLogCache[siparis.id] || [];
-        const allUaRapor = _kdCache[`KD_URUN_AGACI_${siparis.id}`] || {};
-        const agg = raporTekAggregateFromKd(siparis, kdK, kdD);
-        const tgt = agg.sipAdet || 1;
-        const fmt = (n) => (Number(n) || 0).toLocaleString('tr-TR');
-        const gun = siparis.ttarih ? Math.ceil((new Date(siparis.ttarih) - new Date()) / 86400000) : null;
-        const terminTxt = gun == null ? '—' : gun < 0 ? `${Math.abs(gun)} gün gecikme` : gun === 0 ? 'Bugün' : `${gun} gün kaldı`;
-        const durPill = siparis.durum === 'TAMAMLANDI' ? 'pill-green' : (gun != null && gun < 0) ? 'pill-red' : 'pill-blue';
-
-        const halkalar = `
-        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:14px;padding:18px 16px 8px;background:var(--surface2);border-radius:12px;border:1px solid var(--border)">
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.dokAdet, tgt), '#22d3ee', '🧵', agg.dokIkinciTip === 'KG' ? 'Dokuma (kg)' : (agg.dokIkinciTip === 'MT' ? 'Dokuma (m)' : 'Dokuma (adet)'), `${fmt(agg.dokAdet)} / ${fmt(tgt)}`)}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.kes, tgt), '#818cf8', '✂️', 'Kesim', fmt(agg.kes))}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.ySevk + agg.yGel, Math.max(tgt, 1)), '#38bdf8', '💧', 'Yıkama', `${fmt(agg.ySevk)}↗ ${fmt(agg.yGel)}↙`)}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.dik, tgt), '#fb7185', '🧵', 'Dikim', fmt(agg.dik))}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.kk, tgt), '#fbbf24', '🔍', 'Kalite', fmt(agg.kk))}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.kol, tgt), '#34d399', '📦', 'Koli', fmt(agg.kol))}
-            ${raporTekHalkaHtml(raporTekOranYuzde(agg.sevk, tgt), '#a78bfa', '🚚', 'Sevk', fmt(agg.sevk))}
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">
-            <span>Dokuma metraj: <b style="color:var(--cyan-c)">${agg.dokM.toFixed(1)} m</b></span>
-            ${agg.dokIkinciTip === 'KG' || agg.dokIkinciTip === 'MIX' ? `<span>·</span><span>Dokuma kg: <b style="color:var(--accent2)">${agg.dokKg.toFixed(1)} kg</b></span>` : ''}
-            ${agg.dokIkinciTip === 'ADET' || agg.dokIkinciTip === 'MIX' ? `<span>·</span><span>Dokuma adet: <b style="color:var(--emerald-c)">${fmt(agg.dokAdRaw)}</b></span>` : ''}
-            <span>·</span>
-            <span>Hatalı (özet): <b style="color:var(--rose-c)">${fmt(agg.hatali)}</b></span>
-        </div>`;
-
-        const detayTablo = buildSiparisDurumIncelemeHtml(siparis, kdK, kdD, rows, allUaRapor);
-
-        out.innerHTML = `
-        <div id="rapor-tek-pdf-root" style="display:flex;flex-direction:column;gap:14px">
-            <div class="panel-box" style="overflow:hidden;padding:0;border:1px solid rgba(99,102,241,0.25)">
-                <div style="padding:18px 20px;background:linear-gradient(90deg, rgba(99,102,241,0.18), transparent);border-bottom:1px solid var(--border)">
-                    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:flex-start">
-                        <div>
-                            <div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:0.12em;font-family:'DM Mono',monospace">Sipariş özeti</div>
-                            <div style="font-family:'Instrument Serif',serif;font-size:28px;color:var(--text);margin-top:4px">${pdfEsc(siparis.sno || '—')}</div>
-                            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-top:4px">${pdfEsc(siparis.firma || '—')}</div>
-                        </div>
-                        <div style="text-align:right">
-                            <span class="pill ${durPill}" style="font-size:10px;padding:4px 10px;font-weight:800">${pdfEsc(siparis.durum || 'BEKLEMEDE')}</span>
-                            <div style="font-size:10px;color:var(--text3);margin-top:8px;font-family:'DM Mono',monospace">Termin: ${siparis.ttarih ? pdfEsc(new Date(siparis.ttarih).toLocaleDateString('tr-TR')) : '—'}</div>
-                            <div style="font-size:10px;color:var(--amber-c);margin-top:2px;font-weight:700">${pdfEsc(terminTxt)}</div>
-                        </div>
-                    </div>
-                </div>
-                <div style="padding:16px 18px 20px">
-                    <div style="font-size:9px;font-weight:800;color:var(--accent2);text-transform:uppercase;letter-spacing:0.1em;font-family:'DM Mono',monospace;margin-bottom:12px">Üretim aşamaları — ilerleme</div>
-                    ${halkalar}
-                </div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
-                <div class="panel-box" style="padding:14px 16px">
-                    <div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-bottom:12px">Aşama yoğunluğu (sipariş geneli)</div>
-                    <div style="height:240px;position:relative"><canvas id="chart-tek-sip-asama"></canvas></div>
-                </div>
-                <div class="panel-box" style="padding:14px 16px">
-                    <div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin-bottom:12px">Kalem bazlı adet (sipariş vs kesim / dikim / kalite / koli)</div>
-                    <div style="height:260px;position:relative"><canvas id="chart-tek-sip-kalem"></canvas></div>
-                </div>
-            </div>
-
-            <div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;font-family:'DM Mono',monospace;margin:4px 0 0 4px">Detay tabloları & operasyon günlüğü</div>
-            ${detayTablo}
-        </div>`;
-
-        requestAnimationFrame(() => raporTekSiparisCizChartlar(siparis, kdK, kdD, agg));
-    } catch (e) {
-        out.innerHTML = `<div class="panel-box" style="padding:20px;border:1px solid rgba(251,113,133,0.4);color:var(--rose-c)">Yükleme hatası: ${pdfEsc(e && e.message ? e.message : String(e))}</div>`;
-    }
-}
-
-function raporTekSiparisCizChartlar(siparis, kdK, kdD, agg) {
-    if (typeof Chart === 'undefined') return;
-    if (_raporTekSiparisChartAsama) { try { _raporTekSiparisChartAsama.destroy(); } catch (x) {} _raporTekSiparisChartAsama = null; }
-    if (_raporTekSiparisChartKalem) { try { _raporTekSiparisChartKalem.destroy(); } catch (x) {} _raporTekSiparisChartKalem = null; }
-
-    const ctxA = document.getElementById('chart-tek-sip-asama')?.getContext('2d');
-    if (ctxA) {
-        const labels = ['Dokuma adet', 'Kesim', 'Yıkama Σ', 'Dikim', 'Kalite', 'Koli', 'Sevk'];
-        const yik = (agg.ySevk || 0) + (agg.yGel || 0);
-        const data = [agg.dokAdet, agg.kes, yik, agg.dik, agg.kk, agg.kol, agg.sevk];
-        _raporTekSiparisChartAsama = new Chart(ctxA, {
-            type: 'radar',
-            data: {
-                labels,
-                datasets: [{
-                    label: siparis.sno || 'Sipariş',
-                    data,
-                    borderColor: 'rgba(99,102,241,0.9)',
-                    backgroundColor: 'rgba(99,102,241,0.22)',
-                    borderWidth: 2,
-                    pointBackgroundColor: '#6366f1'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    r: {
-                        beginAtZero: true,
-                        grid: { color: 'rgba(148,163,184,0.15)' },
-                        angleLines: { color: 'rgba(148,163,184,0.12)' },
-                        pointLabels: { font: { size: 9, weight: '600' }, color: '#94a3b8' },
-                        ticks: { font: { size: 8 }, backdropColor: 'transparent', color: '#64748b' }
-                    }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-
-    const ctxK = document.getElementById('chart-tek-sip-kalem')?.getContext('2d');
-    if (ctxK && agg.kalemler && agg.kalemler.length) {
-        const labels = agg.kalemler.map((k, i) => {
-            const t = (k.ad || k.kod || 'K' + (i + 1)).slice(0, 14);
-            return t.length < (k.ad || k.kod || '').length ? t + '…' : t;
-        });
-        const sipArr = agg.kalemler.map(k => parseInt(k.miktar, 10) || 0);
-        const kesArr = [];
-        const dikArr = [];
-        const kkArr = [];
-        const kolArr = [];
-        agg.kalemler.forEach((_, i) => {
-            const row = kdK[`kalem_${i}`] || {};
-            kesArr.push(parseInt(row.kesilen, 10) || 0);
-            dikArr.push(parseInt(row.dikilen, 10) || 0);
-            kkArr.push(parseInt(row.kk_gecen, 10) || 0);
-            kolArr.push(parseInt(row.kolide, 10) || 0);
-        });
-        _raporTekSiparisChartKalem = new Chart(ctxK, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [
-                    { label: 'Sipariş', data: sipArr, backgroundColor: 'rgba(148,163,184,0.35)', borderColor: '#94a3b8', borderWidth: 1, borderRadius: 4 },
-                    { label: 'Kesilen', data: kesArr, backgroundColor: 'rgba(129,140,248,0.55)', borderColor: '#818cf8', borderWidth: 1, borderRadius: 4 },
-                    { label: 'Dikilen', data: dikArr, backgroundColor: 'rgba(251,113,133,0.5)', borderColor: '#fb7185', borderWidth: 1, borderRadius: 4 },
-                    { label: 'Kalite', data: kkArr, backgroundColor: 'rgba(251,191,36,0.55)', borderColor: '#fbbf24', borderWidth: 1, borderRadius: 4 },
-                    { label: 'Koli', data: kolArr, backgroundColor: 'rgba(52,211,153,0.5)', borderColor: '#34d399', borderWidth: 1, borderRadius: 4 }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { font: { size: 8, weight: '600' }, boxWidth: 10, color: '#94a3b8' } }
-                },
-                scales: {
-                    x: { stacked: false, grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 0 } },
-                    y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { font: { size: 8 } } }
-                }
-            }
-        });
-    } else if (ctxK) {
-        _raporTekSiparisChartKalem = new Chart(ctxK, {
-            type: 'doughnut',
-            data: {
-                labels: ['Sipariş adet', 'Kesim', 'Dikim', 'Kalite', 'Koli'],
-                datasets: [{
-                    data: [agg.sipAdet, agg.kes, agg.dik, agg.kk, agg.kol],
-                    backgroundColor: ['#94a3b8', '#818cf8', '#fb7185', '#fbbf24', '#34d399'],
-                    borderWidth: 2,
-                    borderColor: 'transparent'
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, boxWidth: 10 } } } }
-        });
-    }
-}
-
-async function raporTekSiparisPdf() {
-    const root = document.getElementById('rapor-tek-pdf-root');
-    if (!root) { alert('Önce raporu oluşturun.'); return; }
-    try { await erpEnsureHtml2Pdf(); } catch (e) {}
-    if (typeof html2pdf === 'undefined') {
-        alert('PDF kütüphanesi yüklenemedi.');
-        return;
-    }
-    const sipSel = document.getElementById('rapor-tek-sip-select');
-    const sno = sipSel && sipSel.selectedOptions[0] ? sipSel.selectedOptions[0].textContent.slice(0, 40) : 'siparis';
-    const shell = buildPdfShellElement({
-        title: 'TEK SİPARİŞ ÜRETİM RAPORU',
-        subtitle: 'Dokuma — konfeksiyon — operasyon özeti',
-        docNo: `TSR-${new Date().getTime()}`,
-        bodyHtml: `<div style="margin-top:8px">${root.outerHTML}</div>`,
-        note: 'Tek sipariş raporu; grafikler anlık veriye göredir.'
-    });
-    html2pdf().set({
-        margin: [0, 0],
-        filename: `tek_siparis_rapor_${String(sno).replace(/[^\w\-]+/g, '_').slice(0, 30)}_${new Date().toLocaleDateString('tr-TR')}.pdf`,
-        image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: { scale: 1.35, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(shell).save();
-}
-
-// ── ÜRETİM KARŞILAŞTIRMA (sipariş → dokuma → kesim → yıkama → kalite) ──
-/* Sayıların Planlama ekranıyla birebir tutması için oradaki alanların aynısı kullanılır:
-   dokunan  → KD_DOKUMA (dokumaUrunIkinciOzet)
-   kesilen  → KD_KONFEKSIYON.kalem_i.kesilen  ile  konf_kesim_yikama toplamının BÜYÜĞÜ
-              (ana programdaki "çift sayma: max" yaklaşımı — iki kaynak da aynı kesimi
-               yazabildiği için toplanmaz)
-   yıkanan  → konf_kesim_yikama.yikama_sevk_adet (Konfeksiyon Panel yalnız buraya yazar);
-              hiç ky satırı yoksa sipariş düzeyindeki KD panel_yikama_sevk'e düşülür
-   kalite   → KD_KONFEKSIYON.kalem_i.kk_gecen                                            */
-let _raporKiyasKy = { rows: [], yuklendi: false };
-/** Üretim Karşılaştırma ekranına özel filtreler (tarih/firma filtresi üstte ortak) */
-let raporKiyasDurum = 'HEPSI';   // HEPSI | DEVAM | TAMAM
-let raporKiyasQ = '';
-
-function raporKiyasDurumSec(v) {
-    raporKiyasDurum = ['HEPSI', 'DEVAM', 'TAMAM'].includes(v) ? v : 'HEPSI';
-    if (typeof raporIcerikVeChartYenile === 'function') raporIcerikVeChartYenile();
-}
-
-function raporKiyasAraYaz(v, el) {
-    raporKiyasQ = String(v || '');
-    /* Yeniden çizimde arama kutusunun odağı kaybolmasın */
-    window._raporKiyasAramaFocus = { pos: el && el.selectionStart != null ? el.selectionStart : String(raporKiyasQ).length };
-    debounce('rapor-kiyas-ara', () => {
-        if (typeof raporIcerikVeChartYenile === 'function') raporIcerikVeChartYenile();
-    }, 220);
-}
-
-function raporKiyasFiltreSifirla() {
-    raporKiyasDurum = 'HEPSI';
-    raporKiyasQ = '';
-    if (typeof raporIcerikVeChartYenile === 'function') raporIcerikVeChartYenile();
-}
-
-/** Aramada Türkçe karakter yazılmasa da bulunsun: "sahEsEr" → "ŞAHESER",
-    "deve tabani" → "DEVE TABANI". Hem kayıt hem sorgu aynı sadeleştirmeden geçer. */
-function raporKiyasAramaNorm(v) {
-    return String(v || '')
-        .toLocaleLowerCase('tr-TR')
-        .replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ğ/g, 'g')
-        .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c')
-        .trim();
-}
-
-/** Durum + serbest metin süzmesi (sipariş no / müşteri) */
-function raporKiyasSatirlariSuz(rows) {
-    const norm = raporKiyasAramaNorm;
-    const q = norm(raporKiyasQ);
-    return (rows || []).filter(r => {
-        const tamam = String(r.durum || '').toLocaleUpperCase('tr-TR') === 'TAMAMLANDI';
-        if (raporKiyasDurum === 'DEVAM' && tamam) return false;
-        if (raporKiyasDurum === 'TAMAM' && !tamam) return false;
-        if (!q) return true;
-        return norm(r.sno).includes(q) || norm(r.firma).includes(q);
-    });
-}
-
-async function raporAkisKiyasKyYukle(force) {
-    if (_raporKiyasKy.yuklendi && !force) return _raporKiyasKy.rows;
-    if (typeof sb === 'undefined' || !sb?.from) return [];
-    const { data, error } = await sb.from('konf_kesim_yikama')
-        .select('siparis_id,kalem_idx,kesilen_adet,yikama_sevk_adet,yikama_gelen_adet,aktif')
-        .limit(5000);
-    if (error) throw error;
-    _raporKiyasKy = { rows: (data || []).filter(r => r.aktif !== false), yuklendi: true };
-    return _raporKiyasKy.rows;
-}
-
-/** (siparis_id|kalem_idx) → { kes, yikSevk, yikGel } */
-function raporAkisKiyasKyIndeks() {
-    const m = new Map();
-    (_raporKiyasKy.rows || []).forEach(r => {
-        const ki = parseInt(r.kalem_idx, 10);
-        const key = `${String(r.siparis_id)}|${Number.isFinite(ki) ? ki : 'x'}`;
-        let o = m.get(key);
-        if (!o) { o = { kes: 0, yikSevk: 0, yikGel: 0 }; m.set(key, o); }
-        o.kes += parseInt(r.kesilen_adet, 10) || 0;
-        o.yikSevk += parseInt(r.yikama_sevk_adet, 10) || 0;
-        o.yikGel += parseInt(r.yikama_gelen_adet, 10) || 0;
-    });
-    return m;
-}
-
-function raporAkisKiyasHesapla(siparisler) {
-    const kyIdx = raporAkisKiyasKyIndeks();
-    const satirlar = [];
-    (siparisler || []).forEach(s => {
-        const kalemler = (typeof siparisListeKalemleriArr === 'function') ? siparisListeKalemleriArr(s) : [];
-        if (!kalemler.length) return;
-        const kdK = _kdCache[`KD_KONFEKSIYON_${s.id}`] || {};
-        const kdD = _kdCache[`KD_DOKUMA_${s.id}`] || {};
-        const uRaw = (kdD.urunler || {});
-        let siparis = 0, dokunan = 0, kesilen = 0, yikanan = 0, kalite = 0;
-        let kyVarMi = false;
-        kalemler.forEach((k, i) => {
-            const birim = (typeof siparisKalemBirim === 'function' ? siparisKalemBirim(k) : (k.birim || 'ADET')) || 'ADET';
-            if (String(birim).toUpperCase().replace(/İ/g, 'I') !== 'ADET') return;   // yalnız adetli ürünler
-            siparis += Math.round(parseFloat(k.miktar) || 0);
-            const u = (Array.isArray(uRaw) ? uRaw[i] : null) || uRaw[i] || uRaw[String(i)] || {};
-            const doz = (typeof dokumaUrunIkinciOzet === 'function') ? dokumaUrunIkinciOzet(u, k) : {};
-            dokunan += Math.round(parseFloat(doz.adet != null ? doz.adet : doz.ikinci) || 0);
-            const rowK = kdK[`kalem_${i}`] || {};
-            const ky = kyIdx.get(`${String(s.id)}|${i}`);
-            if (ky) kyVarMi = true;
-            kesilen += Math.max(parseInt(rowK.kesilen, 10) || 0, ky ? ky.kes : 0);
-            yikanan += ky ? ky.yikSevk : 0;
-            kalite += parseInt(rowK.kk_gecen, 10) || 0;
-        });
-        /* Hiç ky satırı yoksa yıkama bilgisini sipariş düzeyindeki panel alanından al */
-        if (!kyVarMi) yikanan = parseInt(kdK.panel_yikama_sevk, 10) || 0;
-        if (!(siparis || dokunan || kesilen || yikanan || kalite)) return;
-        satirlar.push({
-            id: s.id, sno: s.sno || '—', firma: s.firma || '—', durum: s.durum || '—',
-            siparis, dokunan, kesilen, yikanan, kalite
-        });
-    });
-    return satirlar.sort((a, b) => (b.dokunan + b.kesilen) - (a.dokunan + a.kesilen));
-}
-
-function renderRaporAkisKiyas(siparisler) {
-    const tumRows = raporAkisKiyasHesapla(siparisler);
-    /* Toplamlar da süzülmüş kümeden hesaplanır — üstteki huni ile alttaki tablo hep aynı
-       veriyi anlatsın (aksi hâlde "toplam 232 sipariş" derken tabloda 40 satır görünür). */
-    const rows = raporKiyasSatirlariSuz(tumRows);
-    const T = rows.reduce((a, r) => ({
-        siparis: a.siparis + r.siparis, dokunan: a.dokunan + r.dokunan,
-        kesilen: a.kesilen + r.kesilen, yikanan: a.yikanan + r.yikanan, kalite: a.kalite + r.kalite
-    }), { siparis: 0, dokunan: 0, kesilen: 0, yikanan: 0, kalite: 0 });
-    const f = (n) => Math.round(n || 0).toLocaleString('tr-TR');
-    const oran = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
-
-    /* Kalite oranı KESİME göre verilir: her ürün yıkamadan geçmiyor (rota ürüne göre
-       değişir), yıkanana göre kıyaslamak %100'ün çok üstünde anlamsız oranlar üretir. */
-    const asamalar = [
-        ['Sipariş', T.siparis, '#64748b', null],
-        ['Dokunan', T.dokunan, '#06b6d4', T.siparis],
-        ['Kesilen', T.kesilen, '#818cf8', T.dokunan],
-        ['Yıkanan', T.yikanan, '#38bdf8', T.kesilen],
-        ['Kalite', T.kalite, '#fbbf24', T.kesilen]
-    ];
-    const tutarsiz = rows.filter(r => r.dokunan > 0 && r.kesilen > r.dokunan);
-    const huni = asamalar.map(([ad, deger, renk, onceki]) => `
-        <div class="panel-box" style="padding:12px 14px;border-left:3px solid ${renk}">
-            <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace">${ad}</div>
-            <div style="font-family:'Instrument Serif',serif;font-size:22px;color:${renk};line-height:1.2">${f(deger)}</div>
-            ${onceki != null ? `<div style="font-size:9px;color:var(--text3);margin-top:2px">bir öncekinin %${oran(deger, onceki)}'i${deger < onceki ? ` · ${f(onceki - deger)} eksik` : ''}</div>` : `<div style="font-size:9px;color:var(--text3);margin-top:2px">toplam sipariş adedi</div>`}
-        </div>`).join('');
-
-    const satirHtml = rows.map(r => {
-        const hucre = (v, ref, renk) => `<td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:${v ? renk : 'var(--text3)'}">${v ? f(v) : '—'}${ref > 0 && v ? `<span style="font-size:8px;color:var(--text3)"> %${oran(v, ref)}</span>` : ''}</td>`;
-        return `<tr style="border-top:1px solid var(--border)">
-            <td style="padding:7px 10px;font-weight:700;font-family:'DM Mono',monospace;font-size:11px">${pdfEsc(r.sno)}</td>
-            <td style="padding:7px 10px;font-size:11px;color:var(--text2)">${pdfEsc(r.firma)}</td>
-            <td style="padding:7px 10px;font-size:10px;color:var(--text3)">${pdfEsc(r.durum)}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace">${f(r.siparis)}</td>
-            ${hucre(r.dokunan, r.siparis, '#06b6d4')}
-            ${hucre(r.kesilen, r.dokunan, '#818cf8')}
-            ${hucre(r.yikanan, r.kesilen, '#38bdf8')}
-            ${hucre(r.kalite, r.kesilen, '#fbbf24')}
-        </tr>`;
-    }).join('');
-
-    const tamamSayi = tumRows.filter(r => String(r.durum || '').toLocaleUpperCase('tr-TR') === 'TAMAMLANDI').length;
-    const devamSayi = tumRows.length - tamamSayi;
-    const pill = (id, etiket, adet) => `<button type="button" onclick="raporKiyasDurumSec('${id}')"
-        class="pill ${raporKiyasDurum === id ? 'pill-pink' : 'pill-gray'}" style="cursor:pointer;border:none">${etiket} (${adet})</button>`;
-    const filtreAktif = raporKiyasDurum !== 'HEPSI' || String(raporKiyasQ).trim() !== '';
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="panel-box" style="padding:9px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:10px;color:var(--text3)">Durum:</span>
-            ${pill('HEPSI', 'Tümü', tumRows.length)}
-            ${pill('DEVAM', 'Devam eden', devamSayi)}
-            ${pill('TAMAM', 'Tamamlanan', tamamSayi)}
-            <input id="rapor-kiyas-ara" class="pro-input" placeholder="Sipariş no / müşteri ara…"
-                value="${pdfEsc(raporKiyasQ)}" oninput="raporKiyasAraYaz(this.value, this)"
-                style="margin-left:auto;padding:5px 10px;font-size:10px;min-width:190px">
-            ${filtreAktif ? `<button type="button" class="pro-input" style="padding:5px 10px;font-size:10px;cursor:pointer"
-                onclick="raporKiyasFiltreSifirla()">Temizle</button>` : ''}
-            <span style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">${rows.length} sipariş</span>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${huni}</div>
-        ${tutarsiz.length ? `<div class="panel-box" style="padding:9px 12px;border-left:3px solid var(--amber-c);font-size:10px;color:var(--text2);line-height:1.5">
-            ⚠️ <b>${tutarsiz.length} siparişte kesilen adet dokunandan fazla</b> — bu bir veri giriş tutarsızlığıdır
-            (dokuma girişi eksik ya da kesim fazla girilmiş): ${pdfEsc(tutarsiz.slice(0, 6).map(r => `${r.sno} (${f(r.dokunan)}→${f(r.kesilen)})`).join(', '))}${tutarsiz.length > 6 ? ' …' : ''}
-        </div>` : ''}
-        <div class="panel-box" style="padding:10px 12px;font-size:10px;color:var(--text3);line-height:1.5">
-            Dokunan <b>Dokuma Takip</b>, kesim ve kalite <b>konfeksiyon kayıtlarından</b>, kesim/yıkama ayrıca
-            <b>Konfeksiyon Panel</b>'in yazdığı tablodan gelir. Aynı kesim iki kaynağa da yazılmış olabileceği için
-            toplanmaz, <b>büyük olan</b> alınır. Yalnız adet birimli ürünler sayılır.
-            <b>Yıkama</b> her üründe yapılmaz (rota ürüne göre değişir), bu yüzden kalite oranı yıkanana değil
-            <b>kesilene</b> göre hesaplanır.
-        </div>
-        <div class="panel-box" style="padding:0;overflow:auto">
-            <table style="width:100%;border-collapse:collapse;min-width:760px">
-                <thead>
-                    <tr style="background:var(--surface2);text-align:left">
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Sipariş</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Müşteri</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Durum</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Sipariş</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Dokunan</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Kesilen</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Yıkanan</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Kalite</th>
-                    </tr>
-                </thead>
-                <tbody>${satirHtml || `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu filtrede üretim verisi bulunamadı.</td></tr>`}</tbody>
-            </table>
-        </div>
-    </div>`;
-}
-
-// ── 2. FİRE & KAYIP ───────────────────────────────────────
-function renderRaporFire(siparisler) {
-    // Konfeksiyon verilerinden fire topla
-    let topKesilen=0, topDikilen=0, topKK=0, topKolide=0;
-    let topFireKesim=0, topFireDikim=0, topIkiKalite=0, topTamir=0, topImha=0;
-    let siparisFireler = [];
-
-    siparisler.forEach(s => {
-        let kalemler=[]; try{kalemler=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){}
-        const kd = (_kdCache[`KD_KONFEKSIYON_${s.id}`]) || {}; // cache'den — tam veri için açınca yüklenir
-        let sFireKesim=0, sFireDikim=0, sHatali=0, sSiparis=0;
-        kalemler.forEach((_,i) => {
-            const k = kd['kalem_'+i]||{};
-            topKesilen  += parseInt(k.kesilen||0);
-            topDikilen  += parseInt(k.dikilen||0);
-            topKK       += parseInt(k.kk_gecen||0);
-            topKolide   += parseInt(k.kolide||0);
-            topFireKesim+= parseInt(k.fire_kesim||0);
-            topFireDikim+= parseInt(k.fire_dikim||0);
-            topIkiKalite+= parseInt(k.iki_kalite||0);
-            topTamir    += parseInt(k.tamir||0);
-            topImha     += parseInt(k.imha||0);
-            sFireKesim  += parseInt(k.fire_kesim||0);
-            sFireDikim  += parseInt(k.fire_dikim||0);
-            sHatali     += parseInt(k.iki_kalite||0)+parseInt(k.tamir||0)+parseInt(k.imha||0);
-            sSiparis    += parseInt(k.dikilen||0);
-        });
-        if (sSiparis > 0) siparisFireler.push({ sno: s.sno, firma: s.firma||'—', fireKesim: sFireKesim, fireDikim: sFireDikim, hatali: sHatali, toplam: sSiparis });
-    });
-
-    const topFire = topFireKesim + topFireDikim + topIkiKalite + topTamir + topImha;
-    const firePct = topDikilen > 0 ? (topFire/topDikilen*100).toFixed(1) : 0;
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            ${[
-                {l:'Fire Kesim', v:topFireKesim, c:'violet', ikon:'✂️'},
-                {l:'Fire Dikim', v:topFireDikim, c:'pink',   ikon:'🧵'},
-                {l:'2. Kalite',  v:topIkiKalite, c:'amber',  ikon:'⚠️'},
-                {l:'Tamire',     v:topTamir,     c:'blue',   ikon:'🔧'},
-                {l:'İmha',       v:topImha,      c:'rose',   ikon:'🗑️'},
-            ].map(x=>`
-            <div class="rounded-2xl" style="background:var(--surface)">
-                <div class="text-xl mb-1">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;font-weight:300;color:var(--text)">${x.v.toLocaleString()}</div>
-                <div class="text-[8px] font-black text-slate-400 uppercase mt-0.5">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Fire oranı göstergesi -->
-        <div class="panel-box" style="padding:16px 20px">
-            <div class="flex items-center justify-between mb-3">
-                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>🎯 Genel Fire Oranı</span>
-                <span class="font-black text-2xl ${parseFloat(firePct)>5?'text-rose-600':parseFloat(firePct)>2?'text-amber-600':'text-emerald-600'}">%${firePct}</span>
-            </div>
-            <div style="background:var(--surface2);border-radius:999px;height:10px;overflow:hidden">
-                <div class="h-3 rounded-full transition-all ${parseFloat(firePct)>5?'bg-rose-500':parseFloat(firePct)>2?'bg-amber-500':'bg-emerald-500'}"
-                    style="width:${Math.min(parseFloat(firePct)*5,100)}%"></div>
-            </div>
-            <div class="flex justify-between text-[8px] font-bold text-slate-400 mt-1">
-                <span>0%</span><span class="text-emerald-500">İyi &lt;2%</span><span class="text-amber-500">Orta &lt;5%</span><span class="text-rose-500">Kötü &gt;5%</span>
-            </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">🔥 Fire Dağılımı</div>
-                <div style="height:200px"><canvas id="chart-fire-dagilim"></canvas></div>
-            </div>
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">📋 Sipariş Bazlı Fire</div>
-                <div style="height:200px"><canvas id="chart-siparis-fire"></canvas></div>
-            </div>
-        </div>
-
-        ${siparisFireler.length > 0 ? `
-        <div class="panel-box">
-            <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>📋 Sipariş Bazlı Fire Detayı</span></div>
-            <div class="overflow-x-auto"><table class="w-full text-[10px]">
-                <thead style="background:var(--surface2)"><tr>
-                    <th class="text-left px-4 py-2 font-bold">Sipariş</th>
-                    <th class="text-left px-4 py-2 font-bold">Firma</th>
-                    <th class="text-right px-4 py-2 font-black text-violet-600">Kesim Fire</th>
-                    <th class="text-right px-4 py-2 font-black text-pink-600">Dikim Fire</th>
-                    <th class="text-right px-4 py-2 font-black text-rose-600">Hatalı</th>
-                    <th class="text-right px-4 py-2 font-bold">Fire %</th>
-                </tr></thead>
-                <tbody >
-                    ${siparisFireler.map(s=>{
-                        const fp = s.toplam>0?((s.fireKesim+s.fireDikim+s.hatali)/s.toplam*100).toFixed(1):0;
-                        return `<tr >
-                            <td class="px-4 py-2 font-bold">${s.sno}</td>
-                            <td class="px-4 py-2 text-slate-500">${s.firma}</td>
-                            <td class="px-4 py-2 text-right font-bold text-violet-600">${s.fireKesim}</td>
-                            <td class="px-4 py-2 text-right font-bold text-pink-600">${s.fireDikim}</td>
-                            <td class="px-4 py-2 text-right font-bold text-rose-600">${s.hatali}</td>
-                            <td class="px-4 py-2 text-right font-black ${parseFloat(fp)>5?'text-rose-600':parseFloat(fp)>2?'text-amber-600':'text-emerald-600'}">%${fp}</td>
-                        </tr>`;
-                    }).join('')}
-                </tbody>
-            </table></div>
-        </div>` : '<div class="rounded-2xl" style="background:var(--surface)">Henüz konfeksiyon verisi girilmemiş</div>'}
-    </div>`;
-}
-
-// ── 3. STOK DURUMU ────────────────────────────────────────
-function renderRaporStok(iplikStok, kumasStok) {
-    const iplikBakiye = raporIplikBakiyeHesapla(iplikStok);
-    const iplikSirali = Object.entries(iplikBakiye).sort((a,b)=>b[1].kg-a[1].kg).slice(0,10);
-
-    // Kumaş: stok_kodu bazlı net bakiye
-    const kumasBakiye = {};
-    kumasStok.forEach(k => {
-        const kod = k.stok_kodu || k.kumas_cinsi || 'Bilinmeyen';
-        if (!kumasBakiye[kod]) kumasBakiye[kod] = { ad: k.kumas_cinsi||kod, kg:0, giris:0, cikis:0 };
-        const m = parseFloat(k.miktar_kg||0);
-        kumasBakiye[kod].kg += m;
-        if (m>0) kumasBakiye[kod].giris += m; else kumasBakiye[kod].cikis += Math.abs(m);
-    });
-    const kumasSirali = Object.entries(kumasBakiye).sort((a,b)=>b[1].kg-a[1].kg).slice(0,10);
-
-    const topIplik = Object.values(iplikBakiye).reduce((a,v)=>a+Math.max(0,v.kg),0);
-    const topKumas = Object.values(kumasBakiye).reduce((a,v)=>a+Math.max(0,v.kg),0);
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="grid grid-cols-2 gap-4">
-            <div class="rounded-2xl" style="background:var(--surface)">
-                <div class="text-2xl mb-1">🧶</div>
-                <div class="font-black text-2xl text-violet-600">${topIplik.toLocaleString('tr-TR',{maximumFractionDigits:0})} kg</div>
-                <div class="text-[9px] font-black text-slate-400 uppercase">İplik Toplam Stok</div>
-            </div>
-            <div class="rounded-2xl" style="background:var(--surface)">
-                <div class="text-2xl mb-1">🏁</div>
-                <div class="font-black text-2xl text-emerald-600">${topKumas.toLocaleString('tr-TR',{maximumFractionDigits:0})} kg</div>
-                <div class="text-[9px] font-black text-slate-400 uppercase">Kumaş Toplam Stok</div>
-            </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">🧶 İplik Stok Dağılımı (Top 10)</div>
-                <div style="height:220px"><canvas id="chart-iplik-stok"></canvas></div>
-            </div>
-            <div class="panel-box" style="padding:16px 20px">
-                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:16px;font-family:'DM Mono',monospace">🏁 Kumaş Stok Dağılımı (Top 10)</div>
-                <div style="height:220px"><canvas id="chart-kumas-stok"></canvas></div>
-            </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-            <!-- İplik tablosu -->
-            <div class="panel-box">
-                <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>🧶 İplik Stok Detayı</span></div>
-                <div class="overflow-x-auto"><table class="w-full text-[10px]">
-                    <thead style="background:var(--surface2)"><tr>
-                        <th class="text-left px-3 py-2 font-bold">Cins</th>
-                        <th class="text-right px-3 py-2 font-black text-emerald-600">Giriş</th>
-                        <th class="text-right px-3 py-2 font-black text-rose-500">Çıkış</th>
-                        <th class="text-right px-3 py-2 font-black text-violet-600">Bakiye</th>
-                    </tr></thead>
-                    <tbody >
-                        ${iplikSirali.map(([k,d])=>`
-                        <tr class=""">
-                            <td class="px-3 py-1.5 font-bold max-w-24 truncate">${d.ad}</td>
-                            <td class="px-3 py-1.5 text-right font-bold text-emerald-600">${d.giris.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                            <td class="px-3 py-1.5 text-right font-bold text-rose-500">${d.cikis.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                            <td class="px-3 py-1.5 text-right font-black ${d.kg>0?'text-violet-600':'text-rose-600'}">${d.kg.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table></div>
-            </div>
-            <!-- Kumaş tablosu -->
-            <div class="panel-box">
-                <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>🏁 Kumaş Stok Detayı</span></div>
-                <div class="overflow-x-auto"><table class="w-full text-[10px]">
-                    <thead style="background:var(--surface2)"><tr>
-                        <th class="text-left px-3 py-2 font-bold">Cins</th>
-                        <th class="text-right px-3 py-2 font-black text-emerald-600">Giriş</th>
-                        <th class="text-right px-3 py-2 font-black text-rose-500">Çıkış</th>
-                        <th class="text-right px-3 py-2 font-black text-emerald-600">Bakiye</th>
-                    </tr></thead>
-                    <tbody >
-                        ${kumasSirali.map(([k,d])=>`
-                        <tr class=""">
-                            <td class="px-3 py-1.5 font-bold max-w-24 truncate">${d.ad}</td>
-                            <td class="px-3 py-1.5 text-right font-bold text-emerald-600">${d.giris.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                            <td class="px-3 py-1.5 text-right font-bold text-rose-500">${d.cikis.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                            <td class="px-3 py-1.5 text-right font-black ${d.kg>=0?'text-emerald-600':'text-rose-600'}">${d.kg.toLocaleString('tr-TR',{maximumFractionDigits:0})}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table></div>
-            </div>
-        </div>
-
-    <!-- HISTORY (sayfanın en altında) -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-      <div style="padding:8px 14px;background:#0f2027;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <span style="font-size:10px;font-weight:800;color:#a5b4fc;font-family:'DM Mono',monospace">🕘 HISTORY (DEĞİŞİKLİK GEÇMİŞİ)</span>
-        <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${selectedWork ? ('id: ' + selectedWork.id) : 'Kayıt seçili değil'}</span>
-      </div>
-      <div style="padding:10px 14px">
-        ${
-          (!selectedWork || hist.length === 0)
-            ? `<div style="color:var(--text3);font-size:11px;font-family:'DM Mono',monospace">Henüz history yok. KAYDET veya REVİZE yapınca burada görünecek.</div>`
-            : `<div style="display:flex;flex-direction:column;gap:8px">
-                ${hist.slice(0, 20).map(h => `
-                  <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)">
-                    <div style="min-width:120px;font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${(h.ts||'').replace('T',' ').slice(0,19)}</div>
-                    <div style="min-width:70px;font-size:10px;font-weight:900;color:#38bdf8;font-family:'DM Mono',monospace">${h.action||'—'}</div>
-                    <div style="flex:1;font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif">${h.note||''}</div>
-                  </div>
-                `).join('')}
-              </div>`
-        }
-      </div>
-    </div>
-
-    </div>`;
-}
-
-// ── 5. TERMİN PERFORMANSI ─────────────────────────────────
-function renderRaporTermin(siparisler) {
-    const bugun = new Date();
-    const tamamlananlar = siparisler.filter(s => s.durum === 'TAMAMLANDI' && s.ttarih);
-    const zamaninda = tamamlananlar.filter(s => new Date(s.ttarih) >= new Date(s.updated_at||s.created_at)).length;
-    const gecikmisDev = siparisler.filter(s => s.durum !== 'TAMAMLANDI' && s.ttarih && new Date(s.ttarih) < bugun);
-    const yaklasiyor  = siparisler.filter(s => s.durum !== 'TAMAMLANDI' && s.ttarih && new Date(s.ttarih) >= bugun && Math.ceil((new Date(s.ttarih)-bugun)/86400000) <= 7);
-    const performansPct = tamamlananlar.length > 0 ? Math.round(zamaninda/tamamlananlar.length*100) : 0;
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${[
-                {l:'Tamamlanan',   v:tamamlananlar.length, c:'emerald', ikon:'✅'},
-                {l:'Zamanında',    v:zamaninda,             c:'blue',    ikon:'🎯'},
-                {l:'Gecikmiş (aktif)', v:gecikmisDev.length, c:'rose',  ikon:'🚨'},
-                {l:'7 Günde Bitiyor', v:yaklasiyor.length,  c:'amber',  ikon:'⚡'},
-            ].map(x=>`
-            <div class="rounded-2xl" style="background:var(--surface)">
-                <div class="text-2xl mb-1">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:26px;font-weight:300;color:var(--text)">${x.v}</div>
-                <div class="text-[9px] font-black text-slate-400 uppercase mt-0.5">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Termin performans göstergesi -->
-        <div class="panel-box" style="padding:16px 20px">
-            <div class="flex items-center justify-between mb-3">
-                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>🎯 Zamanında Teslim Oranı</span>
-                <span class="font-black text-2xl ${performansPct>=90?'text-emerald-600':performansPct>=70?'text-amber-600':'text-rose-600'}">%${performansPct}</span>
-            </div>
-            <div style="background:var(--surface2);border-radius:999px;height:10px;overflow:hidden">
-                <div class="h-4 rounded-full transition-all ${performansPct>=90?'bg-emerald-500':performansPct>=70?'bg-amber-500':'bg-rose-500'}" style="width:${performansPct}%"></div>
-            </div>
-            <div class="flex justify-between text-[8px] font-bold text-slate-400 mt-1">
-                <span>0%</span><span class="text-rose-400">Kötü &lt;70%</span><span class="text-amber-400">Orta &lt;90%</span><span class="text-emerald-400">İyi ≥90%</span>
-            </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-            <!-- Gecikmiş siparişler -->
-            ${gecikmisDev.length > 0 ? `
-            <div class="panel-box" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <span class="w-2 h-2 bg-rose-500 rounded-full animate-pulse"></span>
-                    <span class="panel-head-title" style="color:var(--rose-c)">🚨 Gecikmiş Siparişler</span>
-                </div>
-                <div >
-                    ${gecikmisDev.slice(0,8).map(s=>{
-                        const gun = Math.abs(Math.ceil((new Date(s.ttarih)-bugun)/86400000));
-                        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border)">
-                            <div>
-                                <span class="font-bold">${s.sno}</span>
-                                <span style="font-size:9px;color:var(--text3);margin-left:6px">${s.firma||'—'}</span>
-                            </div>
-                            <span class="pill pill-red" style="font-size:9px">${gun}g gecikti</span>
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>` : `<div class="panel-box" style="padding:40px;text-align:center"><div style="font-size:32px;margin-bottom:8px">🎉</div><p style="font-weight:700;color:var(--emerald-c)">Gecikmiş sipariş yok!</p></div>`}
-
-            <!-- 7 günde bitmesi gerekenler -->
-            ${yaklasiyor.length > 0 ? `
-            <div class="panel-box" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <span class="w-2 h-2 bg-amber-400 rounded-full"></span>
-                    <span class="panel-head-title" style="color:var(--amber-c)">⚡ Bu Hafta Bitmesi Gereken</span>
-                </div>
-                <div >
-                    ${yaklasiyor.map(s=>{
-                        const gun = Math.ceil((new Date(s.ttarih)-bugun)/86400000);
-                        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--border)">
-                            <div>
-                                <span class="font-bold">${s.sno}</span>
-                                <span style="font-size:9px;color:var(--text3);margin-left:6px">${s.firma||'—'}</span>
-                            </div>
-                            <span class="pill pill-amber" style="font-size:9px">${gun}g kaldı</span>
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>` : ''}
-        </div>
-    </div>`;
-}
-
-// ── 6. İPLİK STOK & HAREKETLERİ ──────────────────────────
-function renderRaporIplikStok(iplikStok) {
-    const bakiye = raporIplikBakiyeHesapla(iplikStok);
-    const sirali = Object.entries(bakiye).sort((a,b) => b[1].kg - a[1].kg);
-    const topGiris = Object.values(bakiye).reduce((a,v)=>a+v.giris,0);
-    const topCikis = Object.values(bakiye).reduce((a,v)=>a+v.cikis,0);
-    const netBakiye = topGiris - topCikis;
-    const kritik = sirali.filter(([,d])=>d.kg<100).length;
-
-    const fmt = n => n.toLocaleString('tr-TR',{maximumFractionDigits:0});
-
-    const sonHareketler = [...iplikStok].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).slice(0,20);
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <!-- KPI şeridi -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-            ${[
-                {ikon:'📥', l:'Toplam Giriş',   v:fmt(topGiris)+' kg',  renk:'var(--emerald-c)'},
-                {ikon:'📤', l:'Toplam Çıkış',   v:fmt(topCikis)+' kg',  renk:'var(--rose-c)'},
-                {ikon:'📊', l:'Net Bakiye',      v:fmt(netBakiye)+' kg', renk: netBakiye>=0 ? 'var(--accent2)' : 'var(--rose-c)'},
-                {ikon:'⚠️', l:'Kritik (<100kg)',v:kritik+' kalem',      renk:'var(--amber-c)'},
-            ].map(x=>`
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid ${x.renk}">
-                <div style="font-size:16px;margin-bottom:6px">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:${x.renk};line-height:1">${x.v}</div>
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:4px">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Grafikler -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="panel-box" style="padding:16px 20px">
-                <div class="panel-head-title" style="margin-bottom:12px"><span class="panel-head-dot" style="background:var(--accent2)"></span>Stok Dağılımı (Top 10)</div>
-                <div style="height:200px"><canvas id="chart-iplik-stok"></canvas></div>
-            </div>
-            <div class="panel-box" style="padding:16px 20px">
-                <div class="panel-head-title" style="margin-bottom:12px"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Giriş / Çıkış Dengesi</div>
-                <div style="height:200px"><canvas id="chart-iplik-hareket"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Stok tablosu -->
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>İplik Stok Detayı</div>
-                <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${sirali.length} kalem</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">STOK KODU</th>
-                        <th style="text-align:left;padding:8px 14px">CİNS / MARKA</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--emerald-c)">GİRİŞ (kg)</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--rose-c)">ÇIKIŞ (kg)</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--accent2)">BAKİYE (kg)</th>
-                        <th style="text-align:center;padding:8px 14px">DURUM</th>
-                    </tr></thead>
-                    <tbody>
-                        ${sirali.map(([k,d])=>{
-                            const durum = d.kg < 0 ? ['pill pill-red','NEGATİF'] : d.kg < 100 ? ['pill pill-amber','KRİTİK'] : ['pill pill-green','NORMAL'];
-                            return `<tr style="border-top:1px solid var(--border)">
-                                <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent2)">${k}</td>
-                                <td style="padding:8px 14px">
-                                    <div style="font-size:11px;font-weight:500;color:var(--text)">${d.ad}</div>
-                                    <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${d.marka}</div>
-                                </td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--emerald-c)">${fmt(d.giris)}</td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--rose-c)">${fmt(d.cikis)}</td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'Instrument Serif',serif;font-size:16px;color:${d.kg>=0?'var(--accent2)':'var(--rose-c)'}">${fmt(d.kg)}</td>
-                                <td style="padding:8px 14px;text-align:center"><span class="${durum[0]}">${durum[1]}</span></td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Son hareketler -->
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Son Hareketler</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">TARİH</th>
-                        <th style="text-align:left;padding:8px 14px">İPLİK / LOT</th>
-                        <th style="text-align:left;padding:8px 14px">HAREKET</th>
-                        <th style="text-align:right;padding:8px 14px">MİKTAR</th>
-                        <th style="text-align:left;padding:8px 14px">NOT</th>
-                    </tr></thead>
-                    <tbody>
-                        ${sonHareketler.map(i=>{
-                            const tipLbl = raporIplikHareketTip(i) || (parseFloat(i.miktar_kg||0) >= 0 ? 'GİRİŞ' : 'ÇIKIŞ');
-                            const m = raporIplikHareketKg(i);
-                            const cikis = tipLbl === 'ÇIKIŞ';
-                            const tip = cikis ? ['var(--rose-c)','ÇIKIŞ'] : ['var(--emerald-c)','GİRİŞ'];
-                            const acilis = raporIplikAcilisKaydiMi(i);
-                            return `<tr style="border-top:1px solid var(--border)">
-                                <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${(i.created_at||'').slice(0,10)}</td>
-                                <td style="padding:7px 14px">
-                                    <div style="font-size:11px;font-weight:500;color:var(--text)">${i.iplik_no||i.cins||'—'}</div>
-                                    <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${i.lot_no||'—'}</div>
-                                </td>
-                                <td style="padding:7px 14px"><span style="font-size:10px;font-weight:600;color:${tip[0]}">${acilis ? 'KART AÇILIŞ' : tip[1]}</span></td>
-                                <td style="padding:7px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:${tip[0]}">${cikis?'-':'+'}${fmt(m)} kg</td>
-                                <td style="padding:7px 14px;font-size:10px;color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.notlar||i.aciklama||'—'}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-}
-
-// ── 7. KUMAŞ STOK & HAREKETLERİ ───────────────────────────
-function renderRaporKumasStok(kumasStok) {
-    const bakiye = raporKumasBakiyeHesapla(kumasStok);
-    const grupOzet = raporKumasGrupOzet(bakiye);
-    const sirali = Object.entries(bakiye).sort((a, b) => (b[1].kg + b[1].mt / 100) - (a[1].kg + a[1].mt / 100));
-    const topGirisKg = Object.values(bakiye).reduce((a, v) => a + v.girisKg, 0);
-    const topCikisKg = Object.values(bakiye).reduce((a, v) => a + v.cikisKg, 0);
-    const topGirisMt = Object.values(bakiye).reduce((a, v) => a + v.girisMt, 0);
-    const topCikisMt = Object.values(bakiye).reduce((a, v) => a + v.cikisMt, 0);
-    const netKg = topGirisKg - topCikisKg;
-    const netMt = topGirisMt - topCikisMt;
-    const sonHareketler = [...kumasStok].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 20);
-    const fmtKg = n => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-    const fmtMt = n => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
-    const dual = (kg, mt) => raporFmtKgMt(kg, mt, { mtAlways: true });
-
-    const grupRenk = {
-        HALI: '#f59e0b',
-        GIDA: '#10b981',
-        EV_TEKSTILI: '#6366f1',
-        KOLTUK_ORTUSU: '#ec4899'
-    };
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-            ${[
-                { ikon: '📥', l: 'Toplam Giriş', v: dual(topGirisKg, topGirisMt), renk: 'var(--emerald-c)' },
-                { ikon: '📤', l: 'Toplam Çıkış', v: dual(topCikisKg, topCikisMt), renk: 'var(--rose-c)' },
-                { ikon: '📊', l: 'Net Bakiye', v: dual(netKg, netMt), renk: (netKg >= 0 && netMt >= 0) ? 'var(--cyan-c)' : 'var(--rose-c)' },
-                { ikon: '🏷️', l: 'Kalem Sayısı', v: sirali.length + ' cins', renk: 'var(--accent)' },
-            ].map(x => `
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid ${x.renk}">
-                <div style="font-size:16px;margin-bottom:6px">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:${x.l === 'Kalem Sayısı' ? '22px' : '18px'};color:${x.renk};line-height:1.25">${x.v}</div>
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:4px">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-            ${SIPARIS_GRUP_FILTRE.map(g => {
-                const o = grupOzet[g.kod] || {};
-                const renk = grupRenk[g.kod] || 'var(--text3)';
-                return `<div class="panel-box" style="padding:12px 14px;border-top:3px solid ${renk}">
-                    <div style="font-size:9px;font-weight:800;color:${renk};text-transform:uppercase;letter-spacing:.06em;font-family:'DM Mono',monospace;margin-bottom:6px">${g.etiket}</div>
-                    <div style="font-size:11px;color:var(--text2);line-height:1.55">
-                        <div><span style="color:var(--text3);font-size:9px">Giriş</span> ${dual(o.girisKg, o.girisMt)}</div>
-                        <div><span style="color:var(--text3);font-size:9px">Çıkış</span> ${dual(o.cikisKg, o.cikisMt)}</div>
-                        <div style="font-weight:700;color:var(--text);margin-top:2px"><span style="color:var(--text3);font-size:9px;font-weight:600">Bakiye</span> ${dual(o.kg, o.mt)}</div>
-                    </div>
-                    <div style="font-size:9px;color:var(--text3);margin-top:4px;font-family:'DM Mono',monospace">${o.kalem || 0} kalem</div>
-                </div>`;
-            }).join('')}
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="panel-box" style="padding:16px 20px">
-                <div class="panel-head-title" style="margin-bottom:12px"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Grup Bazlı Bakiye (kg)</div>
-                <div style="height:220px"><canvas id="chart-kumas-stok"></canvas></div>
-            </div>
-            <div class="panel-box" style="padding:16px 20px">
-                <div class="panel-head-title" style="margin-bottom:12px"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Grup Bazlı Giriş / Çıkış (kg)</div>
-                <div style="height:220px"><canvas id="chart-kumas-hareket"></canvas></div>
-            </div>
-        </div>
-
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Kumaş Stok Detayı</div>
-                <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${sirali.length} cins · kg + mt</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">STOK KODU</th>
-                        <th style="text-align:left;padding:8px 14px">CİNS / GRUP</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--emerald-c)">GİRİŞ</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--rose-c)">ÇIKIŞ</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--cyan-c)">BAKİYE</th>
-                        <th style="text-align:center;padding:8px 14px">DURUM</th>
-                    </tr></thead>
-                    <tbody>
-                        ${sirali.map(([k, d]) => {
-                            const neg = d.kg < 0 || d.mt < 0;
-                            const durum = neg ? ['pill pill-red', 'NEGATİF'] : ['pill pill-green', 'NORMAL'];
-                            const renk = grupRenk[d.grup] || 'var(--text3)';
-                            return `<tr style="border-top:1px solid var(--border)">
-                                <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-size:11px;color:var(--cyan-c)">${k}</td>
-                                <td style="padding:8px 14px">
-                                    <div style="font-size:11px;font-weight:500;color:var(--text)">${d.ad}</div>
-                                    <div style="font-size:9px;color:${renk};font-weight:600">${d.grupLbl}</div>
-                                    <div style="font-size:9px;color:var(--text3)">${d.renk}</div>
-                                </td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--emerald-c);line-height:1.45">
-                                    <div>${fmtKg(d.girisKg)} kg</div>
-                                    <div style="color:var(--text3)">${fmtMt(d.girisMt)} mt</div>
-                                </td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:10px;color:var(--rose-c);line-height:1.45">
-                                    <div>${fmtKg(d.cikisKg)} kg</div>
-                                    <div style="color:var(--text3)">${fmtMt(d.cikisMt)} mt</div>
-                                </td>
-                                <td style="padding:8px 14px;text-align:right;line-height:1.45">
-                                    <div style="font-family:'Instrument Serif',serif;font-size:15px;color:${d.kg >= 0 ? 'var(--cyan-c)' : 'var(--rose-c)'}">${fmtKg(d.kg)} kg</div>
-                                    <div style="font-family:'DM Mono',monospace;font-size:10px;color:${d.mt >= 0 ? 'var(--cyan-c)' : 'var(--rose-c)'}">${fmtMt(d.mt)} mt</div>
-                                </td>
-                                <td style="padding:8px 14px;text-align:center"><span class="${durum[0]}">${durum[1]}</span></td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head"><div class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Son Hareketler</div></div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">TARİH</th>
-                        <th style="text-align:left;padding:8px 14px">KUMAŞ / GRUP</th>
-                        <th style="text-align:left;padding:8px 14px">HAREKET</th>
-                        <th style="text-align:right;padding:8px 14px">MİKTAR</th>
-                        <th style="text-align:left;padding:8px 14px">NOT</th>
-                    </tr></thead>
-                    <tbody>
-                        ${sonHareketler.map(k => {
-                            const tipLbl = raporKumasHareketTip(k) || 'GİRİŞ';
-                            const cikis = tipLbl === 'ÇIKIŞ';
-                            const tip = cikis ? ['var(--rose-c)', 'ÇIKIŞ'] : ['var(--emerald-c)', 'GİRİŞ'];
-                            const kg = Math.abs(parseFloat(k.miktar_kg) || 0);
-                            const mt = Math.abs(parseFloat(k.miktar_mt) || 0);
-                            const miktar = [kg ? `${cikis ? '-' : '+'}${fmtKg(kg)} kg` : '', mt ? `${cikis ? '-' : '+'}${fmtMt(mt)} mt` : ''].filter(Boolean).join(' · ') || '—';
-                            const grupLbl = siparisGrubuEtiket(raporKumasGrupBul(k));
-                            return `<tr style="border-top:1px solid var(--border)">
-                                <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${(k.created_at || '').slice(0, 10)}</td>
-                                <td style="padding:7px 14px">
-                                    <div style="font-size:11px;color:var(--text)">${k.kumas_cinsi || k.stok_kodu || '—'}</div>
-                                    <div style="font-size:9px;color:var(--text3)">${grupLbl}</div>
-                                </td>
-                                <td style="padding:7px 14px"><span style="font-size:10px;font-weight:600;color:${tip[0]}">${tip[1]}</span></td>
-                                <td style="padding:7px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:${tip[0]};font-size:10px">${miktar}</td>
-                                <td style="padding:7px 14px;font-size:10px;color:var(--text3)">${k.notlar || '—'}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-}
-
-// ── 8. DOKUMA RAPORU ──────────────────────────────────────
-function renderRaporDokuma(iplikStok, siparisler) {
-    // Dokuma hareketleri: iplik çıkışları arasında dokuma olanlar
-    const dokumaKayitlari = iplikStok.filter(i =>
-        parseFloat(i.miktar_kg||0) < 0 &&
-        ((i.cikis_yeri||'').includes('DOKUMA') || (i.kaynak_birim||'').includes('DOKUMA') ||
-         (i.aciklama||'').toLowerCase().includes('dokuma'))
-    );
-    const fmt = n => n.toLocaleString('tr-TR',{maximumFractionDigits:0});
-    const topDokuma = dokumaKayitlari.reduce((a,i) => a + Math.abs(parseFloat(i.miktar_kg||0)), 0);
-
-    // Tezgah verileri
-    const tezgahlar = dataCache.tezgahlar || [];
-    const aktifTez  = tezgahlar.filter(t => t.durum === 'ÇALIŞIYOR').length;
-    const bosaTez   = tezgahlar.filter(t => t.durum === 'MÜSAİT').length;
-    /* tezgahlar tablosunda ttarih / urun kolonu YOK; gerçek adları
-       dokuma_termini / urun_adi. Eski halinde TERMİN ve ÜRÜN sütunları hep
-       boş, geciken sayısı hep 0 çıkıyordu. */
-    const geciktez  = tezgahlar.filter(t => t.dokuma_termini && new Date(t.dokuma_termini) < new Date()).length;
-
-    // Sipariş bazlı tezgah eşleşmesi
-    const tezBySip = {};
-    tezgahlar.forEach(t => {
-        if (t.siparis_no) {
-            if (!tezBySip[t.siparis_no]) tezBySip[t.siparis_no] = [];
-            tezBySip[t.siparis_no].push(t);
-        }
-    });
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-            ${[
-                {ikon:'🧵', l:'Toplam Dokuma',    v:fmt(topDokuma)+' kg',  renk:'var(--accent)'},
-                {ikon:'⚙️', l:'Aktif Tezgah',     v:aktifTez+' adet',      renk:'var(--emerald-c)'},
-                {ikon:'🟢', l:'Boş Tezgah',       v:bosaTez+' adet',       renk:'var(--cyan-c)'},
-                {ikon:'⚠️', l:'Gecikmiş Tezgah',  v:geciktez+' adet',      renk:'var(--rose-c)'},
-            ].map(x=>`
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid ${x.renk}">
-                <div style="font-size:16px;margin-bottom:6px">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:${x.renk};line-height:1">${x.v}</div>
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:4px">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Tezgah Durumu Tablosu -->
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>Tezgah Durumu</div>
-                <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${tezgahlar.length} tezgah</div>
-            </div>
-            ${tezgahlar.length > 0 ? `
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">TEZGAH NO</th>
-                        <th style="text-align:left;padding:8px 14px">SİPARİŞ / MÜŞTERİ</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRÜN</th>
-                        <th style="text-align:left;padding:8px 14px">TERMİN</th>
-                        <th style="text-align:center;padding:8px 14px">DURUM</th>
-                        <th style="text-align:right;padding:8px 14px">KALAN GÜN</th>
-                    </tr></thead>
-                    <tbody>
-                        ${tezgahlar.slice(0,20).map(t=>{
-                            const bugun = new Date();
-                            const kalan = t.dokuma_termini ? Math.ceil((new Date(t.dokuma_termini)-bugun)/86400000) : null;
-                            const kalanRenk = kalan === null ? 'var(--text3)' : kalan < 0 ? 'var(--rose-c)' : kalan <= 3 ? 'var(--amber-c)' : 'var(--emerald-c)';
-                            const durumPill = t.durum === 'ÇALIŞIYOR' ? 'pill pill-green' : t.durum === 'MÜSAİT' ? 'pill pill-blue' : 'pill pill-gray';
-                            return `<tr style="border-top:1px solid var(--border)">
-                                <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-weight:600;color:var(--accent)">${t.tezgah_no||'—'}</td>
-                                <td style="padding:8px 14px">
-                                    <div style="font-size:11px;font-weight:500;color:var(--text)">${t.siparis_no||'—'}</div>
-                                    <div style="font-size:9px;color:var(--text3)">${t.musteri||'—'}</div>
-                                </td>
-                                <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${t.urun_adi||'—'}</td>
-                                <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${t.dokuma_termini||'—'}</td>
-                                <td style="padding:8px 14px;text-align:center"><span class="${durumPill}">${t.durum||'—'}</span></td>
-                                <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:${kalanRenk}">${kalan !== null ? (kalan < 0 ? kalan+' gün' : '+'+kalan+' gün') : '—'}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            </div>` : `<div class="empty-pro"><div class="empty-pro-icon">⚙️</div><div class="empty-pro-title">Tezgah verisi yok</div><div class="empty-pro-sub">Tezgah Yönetimi modülünden veri girin</div></div>`}
-        </div>
-
-        <!-- Dokuma hareketleri -->
-        ${dokumaKayitlari.length > 0 ? `
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head"><div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>Dokuma İplik Hareketleri</div></div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">TARİH</th>
-                        <th style="text-align:left;padding:8px 14px">İPLİK</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--accent)">MİKTAR (kg)</th>
-                        <th style="text-align:left;padding:8px 14px">GİDEN YER</th>
-                    </tr></thead>
-                    <tbody>
-                        ${dokumaKayitlari.slice(0,15).map(i=>`
-                        <tr style="border-top:1px solid var(--border)">
-                            <td style="padding:7px 14px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${(i.created_at||'').slice(0,10)}</td>
-                            <td style="padding:7px 14px;font-size:11px;color:var(--text)">${i.iplik_no||i.cins||'—'}</td>
-                            <td style="padding:7px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--accent)">${fmt(Math.abs(parseFloat(i.miktar_kg||0)))} kg</td>
-                            <td style="padding:7px 14px;font-size:10px;color:var(--text3)">${i.cikis_yeri||i.aciklama||'DOKUMA'}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>` : ''}
-    </div>`;
-}
-
-// ── 8b. KONFEKSİYON İŞLEM RAPORU (günlük / haftalık / aylık) ──
-/* DİKKAT: Bu liste doğrudan veritabanı sorgusuna (.in('islem', …)) gider — Türkçe harf
-   çevirimi (raporKonfIslemGrupKod) SONRA çalıştığı için, burada olmayan yazım hiç çekilmez.
-   Veritabanında aynı işlem iki yazımla kayıtlı (ör. KESİM 287 / KESIM 87 kayıt); Konfeksiyon
-   Panel'den girilen kalite kayıtları da 'KALİTE KONTROL' adıyla yazılıyor. Yeni bir işlem adı
-   eklenirse buraya da eklenmeli. */
-const RAPOR_KONF_ISLEM_SET = new Set([
-    'KESIM', 'KESİM',
-    'YIKAMA_SEVK', 'YIKAMA_GELEN', 'YIKAMA',
-    'KK_GECEN', 'KALITE', 'KALİTE', 'KALİTE KONTROL', 'KALITE KONTROL',
-    'KOLI', 'KOLİ',
-    'DIKIM', 'DİKİM',
-    'KONF_SEVK', 'SEVK'
-]);
-
+/* İşlem adı → konfeksiyon aşama grubu (iki yazım: KESİM/KESIM, KALİTE KONTROL/KK_GECEN …) */
 function raporKonfIslemGrupKod(islem) {
     const k = String(islem || '').toUpperCase().replace(/İ/g, 'I');
     if (k === 'KESIM' || k.includes('KESIM')) return 'kesim';
@@ -25990,988 +23898,6 @@ function raporKonfIslemGrupKod(islem) {
     if (k === 'KONF_SEVK' || k === 'SEVK' || k.includes('SEVK')) return 'sevk';
     if (k === 'DIKIM' || k.includes('DIK')) return 'dikim';
     return '';
-}
-
-function raporKonfIslemParseNot(notlar) {
-    if (!notlar) return {};
-    if (typeof notlar === 'object') return notlar;
-    try { return JSON.parse(notlar); } catch (e) { return {}; }
-}
-
-function raporKonfIslemGunStr(row) {
-    const j = raporKonfIslemParseNot(row?.notlar);
-    const isKesim = raporKonfIslemGrupKod(row?.islem) === 'kesim';
-    const ts = (isKesim && j.kesim_ts) ? j.kesim_ts : (j.ts || j.tarih || row?.created_at || '');
-    const d = konfParseFlexibleDate(ts) || raporParseAnyDate(ts);
-    return raporLocalDateStr(d || ts);
-}
-
-function raporKonfIslemUrunKey(row, j) {
-    const idx = j.kalem_idx != null && j.kalem_idx !== '' ? String(j.kalem_idx) : '';
-    const key = String(j.kalem_key || '').trim();
-    if (idx !== '' || key) return `${idx}|${key}`;
-    const renk = String(j.renk || j.kalem_renk || '').trim().toLowerCase();
-    const ebat = String(j.ebat || j.kalem_ebat || '').trim().toLowerCase();
-    const ad = String(row.kalem_ad || j.stok_kodu || '').trim().toLowerCase();
-    return `ad|${ad}|${renk}|${ebat}`;
-}
-
-function raporKonfIslemUrunLabel(row, j) {
-    const ad = String(row.kalem_ad || j.kalem_ad || j.urun || '').trim();
-    if (ad) return ad;
-    const pieces = [j.stok_kodu, j.renk || j.kalem_renk, j.ebat || j.kalem_ebat].filter(Boolean);
-    return pieces.length ? pieces.join(' · ') : '—';
-}
-
-function raporKonfIslemDonemGaranti() {
-    if (raporFiltre.bas && raporFiltre.bitis) return;
-    const bugun = new Date();
-    const bugunStr = raporLocalDateStr(bugun);
-    const d = raporFiltre.donem || 'ay';
-    if (d === 'bugün') {
-        raporFiltre.bas = raporFiltre.bitis = bugunStr;
-    } else if (d === 'hafta') {
-        const hBas = new Date(bugun);
-        hBas.setDate(bugun.getDate() - bugun.getDay() + 1);
-        raporFiltre.bas = raporLocalDateStr(hBas);
-        raporFiltre.bitis = bugunStr;
-        raporFiltre.donem = 'hafta';
-    } else if (d === 'yıl') {
-        raporFiltre.bas = raporLocalDateStr(new Date(bugun.getFullYear(), 0, 1));
-        raporFiltre.bitis = bugunStr;
-        raporFiltre.donem = 'yıl';
-    } else {
-        raporFiltre.bas = raporLocalDateStr(new Date(bugun.getFullYear(), bugun.getMonth(), 1));
-        raporFiltre.bitis = bugunStr;
-        raporFiltre.donem = 'ay';
-    }
-}
-
-async function raporKonfIslemVeriYukle(force) {
-    raporKonfIslemDonemGaranti();
-    const key = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-    if (!force && raporKonfIslemCache.key === key && Array.isArray(raporKonfIslemCache.rows)) {
-        return raporKonfIslemCache.rows;
-    }
-    if (raporKonfIslemCache.yukleniyor) return raporKonfIslemCache.rows || [];
-    raporKonfIslemCache.yukleniyor = true;
-    raporKonfIslemCache.hata = '';
-    try {
-        if (typeof sb === 'undefined' || !sb?.from) throw new Error('Bağlantı yok');
-        let q = sb.from('siparis_akis')
-            .select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
-            .in('islem', [...RAPOR_KONF_ISLEM_SET])
-            .order('created_at', { ascending: false })
-            .limit(20000);
-        if (raporFiltre.bas) {
-            q = q.gte('created_at', `${raporFiltre.bas}T00:00:00`);
-        }
-        if (raporFiltre.bitis) {
-            const bitExclusive = new Date(`${raporFiltre.bitis}T00:00:00`);
-            if (!Number.isNaN(bitExclusive.getTime())) {
-                bitExclusive.setDate(bitExclusive.getDate() + 1);
-                q = q.lt('created_at', bitExclusive.toISOString().slice(0, 10) + 'T00:00:00');
-            }
-        }
-        const { data, error } = await q;
-        if (error) throw error;
-        const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
-        const rows = (data || []).map(r => {
-            const j = raporKonfIslemParseNot(r.notlar);
-            const gun = raporKonfIslemGunStr(r);
-            const grup = raporKonfIslemGrupKod(r.islem);
-            const sip = sipMap.get(String(r.siparis_id));
-            return {
-                id: r.id,
-                siparis_id: r.siparis_id,
-                sno: sip?.sno || String(r.siparis_id || '—'),
-                firma: sip?.firma || '',
-                islem: r.islem,
-                grup,
-                gun,
-                miktar: parseFloat(r.miktar) || 0,
-                urun_key: raporKonfIslemUrunKey(r, j),
-                urun: raporKonfIslemUrunLabel(r, j),
-                not_json: j
-            };
-        }).filter(r => {
-            if (!r.grup) return false;
-            if (raporFiltre.bas && (!r.gun || r.gun < raporFiltre.bas)) return false;
-            if (raporFiltre.bitis && (!r.gun || r.gun > raporFiltre.bitis)) return false;
-            if (raporFiltre.firma && String(r.firma || '') !== String(raporFiltre.firma)) return false;
-            return true;
-        });
-        raporKonfIslemCache = { key, rows, yukleniyor: false, hata: '' };
-        if (raporTab === 'KONF_ISLEM' && appMode === 'RAPORLAR') {
-            debounce('rapor-konf-islem-yenile', () => raporIcerikVeChartYenile(), 40);
-        }
-        return rows;
-    } catch (e) {
-        raporKonfIslemCache = {
-            key: '',
-            rows: raporKonfIslemCache.rows || [],
-            yukleniyor: false,
-            hata: e?.message || String(e)
-        };
-        if (raporTab === 'KONF_ISLEM' && appMode === 'RAPORLAR') {
-            debounce('rapor-konf-islem-yenile', () => raporIcerikVeChartYenile(), 40);
-        }
-        return raporKonfIslemCache.rows || [];
-    }
-}
-
-function raporKonfIslemTopla(rows) {
-    const map = new Map();
-    (rows || []).forEach(r => {
-        const donem = raporKonfIslemKirilim === 'gunluk' ? (r.gun || '—') : 'TOPLAM';
-        const k = `${donem}|${r.siparis_id}|${r.urun_key}`;
-        if (!map.has(k)) {
-            map.set(k, {
-                donem,
-                siparis_id: r.siparis_id,
-                sno: r.sno,
-                firma: r.firma || '—',
-                urun: r.urun,
-                kesim: 0,
-                yikama_sevk: 0,
-                yikama_gelen: 0,
-                kalite: 0,
-                koli: 0,
-                sevk: 0,
-                dikim: 0,
-                islem_sayisi: 0
-            });
-        }
-        const o = map.get(k);
-        if (r.grup && o[r.grup] != null) o[r.grup] += r.miktar || 0;
-        o.islem_sayisi += 1;
-        if (r.urun && r.urun !== '—' && (o.urun === '—' || !o.urun)) o.urun = r.urun;
-    });
-    return [...map.values()].sort((a, b) => {
-        if (a.donem !== b.donem) return String(b.donem).localeCompare(String(a.donem));
-        const snoCmp = String(a.sno).localeCompare(String(b.sno), 'tr');
-        if (snoCmp) return snoCmp;
-        return String(a.urun).localeCompare(String(b.urun), 'tr');
-    });
-}
-
-function raporKonfIslemKirilimSec(v) {
-    raporKonfIslemKirilim = v === 'gunluk' ? 'gunluk' : 'toplam';
-    if (appMode === 'RAPORLAR') renderRaporlar();
-}
-
-async function openKonfIslemRaporu(donem) {
-    raporTab = 'KONF_ISLEM';
-    if (donem === 'bugün' || donem === 'hafta' || donem === 'ay') {
-        raporKonfIslemKirilim = donem === 'bugün' ? 'gunluk' : 'toplam';
-        await setAppMode('RAPORLAR');
-        raporDonemSec(donem);
-        return;
-    }
-    if (!raporFiltre.bas || !raporFiltre.bitis) {
-        raporKonfIslemKirilim = 'toplam';
-        await setAppMode('RAPORLAR');
-        raporDonemSec('hafta');
-        return;
-    }
-    await setAppMode('RAPORLAR');
-    renderRaporlar();
-}
-
-let raporKonfKesimCache = { key: '', rows: [], yukleniyor: false, hata: '' };
-
-/** konf_kesim_yikama satırlarını kesim raporu satır biçimine çevirir.
-    Kaynak etiketi: MOBIL_* → Konfeksiyon Panel, diğerleri → masaüstü manuel giriş. */
-async function raporKonfKesimKyYukle(sipMap) {
-    if (typeof sb === 'undefined' || !sb?.from) return [];
-    let q = sb.from('konf_kesim_yikama')
-        .select('id,created_at,kesim_ts,siparis_id,siparis_sno,firma,kalem_idx,desen,renk,ebat,kesilen_adet,rota,kaynak,kesim_user,aktif')
-        .order('created_at', { ascending: false })
-        .limit(5000);
-    if (raporFiltre.bas) q = q.gte('created_at', `${raporFiltre.bas}T00:00:00`);
-    if (raporFiltre.bitis) {
-        const bit = new Date(`${raporFiltre.bitis}T00:00:00`);
-        if (!Number.isNaN(bit.getTime())) {
-            bit.setDate(bit.getDate() + 1);
-            q = q.lt('created_at', bit.toISOString().slice(0, 10) + 'T00:00:00');
-        }
-    }
-    const { data, error } = await q;
-    if (error) throw error;
-    const map = sipMap || new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
-    return (data || []).reduce((out, r) => {
-        if (r.aktif === false) return out;                       // iptal edilmiş giriş
-        const miktar = parseInt(r.kesilen_adet, 10) || 0;
-        if (miktar <= 0) return out;
-        const sip = map.get(String(r.siparis_id));
-        const firma = String(r.firma || sip?.firma || '').trim();
-        if (raporFiltre.firma && firma !== String(raporFiltre.firma)) return out;
-        const ts = r.kesim_ts || r.created_at || '';
-        const gun = (typeof raporLocalDateStr === 'function') ? raporLocalDateStr(ts) : String(ts).slice(0, 10);
-        if (raporFiltre.bas && gun && gun < raporFiltre.bas) return out;
-        if (raporFiltre.bitis && gun && gun > raporFiltre.bitis) return out;
-        const mobil = /^MOBIL/i.test(String(r.kaynak || ''));
-        out.push({
-            id: `ky-${r.id}`,
-            siparis_id: r.siparis_id,
-            siparis_sno: r.siparis_sno || sip?.sno || String(r.siparis_id || '—'),
-            firma,
-            desen: String(r.desen || '').trim() || '—',
-            renk: String(r.renk || '').trim() || '—',
-            ebat: String(r.ebat || '').trim() || '—',
-            miktar,
-            ts,
-            gun,
-            user: String(r.kesim_user || '').trim(),
-            rota: String(r.rota || '').toUpperCase(),
-            sonraki_rota: String(r.rota || '').toUpperCase(),
-            kalem_idx: r.kalem_idx,
-            kaynak: r.kaynak || '',
-            platform: mobil ? 'Konfeksiyon Panel' : 'Masaüstü'
-        });
-        return out;
-    }, []);
-}
-
-async function raporKonfKesimVeriYukle(force) {
-    raporKonfIslemDonemGaranti();
-    const key = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-    if (!force && raporKonfKesimCache.key === key && Array.isArray(raporKonfKesimCache.rows)) {
-        return raporKonfKesimCache.rows;
-    }
-    if (raporKonfKesimCache.yukleniyor) return raporKonfKesimCache.rows || [];
-    raporKonfKesimCache.yukleniyor = true;
-    raporKonfKesimCache.hata = '';
-    try {
-        if (typeof sb === 'undefined' || !sb?.from) throw new Error('Bağlantı yok');
-        let q = sb.from('siparis_akis')
-            .select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
-            /* Tek yazımla eşleşme (.eq 'KESIM') kayıtların %77'sini kaçırıyordu:
-               veritabanında KESİM (Türkçe İ) 287, KESIM (düz I) 87 kayıt var. */
-            .in('islem', ['KESIM', 'KESİM'])
-            .order('created_at', { ascending: false })
-            .limit(5000);
-        if (raporFiltre.bas) q = q.gte('created_at', `${raporFiltre.bas}T00:00:00`);
-        if (raporFiltre.bitis) {
-            const bitExclusive = new Date(`${raporFiltre.bitis}T00:00:00`);
-            if (!Number.isNaN(bitExclusive.getTime())) {
-                bitExclusive.setDate(bitExclusive.getDate() + 1);
-                q = q.lt('created_at', bitExclusive.toISOString().slice(0, 10) + 'T00:00:00');
-            }
-        }
-        const { data, error } = await q;
-        if (error) throw error;
-        const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
-        let rows = (data || [])
-            .map(r => (typeof konfKesimGecmisSatirFromRaw === 'function') ? konfKesimGecmisSatirFromRaw(r, sipMap) : null)
-            .filter(Boolean);
-        if (raporFiltre.bas || raporFiltre.bitis) {
-            rows = rows.filter(r => {
-                const gun = r.gun || raporLocalDateStr(r.ts);
-                if (raporFiltre.bas && gun && gun < raporFiltre.bas) return false;
-                if (raporFiltre.bitis && gun && gun > raporFiltre.bitis) return false;
-                return true;
-            });
-        }
-        if (raporFiltre.firma) {
-            rows = rows.filter(r => String(r.firma || '') === String(raporFiltre.firma));
-        }
-
-        /* konf_kesim_yikama — Konfeksiyon Panel'in (mobil) kesim kayıtlarını YALNIZCA buraya
-           yazdığı tablo; masaüstünün manuel kesimleri de burada. Rapor bu kaynağı hiç
-           okumadığı için panelden girilen kesimler görünmüyordu.
-           Çift sayma kontrolü: canlı veride siparis_akis ile (gün+sipariş+adet) çakışma 0/104. */
-        try {
-            const kySatirlar = await raporKonfKesimKyYukle(sipMap);
-            if (kySatirlar.length) {
-                rows = rows.concat(kySatirlar).sort((a, b) => {
-                    const ta = new Date(a.ts || 0).getTime() || 0;
-                    const tb = new Date(b.ts || 0).getTime() || 0;
-                    return tb - ta;
-                });
-            }
-        } catch (e) { console.warn('konf_kesim_yikama rapor kaynağı:', e?.message || e); }
-
-        raporKonfKesimCache = { key, rows, yukleniyor: false, hata: '' };
-        if (raporTab === 'KONF_KESIM' && appMode === 'RAPORLAR') renderRaporlar();
-        return rows;
-    } catch (e) {
-        raporKonfKesimCache = {
-            key,
-            rows: raporKonfKesimCache.rows || [],
-            yukleniyor: false,
-            hata: e.message || String(e)
-        };
-        if (raporTab === 'KONF_KESIM' && appMode === 'RAPORLAR') renderRaporlar();
-        return raporKonfKesimCache.rows || [];
-    }
-}
-
-async function openKonfKesimRaporu(donem) {
-    raporTab = 'KONF_KESIM';
-    await setAppMode('RAPORLAR');
-    raporDonemSec(donem || 'hafta');
-}
-window.openKonfKesimRaporu = openKonfKesimRaporu;
-
-function renderRaporKonfKesim() {
-    raporKonfIslemDonemGaranti();
-    const fmt = n => (Math.round(parseFloat(n) || 0)).toLocaleString('tr-TR');
-    const cacheKeyBeklenen = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-    const rows = raporKonfKesimCache.rows || [];
-    const yukleniyor = !!raporKonfKesimCache.yukleniyor;
-    const hata = raporKonfKesimCache.hata || '';
-    const stale = raporKonfKesimCache.key !== cacheKeyBeklenen;
-    const liste = stale && !rows.length ? [] : rows;
-    const toplamAd = liste.reduce((s, r) => s + (r.miktar || 0), 0);
-    const donemLbl = raporFiltre.bas && raporFiltre.bitis
-        ? (raporFiltre.bas === raporFiltre.bitis ? raporFiltre.bas : `${raporFiltre.bas} — ${raporFiltre.bitis}`)
-        : 'Tüm dönem';
-    const tabloSatir = liste.map(r => {
-        const tarih = r.ts ? new Date(r.ts) : null;
-        const tarihStr = tarih && !Number.isNaN(tarih.getTime()) ? tarih.toLocaleDateString('tr-TR') : '—';
-        const saatStr = tarih && !Number.isNaN(tarih.getTime()) ? tarih.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
-        return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap;line-height:1.35">
-                <div>${pdfEsc(tarihStr)}</div>
-                ${saatStr ? `<div style="font-size:9px;color:var(--text3)">${pdfEsc(saatStr)}</div>` : ''}
-            </td>
-            <td style="padding:7px 10px;font-weight:700;font-family:'DM Mono',monospace;font-size:11px">${pdfEsc(r.siparis_sno)}</td>
-            <td style="padding:7px 10px;font-size:11px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${pdfEsc(r.firma || '')}">${pdfEsc(r.firma || '—')}</td>
-            <td style="padding:7px 10px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${pdfEsc(r.desen)}">${pdfEsc(r.desen)}</td>
-            <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${pdfEsc(r.ebat)}</td>
-            <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--rose-c)">${pdfEsc(r.renk)}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:#10b981">${fmt(r.miktar)} ad</td>
-            <td style="padding:7px 10px;font-size:10px;color:var(--text3)">${pdfEsc(r.user || '—')}</td>
-        </tr>`;
-    }).join('');
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:10px;color:var(--text3)">${pdfEsc(donemLbl)} · ${liste.length} kesim kaydı · ${fmt(toplamAd)} ad toplam</span>
-            <button type="button" onclick="raporKonfKesimVeriYukle(true)" class="pro-input" style="margin-left:auto;padding:5px 10px;font-size:10px;cursor:pointer">Yenile</button>
-        </div>
-        <div class="panel-box" style="padding:12px 14px;border-left:3px solid #10b981">
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">Toplam kesilen</div>
-            <div style="font-family:'Instrument Serif',serif;font-size:28px;color:#10b981;line-height:1.1;margin-top:4px">${fmt(toplamAd)} <span style="font-size:14px">ad</span></div>
-        </div>
-        ${hata ? `<div class="panel-box" style="padding:10px 12px;border-left:3px solid var(--rose-c);color:var(--rose-c);font-size:11px">Yükleme hatası: ${pdfEsc(hata)}</div>` : ''}
-        ${yukleniyor || stale ? `<div class="panel-box" style="padding:10px 12px;font-size:11px;color:var(--text3)">Kesim kayıtları yükleniyor…</div>` : ''}
-        <div class="panel-box" style="padding:0;overflow:auto">
-            <table style="width:100%;border-collapse:collapse;min-width:900px">
-                <thead>
-                    <tr style="background:var(--surface2);text-align:left">
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Tarih</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Sipariş</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Müşteri</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Desen</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Ebat</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Renk</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Kesilen</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">İşlem yapan</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${tabloSatir || `<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu dönemde kesim kaydı yok.</td></tr>`}
-                </tbody>
-            </table>
-        </div>
-    </div>`;
-}
-
-function renderRaporKonfIslem() {
-    raporKonfIslemDonemGaranti();
-    const fmt = n => (Math.round(parseFloat(n) || 0)).toLocaleString('tr-TR');
-    const rows = raporKonfIslemCache.rows || [];
-    const yukleniyor = !!raporKonfIslemCache.yukleniyor;
-    const hata = raporKonfIslemCache.hata || '';
-    const cacheKeyBeklenen = `${raporFiltre.bas || ''}|${raporFiltre.bitis || ''}|${raporFiltre.firma || ''}`;
-    const stale = raporKonfIslemCache.key !== cacheKeyBeklenen;
-    const toplamlar = raporKonfIslemTopla(stale && !rows.length ? [] : rows);
-    const ozet = toplamlar.reduce((a, r) => {
-        a.kesim += r.kesim; a.yikama_sevk += r.yikama_sevk; a.yikama_gelen += r.yikama_gelen;
-        a.kalite += r.kalite; a.koli += r.koli; a.sevk += r.sevk; a.dikim += r.dikim;
-        return a;
-    }, { kesim: 0, yikama_sevk: 0, yikama_gelen: 0, kalite: 0, koli: 0, sevk: 0, dikim: 0 });
-    const donemLbl = raporFiltre.bas && raporFiltre.bitis
-        ? (raporFiltre.bas === raporFiltre.bitis ? raporFiltre.bas : `${raporFiltre.bas} — ${raporFiltre.bitis}`)
-        : 'Tüm dönem';
-    const kart = (lbl, val, clr) => `
-        <div class="panel-box" style="padding:12px 14px;border-left:3px solid ${clr}">
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;font-family:'DM Mono',monospace">${lbl}</div>
-            <div style="font-family:'Instrument Serif',serif;font-size:26px;color:${clr};line-height:1.1;margin-top:4px">${fmt(val)}</div>
-        </div>`;
-    const tabloSatir = toplamlar.map(r => `
-        <tr style="border-bottom:1px solid var(--border)">
-            ${raporKonfIslemKirilim === 'gunluk' ? `<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:10px;white-space:nowrap">${pdfEsc(r.donem)}</td>` : ''}
-            <td style="padding:7px 10px;font-weight:700;font-family:'DM Mono',monospace;font-size:11px">${pdfEsc(r.sno)}</td>
-            <td style="padding:7px 10px;font-size:11px;color:var(--text2)">${pdfEsc(r.firma)}</td>
-            <td style="padding:7px 10px;font-size:11px">${pdfEsc(r.urun)}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#818cf8">${r.kesim ? fmt(r.kesim) : '—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#38bdf8">${r.yikama_sevk ? fmt(r.yikama_sevk) : '—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#06b6d4">${r.yikama_gelen ? fmt(r.yikama_gelen) : '—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#fbbf24">${r.kalite ? fmt(r.kalite) : '—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#22d3ee">${r.koli ? fmt(r.koli) : '—'}</td>
-            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;color:#a78bfa">${r.sevk ? fmt(r.sevk) : '—'}</td>
-        </tr>`).join('');
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:10px;color:var(--text3)">Kırılım:</span>
-            <button type="button" onclick="raporKonfIslemKirilimSec('toplam')" class="pill ${raporKonfIslemKirilim==='toplam'?'pill-pink':'pill-gray'}" style="cursor:pointer;border:none">Dönem toplamı</button>
-            <button type="button" onclick="raporKonfIslemKirilimSec('gunluk')" class="pill ${raporKonfIslemKirilim==='gunluk'?'pill-pink':'pill-gray'}" style="cursor:pointer;border:none">Günlük detay</button>
-            <span style="font-size:10px;color:var(--text3);margin-left:4px">${pdfEsc(donemLbl)} · ${toplamlar.length} satır</span>
-            <button type="button" onclick="raporKonfIslemVeriYukle(true)" class="pro-input" style="margin-left:auto;padding:5px 10px;font-size:10px;cursor:pointer">Yenile</button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">
-            ${kart('Kesim', ozet.kesim, '#818cf8')}
-            ${kart('Yıkamaya', ozet.yikama_sevk, '#38bdf8')}
-            ${kart('Yıkamadan', ozet.yikama_gelen, '#06b6d4')}
-            ${kart('Kalite', ozet.kalite, '#fbbf24')}
-            ${kart('Koli', ozet.koli, '#22d3ee')}
-            ${kart('Sevk', ozet.sevk, '#a78bfa')}
-        </div>
-        ${hata ? `<div class="panel-box" style="padding:10px 12px;border-left:3px solid var(--rose-c);color:var(--rose-c);font-size:11px">Yükleme hatası: ${pdfEsc(hata)}</div>` : ''}
-        ${yukleniyor || stale ? `<div class="panel-box" style="padding:10px 12px;font-size:11px;color:var(--text3)">İşlem kayıtları yükleniyor…</div>` : ''}
-        <div class="panel-box" style="padding:0;overflow:auto">
-            <table style="width:100%;border-collapse:collapse;min-width:720px">
-                <thead>
-                    <tr style="background:var(--surface2);text-align:left">
-                        ${raporKonfIslemKirilim === 'gunluk' ? `<th style="padding:8px 10px;font-size:9px;color:var(--text3)">Gün</th>` : ''}
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Sipariş</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Firma</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3)">Ürün</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Kesim</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Yıkamaya</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Yıkamadan</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Kalite</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Koli</th>
-                        <th style="padding:8px 10px;font-size:9px;color:var(--text3);text-align:right">Sevk</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${tabloSatir || `<tr><td colspan="${raporKonfIslemKirilim === 'gunluk' ? 10 : 9}" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu dönemde kayıtlı konfeksiyon işlemi yok.</td></tr>`}
-                </tbody>
-            </table>
-        </div>
-    </div>`;
-}
-
-// ── 9. KONFEKSİYON RAPORU ─────────────────────────────────
-function renderRaporKonfeksiyon(siparisler) {
-    let topKesilen=0, topDikilen=0, topKK=0, topKolide=0, topFire=0;
-    const sipDetay = [];
-    const yerSay = { SIMTEKS_KONF: 0, FASON_KONF: 0, DOGRUDAN_SEVK: 0 };
-    const fasonFirmaMap = {};
-    const fmt = n => (parseInt(n, 10) || 0).toLocaleString('tr-TR');
-
-    siparisler.forEach(s => {
-        let kalemler=[]; try{kalemler=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){}
-        const kd = (_kdCache[`KD_KONFEKSIYON_${s.id}`]) || {};
-        const allUa = (_kdCache[`KD_URUN_AGACI_${s.id}`]) || {};
-        const sipFoy = allUa['siparis_foy'] || {};
-        const sipYer = uaNormalizeUretimYeri(s?.uretim_yeri || uaSiparisUretimYeriFromAll(allUa, kalemler));
-        yerSay[sipYer] = (yerSay[sipYer] || 0) + 1;
-        const fasonSet = new Set();
-        // Siparis seviyesinde yazilan fason firma (farkli anahtar varyasyonlari)
-        [
-            sipFoy?.teknik_genel?.fason_firma,
-            allUa?.siparis?.teknik_genel?.fason_firma,
-            allUa?.siparis?.urun_teknik_genel?.fason_firma
-        ].forEach(v => {
-            const ff = String(v || '').trim();
-            if (ff) fasonSet.add(ff);
-        });
-        // Kalem seviyesinde yazilan fason firma (yer kontrolune takilmadan oku)
-        kalemler.forEach((_, i) => {
-            const ua = allUa[`u_${i}`] || {};
-            [
-                ua?.urun_teknik_genel?.fason_firma,
-                ua?.teknik_genel?.fason_firma
-            ].forEach(v => {
-                const ff = String(v || '').trim();
-                if (ff) fasonSet.add(ff);
-            });
-        });
-        const sipFason = [...fasonSet].join(' | ');
-        if (sipYer === 'FASON_KONF') {
-            const ff = sipFason || 'Belirtilmemiş fason';
-            fasonFirmaMap[ff] = (fasonFirmaMap[ff] || 0) + 1;
-        }
-
-        let sKes=0, sDik=0, sKK=0, sKoli=0, sFire=0, sAdet=0;
-        kalemler.forEach((kalem,i) => {
-            const k = kd['kalem_'+i]||{};
-            const sipAdet = parseInt(kalem?.miktar || 0, 10) || 0;
-            sAdet += sipAdet;
-            sKes  += parseInt(k.kesilen||0, 10) || 0;
-            sDik  += parseInt(k.dikilen||0, 10) || 0;
-            sKK   += parseInt(k.kk_gecen||0, 10) || 0;
-            sKoli += parseInt(k.kolide||0, 10) || 0;
-            sFire += (parseInt(k.fire_kesim||0, 10)||0) + (parseInt(k.fire_dikim||0, 10)||0) + (parseInt(k.iki_kalite||0, 10)||0) + (parseInt(k.tamir||0, 10)||0) + (parseInt(k.imha||0, 10)||0);
-        });
-        // Bazı eski kayıtlarda kalem kırılımı boş, toplamlar dolu olabilir.
-        sKes = Math.max(sKes, parseInt(kd.kesim_toplam || 0, 10) || 0);
-        sDik = Math.max(sDik, parseInt(kd.dikim_toplam || 0, 10) || 0);
-        sKK = Math.max(sKK, parseInt(kd.kk_gecen || 0, 10) || 0);
-        sKoli = Math.max(sKoli, parseInt(kd.koli_toplam || 0, 10) || 0);
-        sFire = Math.max(sFire, parseInt(kd.hatali_toplam || 0, 10) || 0);
-        topKesilen += sKes; topDikilen += sDik; topKK += sKK; topKolide += sKoli; topFire += sFire;
-
-        sipDetay.push({
-            sno:s.sno, firma:s.firma||'—', yer:sipYer, fason:sipFason || '—',
-            adet:sAdet, kes:sKes, dik:sDik, kk:sKK, koli:sKoli, fire:sFire,
-            firePct: sDik>0?((sFire/sDik)*100).toFixed(1):'0.0'
-        });
-    });
-
-    const firePct = topDikilen > 0 ? (topFire/topDikilen*100).toFixed(1) : '0.0';
-    const kkPct   = topDikilen > 0 ? Math.round(topKK/topDikilen*100) : 0;
-    const fasonFirmaRows = Object.entries(fasonFirmaMap).sort((a,b)=>b[1]-a[1]);
-    const yerLabel = (y) => y === 'FASON_KONF' ? 'Fason' : y === 'DOGRUDAN_SEVK' ? 'Doğrudan Sevk' : 'Simteks';
-    const toplamSiparis = siparisler.length;
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--accent)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Toplam Sipariş</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:24px;color:var(--accent);line-height:1;margin-top:4px">${fmt(toplamSiparis)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--cyan-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Simteks</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:24px;color:var(--cyan-c);line-height:1;margin-top:4px">${fmt(yerSay.SIMTEKS_KONF||0)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--amber-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Fason</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:24px;color:var(--amber-c);line-height:1;margin-top:4px">${fmt(yerSay.FASON_KONF||0)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--violet-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Doğrudan Sevk</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:24px;color:var(--violet-c);line-height:1;margin-top:4px">${fmt(yerSay.DOGRUDAN_SEVK||0)}</div>
-            </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
-            ${[
-                {ikon:'✂️', l:'Toplam Kesilen', v:fmt(topKesilen)+' adet', renk:'var(--accent)'},
-                {ikon:'🧵', l:'Toplam Dikilen', v:fmt(topDikilen)+' adet', renk:'var(--accent2)'},
-                {ikon:'✅', l:'KK Geçen',       v:fmt(topKK)+' adet',      renk:'var(--emerald-c)'},
-                {ikon:'📦', l:'Kolide',          v:fmt(topKolide)+' adet',  renk:'var(--cyan-c)'},
-                {ikon:'🔥', l:'Fire Oranı',      v:'%'+firePct,             renk: parseFloat(firePct)>5?'var(--rose-c)':parseFloat(firePct)>2?'var(--amber-c)':'var(--emerald-c)'},
-            ].map(x=>`
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid ${x.renk}">
-                <div style="font-size:16px;margin-bottom:6px">${x.ikon}</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:20px;color:${x.renk};line-height:1">${x.v}</div>
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-top:4px">${x.l}</div>
-            </div>`).join('')}
-        </div>
-
-        <div class="panel-box" style="padding:16px 20px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Kalite Kontrol Geçiş Oranı</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:28px;color:${kkPct>=95?'var(--emerald-c)':kkPct>=85?'var(--amber-c)':'var(--rose-c)'}">${kkPct}%</div>
-            </div>
-            <div style="background:var(--surface2);border-radius:999px;height:8px;overflow:hidden">
-                <div style="height:8px;border-radius:999px;background:${kkPct>=95?'var(--emerald-c)':kkPct>=85?'var(--amber-c)':'var(--rose-c)'};width:${kkPct}%;transition:width 0.5s"></div>
-            </div>
-        </div>
-
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>Fason Firma Dağılımı</div>
-            </div>
-            <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px">
-                ${fasonFirmaRows.length
-                    ? fasonFirmaRows.map(([firma, adet]) => `<span class="pill pill-amber">${pdfEsc(firma)} · ${fmt(adet)} sipariş</span>`).join('')
-                    : '<span style="font-size:10px;color:var(--text3)">Fason sipariş bulunmuyor.</span>'}
-            </div>
-        </div>
-
-        ${sipDetay.length > 0 ? `
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>Sipariş Bazlı Konfeksiyon Detayı</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">SİPARİŞ</th>
-                        <th style="text-align:left;padding:8px 14px">FİRMA</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRETİM YERİ</th>
-                        <th style="text-align:left;padding:8px 14px">FASON FİRMA</th>
-                        <th style="text-align:right;padding:8px 14px">SİP. ADET</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--accent)">KESİLEN</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--accent2)">DİKİLEN</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--emerald-c)">KK GEÇTİ</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--cyan-c)">KOLİDE</th>
-                        <th style="text-align:right;padding:8px 14px;color:var(--rose-c)">FIRE %</th>
-                    </tr></thead>
-                    <tbody>
-                        ${sipDetay.map(s=>`
-                        <tr style="border-top:1px solid var(--border)">
-                            <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-weight:600;color:var(--accent)">${pdfEsc(s.sno || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(s.firma || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(yerLabel(s.yer))}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${s.yer==='FASON_KONF'?pdfEsc(s.fason):'—'}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace">${fmt(s.adet)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--accent)">${fmt(s.kes)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--accent2)">${fmt(s.dik)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--emerald-c)">${fmt(s.kk)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;color:var(--cyan-c)">${fmt(s.koli)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${parseFloat(s.firePct)>5?'var(--rose-c)':parseFloat(s.firePct)>2?'var(--amber-c)':'var(--emerald-c)'}">%${s.firePct}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>` : `<div class="empty-pro"><div class="empty-pro-icon">👕</div><div class="empty-pro-title">Konfeksiyon verisi yok</div><div class="empty-pro-sub">Konfeksiyon modülünden veri girin</div></div>`}
-    </div>`;
-}
-
-function raporUrunOzetKalemUrunAramaEsles(k, qRaw) {
-    const q = String(qRaw || '').trim().toLocaleLowerCase('tr-TR');
-    if (!q) return true;
-    const blob = [
-        String(k?.ad || ''),
-        String(k?.kod || ''),
-        String(k?.grup || '')
-    ].join(' ').toLocaleLowerCase('tr-TR');
-    return blob.includes(q);
-}
-
-function raporKalemUretimYeri(siparis, allUa, kalemIdx, kalemler) {
-    const sipFoy = allUa['siparis_foy'] || {};
-    const foyYerRaw = String(sipFoy?.teknik_genel?.uretim_yeri || '').trim();
-    if (foyYerRaw) return uaNormalizeUretimYeri(foyYerRaw);
-    const ua = allUa[`u_${kalemIdx}`] || {};
-    const kalemYerRaw = String(
-        ua?.urun_teknik_genel?.uretim_yeri ||
-        ua?.teknik_genel?.uretim_yeri ||
-        ''
-    ).trim();
-    if (kalemYerRaw) return uaNormalizeUretimYeri(kalemYerRaw);
-    return uaNormalizeUretimYeri(siparis?.uretim_yeri || uaSiparisUretimYeriFromAll(allUa, kalemler));
-}
-
-function raporUrunOzetSiparisGrubuEtiket(raw) {
-    const x = String(raw || '').trim().toUpperCase();
-    if (x === 'GIDA') return 'Gıda';
-    if (x === 'HALI') return 'Halıcı';
-    if (x === 'EV_TEKSTILI') return 'Ev tekstili';
-    if (x === 'KOLTUK_ORTUSU') return 'Koltuk örtüsü';
-    return x.replace(/_/g, ' ') || '—';
-}
-
-function raporUrunOzetHesapla(filtreliSiparis) {
-    const detay = [];
-    const yerFilt = raporUrunOzetUretimYeri;
-    const sgFilt = String(raporUrunOzetSiparisGrubu || '').trim().toUpperCase();
-
-    (filtreliSiparis || []).forEach(s => {
-        if (sgFilt) {
-            const g = String(s?.siparis_grubu || '').trim().toUpperCase();
-            if (g !== sgFilt) return;
-        }
-        let kalemler = [];
-        try { kalemler = typeof s.cins === 'string' ? JSON.parse(s.cins) : (s.cins || []); } catch (e) {}
-        const allUa = (_kdCache[`KD_URUN_AGACI_${s.id}`]) || {};
-        kalemler.forEach((k, i) => {
-            if (!raporUrunOzetKalemUrunAramaEsles(k, raporUrunOzetUrunArama)) return;
-            const kYer = raporKalemUretimYeri(s, allUa, i, kalemler);
-            if (yerFilt && kYer !== yerFilt) return;
-            const miktar = parseInt(k?.miktar, 10) || 0;
-            detay.push({
-                sno: s.sno,
-                firma: s.firma,
-                termin: s.ttarih,
-                siparisGrubu: s.siparis_grubu || '',
-                yer: kYer,
-                grup: k?.grup || '',
-                kod: k?.kod || '',
-                ad: k?.ad || '',
-                renk: k?.renk || '',
-                ebat: k?.ebat || '',
-                miktar
-            });
-        });
-    });
-
-    // Not: Daha önce burada "aynı kalemleri birleştirip toplama" (kod+ad+renk+ebat+grup)
-    // ve ayrıca "ürün ailesi" (kod+ad+grup) toplaması vardı. Bazı siparişlerde hataya yol açtığı için kapatıldı.
-    const ozet = [];
-    detay.sort((a, b) => String(a.sno || '').localeCompare(String(b.sno || ''), 'tr') || String(a.firma || '').localeCompare(String(b.firma || ''), 'tr'));
-
-    const renkSet = new Set();
-    const ebatSet = new Set();
-    const snoSet = new Set();
-    let toplamAdet = 0;
-    detay.forEach(d => {
-        toplamAdet += d.miktar || 0;
-        const rn = String(d.renk || '').trim().toLocaleUpperCase('tr-TR');
-        const eb = String(d.ebat || '').trim().toLocaleUpperCase('tr-TR');
-        if (rn) renkSet.add(rn);
-        if (eb) ebatSet.add(eb);
-        if (d.sno) snoSet.add(String(d.sno));
-    });
-    const istatistik = {
-        toplamAdet,
-        renkSayisi: renkSet.size,
-        ebatSayisi: ebatSet.size,
-        siparisSayisi: snoSet.size,
-        kalemSatirSayisi: detay.length
-    };
-    const urunAilesi = [];
-
-    return { detay, ozet, istatistik, urunAilesi };
-}
-
-function renderRaporUrunOzet(filtreliSiparis) {
-    const { detay, ozet, istatistik, urunAilesi } = raporUrunOzetHesapla(filtreliSiparis);
-    const fmt = n => (parseInt(n, 10) || 0).toLocaleString('tr-TR');
-    const sgOpts = [
-        { value: '', label: 'Tümü' },
-        { value: 'GIDA', label: 'Gıda' },
-        { value: 'HALI', label: 'Halı' },
-        { value: 'EV_TEKSTILI', label: 'Ev tekstili' },
-        { value: 'KOLTUK_ORTUSU', label: 'Koltuk örtüsü' }
-    ];
-    const yerOpts = [
-        { value: '', label: 'Tümü' },
-        { value: 'SIMTEKS_KONF', label: 'Simteks konfeksiyon' },
-        { value: 'FASON_KONF', label: 'Fason konfeksiyon' },
-        { value: 'DOGRUDAN_SEVK', label: 'Doğrudan sevk' }
-    ];
-
-    return `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="panel-box" style="padding:12px 16px">
-            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-                <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Sipariş grubu</span>
-                <select class="pro-input" style="padding:5px 10px;font-size:10px;width:auto"
-                    onchange="raporUrunOzetSiparisGrubu=this.value;renderRaporlar()">
-                    ${sgOpts.map(o => `<option value="${o.value}" ${raporUrunOzetSiparisGrubu === o.value ? 'selected' : ''}>${pdfEsc(o.label)}</option>`).join('')}
-                </select>
-                <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-left:8px">Üretim yeri</span>
-                <select class="pro-input" style="padding:5px 10px;font-size:10px;width:auto"
-                    onchange="raporUrunOzetUretimYeri=this.value;renderRaporlar()">
-                    ${yerOpts.map(o => `<option value="${o.value}" ${raporUrunOzetUretimYeri === o.value ? 'selected' : ''}>${pdfEsc(o.label)}</option>`).join('')}
-                </select>
-                <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace;margin-left:8px">Ürün ara</span>
-                <input type="text" class="pro-input" style="padding:5px 10px;font-size:10px;min-width:200px;max-width:320px"
-                    placeholder="ör. bordurlu pike"
-                    value="${pdfEsc(raporUrunOzetUrunArama)}"
-                    onchange="raporUrunOzetUrunArama=this.value.trim();renderRaporlar()"
-                    onkeydown="if(event.key==='Enter'){event.preventDefault();raporUrunOzetUrunArama=this.value.trim();renderRaporlar();}">
-                <span style="font-size:10px;color:var(--text3);margin-left:auto;max-width:380px;text-align:right">
-                    Sipariş kartındaki sipariş grubu ile ayrılır; ürün arama kalem adı, kod veya kalem grubunda geçer (ör. bordurlu pike).
-                </span>
-            </div>
-        </div>
-
-        ${detay.length === 0 ? `
-        <div class="empty-pro"><div class="empty-pro-icon">🧮</div><div class="empty-pro-title">Kayıt yok</div><div class="empty-pro-sub">Dönemi genişletin, sipariş grubunu Tümü yapın veya ürün aramasını kaldırın.</div></div>` : ''}
-
-        ${detay.length > 0 ? `
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--accent)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Toplam adet</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--accent);line-height:1;margin-top:4px">${fmt(istatistik.toplamAdet)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--cyan-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Farklı renk</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--cyan-c);line-height:1;margin-top:4px">${fmt(istatistik.renkSayisi)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--amber-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Farklı ebat</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--amber-c);line-height:1;margin-top:4px">${fmt(istatistik.ebatSayisi)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--violet-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Sipariş sayısı</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--violet-c);line-height:1;margin-top:4px">${fmt(istatistik.siparisSayisi)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--emerald-c)">
-                <div style="font-size:8px;font-weight:700;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">Kalem satırı</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--emerald-c);line-height:1;margin-top:4px">${fmt(istatistik.kalemSatirSayisi)}</div>
-            </div>
-        </div>
-        ` : ''}
-
-        ${urunAilesi.length > 0 ? `
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent2)"></span>Ürün ailesi özeti (aynı kod + ürün adı + kalem grubu; tüm renk ve ebatlar toplanır)</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">SİP. GRUBU</th>
-                        <th style="text-align:left;padding:8px 14px">KALEM GRUBU</th>
-                        <th style="text-align:left;padding:8px 14px">KOD</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRÜN</th>
-                        <th style="text-align:right;padding:8px 14px">FARKLI RENK</th>
-                        <th style="text-align:right;padding:8px 14px">FARKLI EBAT</th>
-                        <th style="text-align:right;padding:8px 14px">TOPLAM ADET</th>
-                    </tr></thead>
-                    <tbody>
-                        ${urunAilesi.map(u => `
-                        <tr style="border-top:1px solid var(--border)">
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(u.siparisGrubuEtiket || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(u.grup || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(u.kod || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(u.ad || '—')}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace">${fmt(u.renkSayisi)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace">${fmt(u.ebatSayisi)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--emerald-c)">${fmt(u.miktar)}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>` : ''}
-
-        ${detay.length > 0 ? `
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--accent)"></span>Kalem detayı</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">SİPARİŞ</th>
-                        <th style="text-align:left;padding:8px 14px">SİP. GRUBU</th>
-                        <th style="text-align:left;padding:8px 14px">FİRMA</th>
-                        <th style="text-align:left;padding:8px 14px">TERMİN</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRETİM YERİ</th>
-                        <th style="text-align:left;padding:8px 14px">GRUP</th>
-                        <th style="text-align:left;padding:8px 14px">KOD</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRÜN</th>
-                        <th style="text-align:left;padding:8px 14px">RENK</th>
-                        <th style="text-align:left;padding:8px 14px">EBAT</th>
-                        <th style="text-align:right;padding:8px 14px">MİKTAR</th>
-                    </tr></thead>
-                    <tbody>
-                        ${detay.map(d => `
-                        <tr style="border-top:1px solid var(--border)">
-                            <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-weight:600;color:var(--accent)">${pdfEsc(d.sno || '—')}</td>
-                            <td style="padding:8px 14px;font-size:10px;color:var(--text3)">${pdfEsc(raporUrunOzetSiparisGrubuEtiket(d.siparisGrubu))}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.firma || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.termin || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(uaUretimYeriLabel(d.yer))}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.grup || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.kod || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.ad || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.renk || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(d.ebat || '—')}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace">${fmt(d.miktar)}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>` : ''}
-
-        ${ozet.length > 0 ? `
-        <div class="panel-box" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <div class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Ürün + renk + ebat toplamı (aynı kod + ad + renk + ebat + grup)</div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="dt-table w-full">
-                    <thead><tr>
-                        <th style="text-align:left;padding:8px 14px">GRUP</th>
-                        <th style="text-align:left;padding:8px 14px">KOD</th>
-                        <th style="text-align:left;padding:8px 14px">ÜRÜN</th>
-                        <th style="text-align:left;padding:8px 14px">RENK</th>
-                        <th style="text-align:left;padding:8px 14px">EBAT</th>
-                        <th style="text-align:right;padding:8px 14px">TOPLAM MİKTAR</th>
-                        <th style="text-align:right;padding:8px 14px">KALEM SATIRI</th>
-                    </tr></thead>
-                    <tbody>
-                        ${ozet.map(o => `
-                        <tr style="border-top:1px solid var(--border)">
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(o.grup || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(o.kod || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(o.ad || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(o.renk || '—')}</td>
-                            <td style="padding:8px 14px;font-size:11px;color:var(--text2)">${pdfEsc(o.ebat || '—')}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-weight:600;color:var(--emerald-c)">${fmt(o.miktar)}</td>
-                            <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace">${fmt(o.kalemSayisi)}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>` : ''}
-    </div>`;
-}
-
-// ── CHART'LAR ─────────────────────────────────────────────
-function raporChartlariCiz(siparisler, iplikStok, kumasStok, numuneler) {
-    const renk10 = ['#4f46e5','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#14b8a6','#f97316','#64748b','#22c55e'];
-    const sadeDonut4 = ['#4f46e5','#0ea5e9','#10b981','#ef4444'];
-
-    if (raporTab === 'SIPARIS') {
-        // Firma dağılımı donut
-        const firmaMap = {};
-        siparisler.forEach(s => {
-            const f = s.firma||'Diğer';
-            firmaMap[f] = (firmaMap[f]||0) + 1;
-        });
-        const fEntries = Object.entries(firmaMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
-        const ctx1 = document.getElementById('chart-firma-dagilim')?.getContext('2d');
-        if (ctx1) new Chart(ctx1, { type:'doughnut', data:{ labels: fEntries.map(e=>e[0]), datasets:[{ data: fEntries.map(e=>e[1]), backgroundColor: renk10, borderWidth:2, borderColor:'transparent' }]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ font:{size:9, weight:'bold'}, boxWidth:10 }}}}});
-
-        // Aylık trend bar
-        const aylar = Array.from({length:6},(_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-5+i); return d.toLocaleString('tr-TR',{month:'short',year:'2-digit'}); });
-        const ayDates = Array.from({length:6},(_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-5+i); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
-        const ayCounts = ayDates.map(ay => siparisler.filter(s=>(s.created_at||'').slice(0,7)===ay).length);
-        const ctx2 = document.getElementById('chart-aylik-trend')?.getContext('2d');
-        if (ctx2) new Chart(ctx2, { type:'bar', data:{ labels:aylar, datasets:[{ label:'Sipariş', data:ayCounts, backgroundColor:'#6366f155', borderColor:'#6366f1', borderWidth:2, borderRadius:6 }]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{font:{size:9}}}, y:{grid:{color:'rgba(255,255,255,0.05)'}, ticks:{font:{size:9}}}}}});
-    }
-
-    if (raporTab === 'FIRE') {
-        // Fire dağılımı donut
-        const firePct = [
-            {l:'Kesim Fire', v: siparisler.reduce((a,s)=>{const kd=(_kdCache[`KD_KONFEKSIYON_${s.id}`] || {}); let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){} return a+k.reduce((b,_,i)=>b+parseInt((kd['kalem_'+i]||{}).fire_kesim||0),0); }, 0)},
-            {l:'Dikim Fire',  v: siparisler.reduce((a,s)=>{const kd=(_kdCache[`KD_KONFEKSIYON_${s.id}`] || {}); let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){} return a+k.reduce((b,_,i)=>b+parseInt((kd['kalem_'+i]||{}).fire_dikim||0),0); }, 0)},
-            {l:'2. Kalite',   v: siparisler.reduce((a,s)=>{const kd=(_kdCache[`KD_KONFEKSIYON_${s.id}`] || {}); let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){} return a+k.reduce((b,_,i)=>b+parseInt((kd['kalem_'+i]||{}).iki_kalite||0),0); }, 0)},
-            {l:'İmha',        v: siparisler.reduce((a,s)=>{const kd=(_kdCache[`KD_KONFEKSIYON_${s.id}`] || {}); let k=[]; try{k=typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]);}catch(e){} return a+k.reduce((b,_,i)=>b+parseInt((kd['kalem_'+i]||{}).imha||0),0); }, 0)},
-        ].filter(x=>x.v>0);
-        const ctx3 = document.getElementById('chart-fire-dagilim')?.getContext('2d');
-        if (ctx3 && firePct.length > 0) new Chart(ctx3, { type:'doughnut', data:{ labels:firePct.map(x=>x.l), datasets:[{ data:firePct.map(x=>x.v), backgroundColor:sadeDonut4, borderWidth:2, borderColor:'transparent' }]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:10}}}}});
-    }
-
-    if (raporTab === 'STOK' || raporTab === 'IPLIK_STOK') {
-        const iplikBakiye = raporIplikBakiyeHesapla(iplikStok);
-        const ipSirali = Object.entries(iplikBakiye).sort((a,b)=>b[1].kg-a[1].kg).slice(0,10).filter(e=>e[1].kg>0);
-        const gridColor = 'rgba(255,255,255,0.05)';
-        const ctx4 = document.getElementById('chart-iplik-stok')?.getContext('2d');
-        if (ctx4 && ipSirali.length > 0) new Chart(ctx4, { type:'bar', data:{ labels:ipSirali.map(e=>e[1].ad.slice(0,14)), datasets:[{ label:'Bakiye (kg)', data:ipSirali.map(e=>e[1].kg), backgroundColor:'rgba(109,113,255,0.3)', borderColor:'#6d71ff', borderWidth:2, borderRadius:4 }]}, options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}, y:{grid:{display:false},ticks:{font:{size:8},color:'#8b8fa8'}}}}});
-
-        const ctx4b = document.getElementById('chart-iplik-hareket')?.getContext('2d');
-        if (ctx4b && ipSirali.length > 0) new Chart(ctx4b, { type:'bar', data:{ labels:ipSirali.slice(0,6).map(e=>e[1].ad.slice(0,10)), datasets:[
-            { label:'Giriş', data:ipSirali.slice(0,6).map(e=>e[1].giris), backgroundColor:'rgba(52,211,153,0.4)', borderColor:'#34d399', borderWidth:1, borderRadius:3 },
-            { label:'Çıkış', data:ipSirali.slice(0,6).map(e=>e[1].cikis), backgroundColor:'rgba(251,113,133,0.4)', borderColor:'#fb7185', borderWidth:1, borderRadius:3 },
-        ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{size:8},color:'#8b8fa8',boxWidth:10}}}, scales:{ x:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}, y:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}}}});
-    }
-
-    if (raporTab === 'STOK' || raporTab === 'KUMAS_STOK') {
-        const kumasBakiye = raporKumasBakiyeHesapla(kumasStok);
-        const grupOzet = raporKumasGrupOzet(kumasBakiye);
-        const kuSirali = SIPARIS_GRUP_FILTRE.map(g => [g.etiket, grupOzet[g.kod] || {}]).filter(([, d]) => (d.kg || 0) > 0 || (d.girisKg || 0) > 0);
-        const gridColor = 'rgba(255,255,255,0.05)';
-        const ctx5 = document.getElementById('chart-kumas-stok')?.getContext('2d');
-        if (ctx5 && kuSirali.length > 0) new Chart(ctx5, { type:'bar', data:{ labels:kuSirali.map(e=>e[0]), datasets:[
-            { label:'Bakiye kg', data:kuSirali.map(e=>e[1].kg||0), backgroundColor:'rgba(34,211,238,0.35)', borderColor:'#22d3ee', borderWidth:2, borderRadius:4 },
-            { label:'Bakiye mt', data:kuSirali.map(e=>e[1].mt||0), backgroundColor:'rgba(99,102,241,0.25)', borderColor:'#6366f1', borderWidth:2, borderRadius:4 },
-        ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{size:8},color:'#8b8fa8',boxWidth:10}}}, scales:{ x:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}, y:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}}}});
-
-        const ctx5b = document.getElementById('chart-kumas-hareket')?.getContext('2d');
-        if (ctx5b && kuSirali.length > 0) new Chart(ctx5b, { type:'bar', data:{ labels:kuSirali.map(e=>e[0]), datasets:[
-            { label:'Giriş kg', data:kuSirali.map(e=>e[1].girisKg||0), backgroundColor:'rgba(52,211,153,0.4)', borderColor:'#34d399', borderWidth:1, borderRadius:3 },
-            { label:'Çıkış kg', data:kuSirali.map(e=>e[1].cikisKg||0), backgroundColor:'rgba(251,113,133,0.4)', borderColor:'#fb7185', borderWidth:1, borderRadius:3 },
-        ]}, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{size:8},color:'#8b8fa8',boxWidth:10}}}, scales:{ x:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}, y:{grid:{color:gridColor},ticks:{font:{size:8},color:'#8b8fa8'}}}}});
-    }
-
 }
 
 // ── EXPORT FONKSİYONLARI ──────────────────────────────────
@@ -27013,126 +23939,6 @@ function buildPdfShellElement({ title, subtitle, docNo, bodyHtml, note }) {
         </div>
     </div>`;
     return el;
-}
-
-async function raporPDF() {
-    const el = document.getElementById('rapor-root');
-    if (!el) return;
-    try { await erpEnsureHtml2Pdf(); } catch (e) {}
-    if (typeof html2pdf === 'undefined') { alert('PDF kütüphanesi yüklenemedi.'); return; }
-    const bodyHtml = `<div style="margin-top:6px">${el.outerHTML}</div>`;
-    const shell = buildPdfShellElement({
-        title: 'RAPOR DOKUMANI',
-        subtitle: `${raporTab || ''} raporu`,
-        docNo: `RPR-${new Date().getTime()}`,
-        bodyHtml,
-        note: 'Rapor verileri anlik ekran goruntusune gore uretilmistir.'
-    });
-    html2pdf().set({
-        margin: [0, 0],
-        filename: `rapor_${String(raporTab || 'genel').toLowerCase()}_${new Date().toLocaleDateString('tr-TR')}.pdf`,
-        image: { type: 'jpeg', quality: 1 },
-        html2canvas: { scale: 1.5, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(shell).save();
-}
-
-async function raporExcel() {
-    if (raporTab === 'KONF_KESIM') {
-        await raporKonfKesimVeriYukle(true);
-        const rows = raporKonfKesimCache.rows || [];
-        const out = [];
-        out.push(['Dönem', raporFiltre.bas || '', raporFiltre.bitis || '', raporFiltre.firma || 'Tüm firmalar']);
-        out.push([]);
-        out.push(['Tarih', 'Saat', 'Sipariş No', 'Müşteri', 'Desen', 'Ebat', 'Renk', 'Kesilen', 'İşlem yapan']);
-        rows.forEach(r => {
-            const tarih = r.ts ? new Date(r.ts) : null;
-            const tarihStr = tarih && !Number.isNaN(tarih.getTime()) ? tarih.toLocaleDateString('tr-TR') : '';
-            const saatStr = tarih && !Number.isNaN(tarih.getTime()) ? tarih.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
-            out.push([tarihStr, saatStr, r.siparis_sno, r.firma, r.desen, r.ebat, r.renk, Math.round(r.miktar || 0), r.user || '']);
-        });
-        const csv = out.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `kesim_detay_rapor_${new Date().toLocaleDateString('tr-TR')}.csv`; a.click();
-        URL.revokeObjectURL(url);
-        return;
-    }
-    if (raporTab === 'KONF_ISLEM') {
-        await raporKonfIslemVeriYukle(true);
-        const toplamlar = raporKonfIslemTopla(raporKonfIslemCache.rows || []);
-        const rows = [];
-        rows.push(['Dönem', raporFiltre.bas || '', raporFiltre.bitis || '', raporFiltre.firma || 'Tüm firmalar']);
-        rows.push([]);
-        if (raporKonfIslemKirilim === 'gunluk') {
-            rows.push(['Gün', 'Sipariş No', 'Firma', 'Ürün', 'Kesim', 'Yıkamaya', 'Yıkamadan', 'Kalite', 'Sevk']);
-            toplamlar.forEach(r => rows.push([r.donem, r.sno, r.firma, r.urun, Math.round(r.kesim), Math.round(r.yikama_sevk), Math.round(r.yikama_gelen), Math.round(r.kalite), Math.round(r.sevk)]));
-        } else {
-            rows.push(['Sipariş No', 'Firma', 'Ürün', 'Kesim', 'Yıkamaya', 'Yıkamadan', 'Kalite', 'Sevk']);
-            toplamlar.forEach(r => rows.push([r.sno, r.firma, r.urun, Math.round(r.kesim), Math.round(r.yikama_sevk), Math.round(r.yikama_gelen), Math.round(r.kalite), Math.round(r.sevk)]));
-        }
-        const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `konf_islem_rapor_${new Date().toLocaleDateString('tr-TR')}.csv`; a.click();
-        URL.revokeObjectURL(url);
-        return;
-    }
-    if (raporTab === 'URUN_OZET') {
-        const siparisler = dataCache.siparisler || [];
-        const filtreli = raporFiltrele(siparisler, { dateKeys: ['created_at'], firmaKey: 'firma' });
-        /* 40'lık toplu çekim — eskiden sipariş başına ayrı istek atılıyordu */
-        if (typeof sbKdGetMany === 'function') {
-            try { await sbKdGetMany(filtreli.map(s => s.id).filter(Boolean), 'KD_URUN_AGACI'); } catch (e) {}
-        } else {
-            for (let i = 0; i < filtreli.length; i += 15) {
-                const chunk = filtreli.slice(i, i + 15);
-                await Promise.allSettled(chunk.map(s => {
-                    if (_kdCache[`KD_URUN_AGACI_${s.id}`] !== undefined) return Promise.resolve(null);
-                    return sbKdGet(s.id, 'KD_URUN_AGACI');
-                }));
-            }
-        }
-        const { detay, ozet, istatistik, urunAilesi } = raporUrunOzetHesapla(filtreli);
-        const rows = [];
-        rows.push(['=== OZET (secili filtreler) ===']);
-        rows.push(['Toplam adet', 'Farkli renk', 'Farkli ebat', 'Siparis sayisi', 'Kalem satiri']);
-        rows.push([istatistik.toplamAdet, istatistik.renkSayisi, istatistik.ebatSayisi, istatistik.siparisSayisi, istatistik.kalemSatirSayisi]);
-        rows.push([]);
-        rows.push(['=== URUN AILESI ===']);
-        rows.push(['Sip. grubu', 'Kalem grubu', 'Kod', 'Urun', 'Farkli renk', 'Farkli ebat', 'Toplam adet']);
-        urunAilesi.forEach(u => rows.push([
-            u.siparisGrubuEtiket, u.grup, u.kod, u.ad, u.renkSayisi, u.ebatSayisi, u.miktar
-        ]));
-        rows.push([]);
-        rows.push(['=== KALEM DETAY ===']);
-        rows.push(['Sipariş No', 'Siparis grubu', 'Firma', 'Termin', 'Üretim yeri', 'Kalem grup', 'Kod', 'Ürün', 'Renk', 'Ebat', 'Miktar']);
-        detay.forEach(d => rows.push([
-            d.sno, raporUrunOzetSiparisGrubuEtiket(d.siparisGrubu), d.firma, d.termin, uaUretimYeriLabel(d.yer), d.grup, d.kod, d.ad, d.renk, d.ebat, d.miktar
-        ]));
-        rows.push([]);
-        rows.push(['=== URUN + RENK + EBAT TOPLAMI ===']);
-        rows.push(['Grup', 'Kod', 'Ürün', 'Renk', 'Ebat', 'Toplam miktar', 'Kalem satırı']);
-        ozet.forEach(o => rows.push([o.grup, o.kod, o.ad, o.renk, o.ebat, o.miktar, o.kalemSayisi]));
-        const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `rapor_urun_ozet_${new Date().toLocaleDateString('tr-TR')}.csv`; a.click();
-        URL.revokeObjectURL(url);
-        return;
-    }
-    const siparisler = dataCache.siparisler || [];
-    const rows = [['Sipariş No','Firma','Durum','Termin Tarihi','Toplam Adet','Oluşturma Tarihi']];
-    siparisler.forEach(s => {
-        let adet = 0;
-        try { const k = typeof s.cins==='string'?JSON.parse(s.cins):(s.cins||[]); adet = k.reduce((a,i)=>a+(parseInt(i.miktar)||0),0); } catch(e){}
-        rows.push([s.sno||'', s.firma||'', s.durum||'', s.ttarih||'', adet, (s.created_at||'').slice(0,10)]);
-    });
-    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a'); a.href=url; a.download=`rapor_siparis_${new Date().toLocaleDateString('tr-TR')}.csv`; a.click();
-    URL.revokeObjectURL(url);
 }
 
 // ════════════════════════════════════════════════════════
@@ -28789,7 +25595,6 @@ let fasonTakipFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
 let fasonTakipAcikSiparisId = null;
 let dokumaFasonFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
 let _dokumaFasonRenderGen = 0;
-let hasilSeciliSiparisId = null;
 const FASON_TAKIP_KOLON_BG = {
     kalem: 'rgba(99,102,241,0.07)',
     sip: 'rgba(100,116,139,0.09)',
@@ -29889,112 +26694,6 @@ async function dokumaSiparisKaydet() {
     } catch (e) {
         erpToast('Kaydedilemedi: ' + (e?.message || e), 'error');
     }
-}
-
-// ── Haşıl Takip — çözgü ipliğinin haşıllanıp dokumaya hazır hale gelmesi ──
-// Yıkama ekranıyla aynı basit desen: sipariş seç, sevk/gelen miktarını gir,
-// bekleyen otomatik hesaplanır. KD_DOKUMA blob'unda saklanır (kendi kesim
-// kuyruğu yok — Yıkama'nın "panel_yikama_sevk/gelen" alanlarının karşılığı).
-async function renderHasilTakip() {
-    if (appMode !== 'HASIL_TAKIP') return;
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const siparisler = (dataCache.siparisler || []).filter(s => s.durum !== 'TAMAMLANDI');
-    if (hasilSeciliSiparisId && !siparisler.some(s => String(s.id) === String(hasilSeciliSiparisId))) {
-        hasilSeciliSiparisId = null;
-    }
-    if (hasilSeciliSiparisId) {
-        try { await sbKdGet(hasilSeciliSiparisId, 'KD_DOKUMA', true); } catch (e) {}
-    }
-    hasilTakipListeYenile(siparisler);
-}
-
-function hasilSelectSiparis(id) {
-    hasilSeciliSiparisId = id || null;
-    renderHasilTakip();
-}
-
-function hasilTakipListeYenile(siparislerParam) {
-    if (appMode !== 'HASIL_TAKIP') return;
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const siparisler = siparislerParam || (dataCache.siparisler || []).filter(s => s.durum !== 'TAMAMLANDI');
-    const seciliSiparis = siparisler.find(s => String(s.id) === String(hasilSeciliSiparisId));
-    const kd = seciliSiparis ? (_kdCache[`KD_DOKUMA_${seciliSiparis.id}`] || {}) : {};
-    const hSevk = parseFloat(kd.hasil_sevk || 0) || 0;
-    const hGel = parseFloat(kd.hasil_gelen || 0) || 0;
-    const hBek = Math.max(0, hSevk - hGel);
-    const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
-    const detayHtml = seciliSiparis ? `
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-            <div class="panel-box" style="padding:14px 16px;text-align:center">
-                <div style="font-size:8px;color:var(--amber-c);font-family:'DM Mono',monospace;text-transform:uppercase">Haşıla sevk</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--amber-c)">${fmt(hSevk)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;text-align:center">
-                <div style="font-size:8px;color:var(--emerald-c);font-family:'DM Mono',monospace;text-transform:uppercase">Haşıldan gelen</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--emerald-c)">${fmt(hGel)}</div>
-            </div>
-            <div class="panel-box" style="padding:14px 16px;text-align:center">
-                <div style="font-size:8px;color:var(--violet-c);font-family:'DM Mono',monospace;text-transform:uppercase">Bekleyen</div>
-                <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--violet-c)">${fmt(hBek)}</div>
-            </div>
-        </div>
-        <div class="panel-box" style="padding:16px 20px">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin-bottom:12px">🧶 Haşıl Durumu · ${pdfEsc(seciliSiparis.sno)}</div>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
-                <input type="checkbox" id="hasil-yapildi" ${kd.hasil_yapildi ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent2)">
-                <span style="font-size:11px;font-weight:700;color:var(--text)">Haşıla gönderildi</span>
-            </label>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-                <div><label class="pro-label">Haşıla sevk (kg/m)</label>
-                    <input id="hasil-sevk" type="number" min="0" step="0.1" class="pro-input" value="${kd.hasil_sevk || ''}"></div>
-                <div><label class="pro-label">Haşıldan gelen (kg/m)</label>
-                    <input id="hasil-gelen" type="number" min="0" step="0.1" class="pro-input" value="${kd.hasil_gelen || ''}"></div>
-            </div>
-            <div style="margin-top:10px"><label class="pro-label">Haşılcı firma (fason ise)</label>
-                <input id="hasil-firma" class="pro-input" placeholder="İç haşıl ise boş bırakın" value="${pdfEsc(kd.hasil_firma || '')}"></div>
-            <div style="margin-top:10px"><label class="pro-label">Not</label>
-                <textarea id="hasil-not" class="pro-input" rows="2" placeholder="Not…">${pdfEsc(kd.hasil_not || '')}</textarea></div>
-            <button onclick="hasilKaydet()" class="btn-pro btn-primary-pro" style="width:100%;justify-content:center;padding:10px;margin-top:14px">💾 HAŞIL BİLGİLERİNİ KAYDET</button>
-        </div>
-    ` : `<div class="empty-pro" style="padding:60px 20px">
-        <div class="empty-pro-icon">🧶</div>
-        <div class="empty-pro-title">Haşıl Takip</div>
-        <div class="empty-pro-sub">Üstten bir sipariş seçin</div>
-    </div>`;
-    list.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="panel-box" style="padding:14px 16px;border-left:3px solid var(--accent2)">
-            <div style="font-size:10px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.06em">Haşıl Takip</div>
-            <div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.5">Çözgü ipliğinin haşıla (kendi bölümünüz ya da fason haşılcı) sevk edilen ve dokumaya hazır dönen miktarını sipariş bazında kaydedin.</div>
-        </div>
-        <div class="panel-box" style="padding:12px 16px">
-            <select id="hasil-siparis-sel" onchange="hasilSelectSiparis(this.value)" class="pro-input" style="min-width:240px;width:auto;padding:6px 10px">
-                <option value="">— Sipariş seçin —</option>
-                ${siparisler.map(s => `<option value="${s.id}" ${hasilSeciliSiparisId==s.id?'selected':''}>${pdfEsc(s.sno)} — ${pdfEsc(s.firma||'?')}</option>`).join('')}
-            </select>
-        </div>
-        ${detayHtml}
-    </div>`;
-}
-
-async function hasilKaydet() {
-    if (!hasilSeciliSiparisId) return;
-    const kd = await sbKdGet(hasilSeciliSiparisId, 'KD_DOKUMA');
-    const yEl = document.getElementById('hasil-yapildi');
-    const sEl = document.getElementById('hasil-sevk');
-    const gEl = document.getElementById('hasil-gelen');
-    const fEl = document.getElementById('hasil-firma');
-    const nEl = document.getElementById('hasil-not');
-    if (yEl) kd.hasil_yapildi = yEl.checked;
-    if (sEl) kd.hasil_sevk = parseFloat(sEl.value || 0) || 0;
-    if (gEl) kd.hasil_gelen = parseFloat(gEl.value || 0) || 0;
-    if (fEl) kd.hasil_firma = String(fEl.value || '').trim();
-    if (nEl) kd.hasil_not = nEl.value;
-    await sbKdSet(hasilSeciliSiparisId, 'KD_DOKUMA', kd);
-    erpToast('Haşıl bilgileri kaydedildi.', 'success');
-    hasilTakipListeYenile();
 }
 
 async function renderKonfeksiyon() {
@@ -31632,8 +28331,11 @@ async function siparisKapamaVeriYukle(siparisId) {
         sbKdGet(sid, 'KD_URUN_AGACI', true),
         sbKdGet(sid, 'KD_FASON_TAKIP', true),
         konfLoadIslemLog(sid),
+        konfLoadKesimGecmis({ skipRotaDuzelt: true }),
+        konfLoadGlobalKumasGelis({ skipUa: true }),
     ]);
-    const kdK0 = _kdCache[`KD_KONFEKSIYON_${sid}`] || {};
+    /* Kapama raporu sipariş penceresiyle aynı sayıyı basmalı: KD + panel kesim/yıkama tablosu */
+    const kdK0 = konfGetKdForSiparis(sid);
     const ftKd = _kdCache[`KD_FASON_TAKIP_${sid}`] || {};
     return {
         kdKonf: fasonTakipKdKonfBirlestir(sid, kdK0, ftKd),
@@ -32754,7 +29456,6 @@ async function setAppMode(mode, keepEditingId = false) {
         'FASON_TAKIP': 'Konfeksiyon Fason',
         'DOKUMA_FASON_TAKIP': 'Dokuma Fason',
         'DOKUMA_SIPARIS_GIRIS': 'Dokuma Siparişi',
-        'HASIL_TAKIP': 'Haşıl Takip',
         'KONFEKSIYON_PLANLAMA': 'Konfeksiyon Planlama',
         'TEKNIK_FOY': 'Teknik Föy / İş Emirleri',
         'YAPILACAKLAR': 'Yapılacaklar Listesi',
@@ -32762,7 +29463,6 @@ async function setAppMode(mode, keepEditingId = false) {
         'RAPORLAR': 'Raporlar & Analiz',
         'DOKUMA_TAKIP': 'Dokuma Takip',
         'DOKUMA_DEPO': 'Dokuma Depo',
-        'DOKUMA_SEVK_GECMIS': 'Dokuma Sevk Geçmişi',
         'STOK_SAYIM': 'Stok Sayım',
         'DIAGNOSTICS': '⚙ Sistem Testi',
     };
@@ -32787,7 +29487,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
 
     if (toggleArea) {
-        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'SEVKIYAT', 'KONFEKSIYON', 'KONFEKSIYON_KESIM', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_KALITE', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'HASIL_TAKIP', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'YAPILACAKLAR', 'RAPORLAR', 'TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DIAGNOSTICS', 'BOYAHANE_URETIM', 'MUHASEBE_FIS', 'STOK_SAYIM'];
+        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'SEVKIYAT', 'KONFEKSIYON', 'KONFEKSIYON_KESIM', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_KALITE', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'YAPILACAKLAR', 'RAPORLAR', 'TEZGAH_PLANLAMA', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DIAGNOSTICS', 'BOYAHANE_URETIM', 'MUHASEBE_FIS', 'STOK_SAYIM'];
         const depoFormModes = ['IPLIK', 'KUMAS', 'MAMUL_DEPO'];
         if (staticModes.includes(mode) || mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE') {
             toggleArea.style.display = 'none';
@@ -32925,13 +29625,6 @@ async function setAppMode(mode, keepEditingId = false) {
         return;
     }
 
-    if (mode === 'DOKUMA_SEVK_GECMIS') {
-        if (formContainer) formContainer.style.display = 'none';
-        if (listTitle) listTitle.innerText = "DOKUMA SEVK GEÇMİŞİ";
-        await renderDokumaSevkGecmisi();
-        return;
-    }
-
     if (mode === 'MUHASEBE_FIS') {
         if (formContainer) formContainer.style.display = 'none';
         if (listTitle) listTitle.innerText = "MUHASEBE TESLİM FİŞLERİ";
@@ -33027,13 +29720,6 @@ async function setAppMode(mode, keepEditingId = false) {
         if (formContainer) formContainer.style.display = 'none';
         if (listTitle) listTitle.innerText = dokumaSiparisEditId ? "DOKUMA SİPARİŞİNİ DÜZENLE" : "YENİ DOKUMA SİPARİŞİ";
         renderDokumaSiparisGiris();
-        return;
-    }
-
-    if (mode === 'HASIL_TAKIP') {
-        if (formContainer) formContainer.style.display = 'none';
-        if (listTitle) listTitle.innerText = "HAŞIL TAKİP";
-        renderHasilTakip();
         return;
     }
 
@@ -34173,9 +30859,9 @@ function loadData(opts) {
     if (!list) return;
 
     if (appMode === 'DASHBOARD') return;
-    if (['MUHASEBE_FIS', 'STOK_SAYIM', 'PLANLAMA', 'SEVKIYAT', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'DOKUMA_SEVK_GECMIS',
-        'KONFEKSIYON', 'KONFEKSIYON_KESIM', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_KALITE',
-        'KONFEKSIYON_PLANLAMA', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'HASIL_TAKIP',
+    if (['MUHASEBE_FIS', 'STOK_SAYIM', 'PLANLAMA', 'SEVKIYAT', 'DOKUMA_TAKIP', 'DOKUMA_DEPO',
+        'KONFEKSIYON','KONFEKSIYON_KESIM', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_KALITE',
+        'KONFEKSIYON_PLANLAMA', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS',
         'RAPORLAR', 'RAPOR', 'TEKNIK_FOY', 'URUN_AGACI', 'YAPILACAKLAR',
         'DIAGNOSTICS', 'KULLANICI_YONETIMI'].includes(appMode)) {
         return;
@@ -34191,11 +30877,6 @@ function loadData(opts) {
 
     if (appMode === 'DOKUMA_DEPO') {
         renderDokumaDepo();
-        return;
-    }
-
-    if (appMode === 'DOKUMA_SEVK_GECMIS') {
-        renderDokumaSevkGecmisi();
         return;
     }
 
@@ -37191,9 +33872,6 @@ function buildSiparisDetailModalHtml(i, opts) {
     if (kalemler.length && window.ERP_MOBIL_LITE) {
         html += siparisKalemMobilListeHtml(kalemler);
     } else if (kalemler.length) {
-        const kdKonfOzet = (_kdCache && i.id != null) ? (_kdCache[`KD_KONFEKSIYON_${i.id}`] || {}) : {};
-        const kdDokOzet = (_kdCache && i.id != null) ? (_kdCache[`KD_DOKUMA_${i.id}`] || {}) : {};
-        const urunlerDok = kdDokOzet.urunler || {};
         const fmtKonfAd = (n) => {
             const x = parseInt(n, 10) || 0;
             return x > 0 ? x.toLocaleString('tr-TR') : '—';
@@ -37232,9 +33910,7 @@ function buildSiparisDetailModalHtml(i, opts) {
                     </thead>
                     <tbody>
                         ${kumasKalemler.map(({ k, ix }) => {
-                            const u = urunlerDok[ix] || urunlerDok[String(ix)] || {};
-                            const rowK = kdKonfOzet[`kalem_${ix}`] || {};
-                            const o = siparisKalemKumasMetrajOzet(i.id, ix, k, u, rowK);
+                            const o = siparisKalemAsamaSayilari(i, ix, k).metraj;
                             return `<tr>
                                 <td style="font-family:'DM Mono',monospace;color:var(--text3)">${ix + 1}</td>
                                 <td style="font-weight:500">${pdfEsc(k.ad || '—')}</td>
@@ -37282,23 +33958,13 @@ function buildSiparisDetailModalHtml(i, opts) {
                     <tbody>
                         ${urunKalemler.map(({ k, ix }) => {
                             const rk = siparisKalemRenkKoduMetni(k);
-                            const rowK = kdKonfOzet[`kalem_${ix}`] || {};
-                            const kesN = (typeof konfManuelKesimKalemKesilen === 'function')
-                                ? konfManuelKesimKalemKesilen(i.id, ix, k)
-                                : (parseInt(rowK.kesilen || 0, 10) || 0);
-                            const yikO = (typeof konfManuelYikamaKalemOzet === 'function')
-                                ? konfManuelYikamaKalemOzet(i.id, ix)
-                                : {
-                                    sevk: parseInt(rowK.yikama_sevk || 0, 10) || 0,
-                                    gel: parseInt(rowK.yikama_gelen || 0, 10) || 0
-                                };
-                            const dikN = parseInt(rowK.dikilen || 0, 10) || 0;
-                            const kkN = (typeof konfManuelKaliteKalemOzet === 'function')
-                                ? konfManuelKaliteKalemOzet(i.id, ix).kk
-                                : (parseInt(rowK.kk_gecen || 0, 10) || 0);
-                            const yuklemeN = (typeof planlamaIhtiyacSevkAdet === 'function')
-                                ? planlamaIhtiyacSevkAdet(i.id, ix, rowK)
-                                : Math.max(parseInt(rowK.sevk_edilen || 0, 10) || 0, parseInt(rowK.sevk_adet || 0, 10) || 0);
+                            /* Raporlar > Siparişler ile aynı fonksiyon (tek kural) */
+                            const as = siparisKalemAsamaSayilari(i, ix, k);
+                            const kesN = as.kesim;
+                            const yikO = { sevk: as.yikSevk, gel: as.yikGel };
+                            const dikN = as.dikim;
+                            const kkN = as.kalite;
+                            const yuklemeN = as.sevk;
                             return `<tr>
                                 <td style="font-family:'DM Mono',monospace;color:var(--text3);vertical-align:top">${ix + 1}</td>
                                 <td style="font-weight:500;color:var(--text);vertical-align:top;line-height:1.4">${pdfEsc(k.ad || '—')}</td>
@@ -39216,23 +35882,6 @@ async function exportToPDF() {
                 if (diff === 0) return 'bugun';
                 return `${diff} gun kaldi`;
             })();
-            const durumRows = kesimRows.map((r, idx) => {
-                const kd = (typeof _kdGetKalemRaw === 'function') ? (_kdGetKalemRaw(i.id, idx) || {}) : {};
-                return {
-                    kesim: parseInt(kd.kesilen, 10) || parseInt(r.kesilecek_adet, 10) || 0,
-                    dikim: parseInt(kd.dikilen, 10) || parseInt(r.dikim_adet, 10) || 0,
-                    kalite: parseInt(kd.kk_gecen, 10) || 0,
-                    koli: parseInt(kd.kolide, 10) || parseInt(r.koli_adet, 10) || 0,
-                    hatali: parseInt(kd.hatali, 10) || parseInt(kd.iki_kalite, 10) || parseInt(kd.tamir, 10) || parseInt(kd.imha, 10) || 0
-                };
-            });
-            const uDurum = durumRows.reduce((a, r) => ({
-                kesim: a.kesim + r.kesim,
-                dikim: a.dikim + r.dikim,
-                kalite: a.kalite + r.kalite,
-                koli: a.koli + r.koli,
-                hatali: a.hatali + r.hatali
-            }), { kesim: 0, dikim: 0, kalite: 0, koli: 0, hatali: 0 });
 
             const urunSatirlari = kesimRows.length ? kesimRows.map((r, idx) => {
                 const sipAdet = parseInt(r.siparis_adet, 10) || parseInt(r.miktar, 10) || 0;
@@ -42371,3 +39020,1938 @@ async function erpSessionBootstrap() {
     erpShowLoginScreen();
     return false;
 }
+// ════════════════════════════════════════════════════════════════════════
+//  RAPORLAR — yeni yapı (28.09.2026, kullanıcı onaylı plan)
+// ════════════════════════════════════════════════════════════════════════
+/* Kullanıcı: "aldığımız veriler belli, hepsini ayrı ayrı ya da birleştirerek rapor etmemiz
+   lazım, kusursuz olmalı." Eski sekmeler siparişi AÇILIŞ tarihine göre süzüyor, her biri
+   sayıyı kendi yolundan topluyordu (panel kesim tablosu, yıkama fişleri görünmüyordu).
+
+   Yapı:
+   - raporVeriYukle  : Raporlar ekranı açıkken tek seferde yükler (60 sn bellekte).
+   - Üretim defteri  : her kaynağın her kaydı aynı biçimde bir OLAY (tarih, aşama, sipariş,
+                       kalem, miktar, platform, kişi). Üretim raporu = o tarihlerde YAPILAN iş.
+   - Resmi sayılar   : siparisKalemAsamaSayilari — sipariş penceresiyle aynı fonksiyon.
+   - Veri kontrol    : mantık hataları + defter ile resmi sayının tutmadığı kalemler.
+
+   Kurallar: aşama verisi bağımsız (tahmin/tamamlama yok) · işlem adları iki yazımlı ·
+   sipariş sevki stoktan düşmez · rapor verisi yalnız bu ekranda yüklenir. */
+
+const RAPOR_VERI_TTL_MS = 60000;
+/* konf_kesim_yikama'nın ilk günü. Öncesinde konfeksiyon kesimi siparis_akis günlüğüne
+   yazılıyordu (son günlük satırı 02.09), sonrasında yalnız tabloya. Defter öncesini günlükten,
+   sonrasını tablodan okur — aynı iş iki kez sayılmaz. */
+const RAPOR_TABLO_BASLANGIC = '2026-09-03';
+/* 03.09.2026'da eski KUMAS_GELIS hattından tabloya toplu aktarım yapıldı (39 satır MANUEL_KESIM,
+   566 ad; 10'u 02.09 günlük kesimiyle aynı iş). DEVIR satırları eski KD ile tablo farkını kapatır.
+   İkisi de o gün yapılmış yeni iş değil: defterde "Aktarım/Devir" olarak işaretlenir,
+   Üretim toplamına varsayılan olarak katılmaz. */
+const RAPOR_AKTARIM_SON_GUN = '2026-09-03';
+
+const RAPOR_ASAMALAR = [
+    { kod: 'DOKUMA', ad: 'Dokuma', renk: '#06b6d4' },
+    { kod: 'KESIM', ad: 'Kesim', renk: '#8b5cf6' },
+    { kod: 'YIKAMA', ad: 'Yıkamaya giden', renk: '#0ea5e9' },
+    { kod: 'DIKIM', ad: 'Dikim', renk: '#f43f5e' },
+    { kod: 'KALITE', ad: 'Kalite geçen', renk: '#f59e0b' },
+    { kod: 'HATALI', ad: 'Hatalı', renk: '#ef4444' },
+    { kod: 'KOLI', ad: 'Koli', renk: '#84cc16' },
+    { kod: 'SEVK', ad: 'Sevk', renk: '#10b981' }
+];
+const RAPOR_PLATFORMLAR = {
+    KPANEL: 'Konfeksiyon Paneli',
+    DPANEL: 'Dokuma Paneli',
+    PROGRAM: 'Ana program',
+    EXCEL: 'Excel aktarımı',
+    TEZGAH: 'Tezgah Planlama',
+    AKTARIM: 'Aktarım / Devir'
+};
+const RAPOR_HATALI_ALT = { IKI_KALITE: '2. kalite', TAMIR: 'Tamir', IMHA: 'İmha' };
+
+/* Defterin okuduğu günlük işlemleri (iki yazım). KD_* blokları, STOK_SAYIM_RAPOR, KUMAS_GELIS
+   (hat satırı; olayı KESIM/YIKAMA_SEVK/KK_GECEN/KONF_SEVK olarak ayrıca yazılmış), DOKUMA
+   (29.04 eski 4 satır; dokuma KD_DOKUMA girişlerinden okunur) ve iz satırları girmez.
+   "REVİZE · …" satırları yalnız not düzeltmesidir (miktar 0, miktar_guncellendi 0): asıl satır
+   revize_edildi işaretiyle miktarını KORUR ve sayılır. */
+const RAPOR_OLAY_ISLEMLERI = [
+    'KESIM', 'KESİM',
+    'YIKAMA_SEVK', 'YIKAMA_FIS',
+    'KALİTE KONTROL', 'KALITE KONTROL', 'KALITE', 'KALİTE', 'KK_GECEN', 'KALITE_DUZELTME', 'KALITE_HATALI',
+    'DIKIM', 'DİKİM', 'KOLI', 'KOLİ',
+    'SEVK', 'KONF_SEVK'
+];
+
+let _raporVeri = { ts: 0, bekleyen: null, hata: '', olaylar: null, sure: 0, eslesmeyen: [], tarihsizDokuma: 0 };
+
+/* ── Yardımcılar ─────────────────────────────────────────────────────── */
+
+function raporSayi(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+function raporJson(s) {
+    if (s && typeof s === 'object') return s;
+    try { return JSON.parse(s || '{}') || {}; } catch (e) { return {}; }
+}
+/** Ürün adı / renk / ebat eşleştirmesi için sade metin (Türkçe harf, noktalama, boşluk farkı yok). */
+const _raporNormOnbellek = new Map();
+function raporNorm(s) {
+    const g = String(s || '');
+    let v = _raporNormOnbellek.get(g);
+    if (v === undefined) {
+        v = g.toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/ı/g, 'i').replace(/[^a-z0-9]+/g, ' ').trim();
+        if (_raporNormOnbellek.size > 20000) _raporNormOnbellek.clear();
+        _raporNormOnbellek.set(g, v);
+    }
+    return v;
+}
+function raporTarihMs(v) {
+    if (!v) return NaN;
+    const d = (typeof dtDokumaDepoTarihParse === 'function') ? dtDokumaDepoTarihParse(v) : new Date(v);
+    return d && !isNaN(d.getTime()) ? d.getTime() : NaN;
+}
+function raporKalemEtiket(k, i) {
+    return [k?.ad || k?.kod || `Kalem ${i + 1}`, k?.renk, k?.ebat || k?.olcu].filter(Boolean).join(' · ');
+}
+function raporFmt(n, ondalik) {
+    const x = Number(n) || 0;
+    return x.toLocaleString('tr-TR', { maximumFractionDigits: ondalik == null ? 0 : ondalik });
+}
+
+/**
+ * Günlük satırının kalemi: kalem_idx varsa o; yoksa ürün + renk + ebat birebir eşleşmesi
+ * (tek eşleşme şart). scripts/veri-tutarlilik-denetimi.js kalemBul ile aynı kural.
+ */
+/* Kalem eşleştirme anahtarları dizi başına bir kez hesaplanır (defterde her satır için
+   siparişin tüm kalemleri yeniden normalleştiriliyordu: 76 bin çağrı, ~300 ms). */
+const _raporKalemAnahtar = new WeakMap();
+function raporKalemAnahtarlari(kalemler) {
+    let a = _raporKalemAnahtar.get(kalemler);
+    if (!a) {
+        a = kalemler.map((k) => ({
+            aday: [raporNorm(k.ad || k.kod), raporNorm(k.renk), raporNorm(k.ebat || k.olcu)].filter(Boolean).join('|'),
+            tamAd: [k.ad || k.kod, k.renk, k.ebat || k.olcu].filter(Boolean).map(raporNorm).join(' ')
+        }));
+        _raporKalemAnahtar.set(kalemler, a);
+    }
+    return a;
+}
+
+function raporKalemBul(kalemler, n, kalemAd) {
+    const ki = parseInt(n.kalem_idx, 10);
+    if (Number.isFinite(ki) && ki >= 0 && ki < kalemler.length) return ki;
+    const hedef = [raporNorm(n.urun_ad || n.desen), raporNorm(n.renk || n.kalem_renk), raporNorm(n.ebat || n.kalem_ebat)]
+        .filter(Boolean).join('|');
+    const adMetin = raporNorm(kalemAd);
+    let bulunan = -1, adet = 0;
+    raporKalemAnahtarlari(kalemler).forEach(({ aday, tamAd }, i) => {
+        if ((hedef && aday === hedef) || (adMetin && tamAd && adMetin === tamAd)) { bulunan = i; adet++; }
+    });
+    return adet === 1 ? bulunan : -1;
+}
+
+/** Günlük işlem adı → aşama (iki yazım, "REVİZE · KESIM" dahil). */
+function raporIslemAsama(islem) {
+    const k = String(islem || '').toUpperCase().replace(/İ/g, 'I').replace(/[^A-Z_ ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (k === 'KESIM' || k === 'REVIZE KESIM') return 'KESIM';
+    if (k === 'YIKAMA_SEVK') return 'YIKAMA';
+    if (k === 'YIKAMA_FIS') return 'YIKAMA_FIS';
+    if (k === 'KALITE KONTROL' || k === 'KALITE' || k === 'KK_GECEN' || k === 'KALITE_DUZELTME') return 'KALITE';
+    if (k === 'KALITE_HATALI') return 'HATALI';
+    if (k === 'DIKIM') return 'DIKIM';
+    if (k === 'KOLI' || k === 'REVIZE KOLI') return 'KOLI';
+    if (k === 'SEVK' || k === 'KONF_SEVK') return 'SEVK';
+    return '';
+}
+
+/**
+ * Günlük satırını kim yazdı? Konfeksiyon Paneli'nin "Veri Girişi" satırları Türkçe İ'li ad
+ * (KESİM / KALİTE KONTROL / KOLİ / DİKİM) ve {kullanici, urun_ad} notuyla yazılır; ana program
+ * düz I'lı adlar ve {user, ts} notuyla. Sevkiyat Merkezi ana programdır.
+ */
+function raporAkisPlatform(islem, n) {
+    if (n.sevkiyat_merkezi || String(n.kaynak || '').toUpperCase().startsWith('SEVKIYAT')) return 'PROGRAM';
+    if (/İ/.test(String(islem || '')) || (n.kullanici !== undefined && n.urun_ad !== undefined)) return 'KPANEL';
+    return 'PROGRAM';
+}
+
+/* ── Veri yükleme ────────────────────────────────────────────────────── */
+
+/** Sunucu sayfası 1000 satır. İki sayfa aynı anda istenir: 1000–2000 satırlık tablo
+    (siparis_akis olayları ~1550) tek gidiş-dönüşte gelir (sıralı: ~2,2 sn). */
+async function raporSayfaliCek(sorguYap) {
+    const S = 1000;
+    const out = [];
+    for (let f = 0; ; f += 2 * S) {
+        const [a, b] = await Promise.all([sorguYap().range(f, f + S - 1), sorguYap().range(f + S, f + 2 * S - 1)]);
+        if (a.error) throw a.error;
+        out.push(...(a.data || []));
+        if (!a.data || a.data.length < S) break;
+        if (b.error) throw b.error;
+        out.push(...(b.data || []));
+        if (!b.data || b.data.length < S) break;
+    }
+    return out;
+}
+
+/** Bir KD tipinin TÜM satırları (tek sorgu, sayfalı) — sipariş başına istek atılmaz. */
+function raporKdSatirlariCek(tip) {
+    return raporSayfaliCek(() => sb.from('siparis_akis')
+        .select('id,siparis_id,kalem_ad,notlar,created_at')
+        .eq('islem', tip)
+        .order('created_at', { ascending: false }));
+}
+
+/** Toplu çekilen KD satırlarını ortak önbelleğe yazar — seçim kuralı sbKdGet ile aynı. */
+function raporKdOnbellegeYaz(tip, satirlar) {
+    const bySid = new Map();
+    (satirlar || []).forEach((r) => {
+        const k = String(r.siparis_id);
+        if (!bySid.has(k)) bySid.set(k, []);
+        bySid.get(k).push(r);
+    });
+    let degisti = false;
+    (dataCache.siparisler || []).forEach((s) => {
+        const sid = String(s.id);
+        if (sbKdCacheYaz(sid, tip, sbKdSatirlardanSec(bySid.get(sid) || [], tip))) degisti = true;
+    });
+    if (degisti && typeof planlamaIhtiyacSatirCacheInvalidate === 'function') planlamaIhtiyacSatirCacheInvalidate();
+}
+
+function raporAkisOlaySatirlariCek() {
+    return raporSayfaliCek(() => sb.from('siparis_akis')
+        .select('id,siparis_id,islem,kalem_ad,miktar,notlar,created_at')
+        .in('islem', RAPOR_OLAY_ISLEMLERI)
+        .order('id', { ascending: true }));
+}
+
+async function raporVeriYukle(force) {
+    if (!force && _raporVeri.olaylar && Date.now() - _raporVeri.ts < RAPOR_VERI_TTL_MS) return _raporVeri;
+    if (_raporVeri.bekleyen) return _raporVeri.bekleyen;
+    const t0 = performance.now();
+    _raporVeri.bekleyen = (async () => {
+        const [akis, kdDok, kdKonf] = await Promise.all([
+            raporAkisOlaySatirlariCek(),
+            raporKdSatirlariCek('KD_DOKUMA'),
+            raporKdSatirlariCek('KD_KONFEKSIYON'),
+            konfLoadKesimGecmis({ skipRotaDuzelt: true, force: !!force }),
+            konfLoadGlobalKumasGelis({ skipUa: true, force: !!force })
+        ]);
+        raporKdOnbellegeYaz('KD_DOKUMA', kdDok);
+        raporKdOnbellegeYaz('KD_KONFEKSIYON', kdKonf);
+        /* Resmi sevk sayısının günlük kısmı: pencere açılmamış siparişte de aynı sayı çıksın */
+        sevkAkisTopluIndeksYaz(akis);
+        const dok = await dtRaporGirisleriCek(kdDok);
+        const { olaylar, eslesmeyen } = raporOlaylariKur(akis, dok.girisler);
+        _raporVeri = {
+            ts: Date.now(), bekleyen: null, hata: '', olaylar, eslesmeyen,
+            tarihsizDokuma: dok.tarihsiz, sure: Math.round(performance.now() - t0)
+        };
+        return _raporVeri;
+    })().catch((e) => {
+        _raporVeri.bekleyen = null;
+        _raporVeri.hata = e?.message || String(e);
+        throw e;
+    });
+    return _raporVeri.bekleyen;
+}
+
+/* ── Üretim defteri ──────────────────────────────────────────────────── */
+
+/**
+ * Tüm kaynakları tek olay listesine çevirir. Olay:
+ * { ms, gun, asama, alt, sid, sno, firma, ki, urun, birim, miktar, mt, kg, ad,
+ *   platform, kullanici, kayit, aktarim }
+ * miktar kalemin sipariş birimindedir (ADET → ad, MT → mt, KG → kg). Dokumada mt/kg/ad ayrıca durur.
+ */
+function raporOlaylariKur(akisSatirlari, dokumaGirisleri) {
+    const sipMap = new Map((dataCache.siparisler || []).map((s) => [String(s.id), s]));
+    const snoMap = new Map((dataCache.siparisler || []).map((s) => [String(s.sno || '').trim().toUpperCase(), s]));
+    const kalemCache = new Map();
+    const kalemlerAl = (sip) => {
+        const k = String(sip.id);
+        if (!kalemCache.has(k)) kalemCache.set(k, siparisListeKalemleriArr(sip));
+        return kalemCache.get(k);
+    };
+    const olaylar = [];
+    const eslesmeyen = [];
+
+    const ekle = (sip, ki, o) => {
+        const kalemler = kalemlerAl(sip);
+        const k = ki >= 0 ? (kalemler[ki] || {}) : {};
+        const birim = ki >= 0 ? siparisKalemBirim(k) : 'ADET';
+        const ms = o.ms;
+        /* Tarihsiz kayıt sessizce düşmesin — Veri Kontrol'de görünür */
+        if (!Number.isFinite(ms)) {
+            eslesmeyen.push({ kayit: o.kayit, islem: o.asama, neden: 'tarih okunamadı', sno: sip.sno, satir: { kalem_ad: o.urunAd || '' } });
+            return;
+        }
+        olaylar.push({
+            ms, gun: raporLocalDateStr(new Date(ms)),
+            asama: o.asama, alt: o.alt || '',
+            sid: String(sip.id), sno: sip.sno || String(sip.id), firma: sip.firma || sip.musteri || '',
+            ki, urun: ki >= 0 ? raporKalemEtiket(k, ki) : (o.urunAd || 'Kalemi bulunamayan kayıt'),
+            birim, miktar: o.miktar,
+            mt: o.mt != null ? o.mt : (birim === 'MT' ? o.miktar : 0),
+            kg: o.kg != null ? o.kg : (birim === 'KG' ? o.miktar : 0),
+            ad: o.ad != null ? o.ad : (birim === 'ADET' ? o.miktar : 0),
+            platform: o.platform, kullanici: String(o.kullanici || '').trim(),
+            kayit: o.kayit, aktarim: !!o.aktarim
+        });
+    };
+
+    /* 1) DOKUMA — KD_DOKUMA girişleri (Dokuma Takip > Hareket Kayıtları ile aynı okuyucu) */
+    const dokPlatform = { PANEL: 'DPANEL', EXCEL: 'EXCEL', TEZGAH: 'TEZGAH', PROGRAM: 'PROGRAM' };
+    (dokumaGirisleri || []).forEach((g) => {
+        const sip = sipMap.get(String(g.sid));
+        if (!sip) return;
+        const k = kalemlerAl(sip)[g.ki] || {};
+        const tip = typeof dtKalemIkinciBirimTip === 'function' ? dtKalemIkinciBirimTip(k) : 'ADET';
+        const miktar = tip === 'KG' ? g.kg : (tip === 'MT' ? g.metre : g.adet);
+        ekle(sip, g.ki, {
+            ms: g.ms, asama: 'DOKUMA', miktar, mt: g.metre, kg: g.kg, ad: g.adet,
+            platform: dokPlatform[g.kaynak] || 'PROGRAM', kullanici: g.user,
+            kayit: `dokuma:${g.sid}:${g.ki}:${g.gid || g.ms}`
+        });
+    });
+
+    /* 2) KESİM (tablo dönemi) — konf_kesim_yikama satırı = bir kesim girişi.
+          Önbellek satırı konfKySatirFromDb biçimindedir: ts = kesim_ts || created_at, user = kesim_user. */
+    (typeof _konfKesimGecmisCache !== 'undefined' ? _konfKesimGecmisCache || [] : []).forEach((r) => {
+        if (r.aktif === false) return;
+        const kes = parseInt(r.kesilen_adet, 10) || 0;
+        if (kes <= 0) return;
+        const sip = sipMap.get(String(r.siparis_id));
+        if (!sip) return;
+        let ki = parseInt(r.kalem_idx, 10);
+        if (!Number.isFinite(ki) || ki < 0) {
+            ki = typeof konfUaKalemIdxCoz === 'function' ? konfUaKalemIdxCoz(r.siparis_id, r.kalem_idx, r.desen) : -1;
+            if (ki == null) ki = -1;
+        }
+        const kaynak = String(r.kaynak || '').toUpperCase();
+        const ms = raporTarihMs(r.ts);
+        const gun = r.gun || raporLocalDateStr(r.ts);
+        const aktarim = kaynak === 'DEVIR' || (kaynak === 'MANUEL_KESIM' && !!gun && gun <= RAPOR_AKTARIM_SON_GUN);
+        ekle(sip, ki, {
+            ms, asama: 'KESIM', miktar: kes,
+            platform: aktarim ? 'AKTARIM' : (kaynak.startsWith('MOBIL') ? 'KPANEL' : 'PROGRAM'),
+            kullanici: r.user, kayit: `ky:${r.id}`, aktarim, urunAd: r.desen
+        });
+    });
+
+    /* 3) Günlük olayları */
+    (akisSatirlari || []).forEach((r) => {
+        const asama = raporIslemAsama(r.islem);
+        if (!asama) return;
+        const n = raporJson(r.notlar);
+        /* iptal / silindi: geçersiz giriş. revize_edildi ATLANMAZ — yalnız notu düzeltilmiş, miktar geçerli. */
+        if (n.iptal || n.silindi || n.panel_silindi) return;
+        const ms = raporTarihMs(r.created_at);
+        const kullanici = n.user || n.kullanici || '';
+
+        if (asama === 'YIKAMA_FIS') {
+            /* Fiş satırları kalem kalem; tarih = fiş tarihi (kullanıcının yazdığı sevk günü).
+               Panel fişi siparis_id + kalem_idx yazar; ana program fişi yalnız sno + desen/renk/ebat. */
+            const platform = Array.isArray(n.ky_deltalar) ? 'KPANEL' : 'PROGRAM';
+            const fisMs = raporTarihMs(n.fis_tarih ? `${n.fis_tarih}T12:00:00` : null) || ms;
+            (n.satirlar || []).forEach((s, si) => {
+                const sip = sipMap.get(String(s.siparis_id)) || snoMap.get(String(s.siparis_sno || '').trim().toUpperCase());
+                if (!sip) { eslesmeyen.push({ kayit: `akis:${r.id}:${si}`, islem: r.islem, neden: 'sipariş yok', satir: s }); return; }
+                const ki = raporKalemBul(kalemlerAl(sip), { kalem_idx: s.kalem_idx, urun_ad: s.desen, renk: s.renk, ebat: s.ebat }, '');
+                if (ki < 0) eslesmeyen.push({ kayit: `akis:${r.id}:${si}`, islem: r.islem, neden: 'kalem bulunamadı', sno: sip.sno, satir: s });
+                ekle(sip, ki, {
+                    ms: fisMs, asama: 'YIKAMA', miktar: raporSayi(s.adet), platform, kullanici,
+                    kayit: `akis:${r.id}:${si}`, urunAd: [s.desen, s.renk, s.ebat].filter(Boolean).join(' · ')
+                });
+            });
+            return;
+        }
+
+        const sip = sipMap.get(String(r.siparis_id));
+        if (!sip) return;
+        /* Tablo döneminden sonra günlükte kesim yok; varsa tablo ile aynı iş olmasın diye alınmaz. */
+        if (asama === 'KESIM' && raporLocalDateStr(r.created_at) >= RAPOR_TABLO_BASLANGIC) return;
+        const ki = raporKalemBul(kalemlerAl(sip), n, r.kalem_ad);
+        /* Kumaş kaleminin (MT/KG) sevki depo çıkışından okunur (aşağıda); günlük satırı aynı
+           sevkin aynası — canlıda 24 kumaş kaleminin 24'ünde depo = pencere. */
+        if (asama === 'SEVK' && ki >= 0 && siparisKalemKumasMi(kalemlerAl(sip)[ki] || {})) return;
+        if (ki < 0) eslesmeyen.push({ kayit: `akis:${r.id}`, islem: r.islem, neden: 'kalem bulunamadı', sno: sip.sno, satir: { kalem_ad: r.kalem_ad } });
+        const platform = raporAkisPlatform(r.islem, n);
+        const temel = { ms, platform, kullanici, kayit: `akis:${r.id}`, urunAd: r.kalem_ad };
+
+        if (asama === 'HATALI') {
+            [['IKI_KALITE', n.iki_kalite], ['TAMIR', n.tamir], ['IMHA', n.imha]].forEach(([alt, v]) => {
+                const m = raporSayi(v);
+                if (m) ekle(sip, ki, { ...temel, asama: 'HATALI', alt, miktar: m });
+            });
+            return;
+        }
+        ekle(sip, ki, { ...temel, asama, miktar: raporSayi(r.miktar) });
+        /* Kalite düzeltmesi hatalı adetleri de düzeltir: { kk, iki, tamir, imha } farkları */
+        if (n.duzeltme && typeof n.duzeltme === 'object') {
+            [['IKI_KALITE', n.duzeltme.iki], ['TAMIR', n.duzeltme.tamir], ['IMHA', n.duzeltme.imha]].forEach(([alt, v]) => {
+                const m = raporSayi(v);
+                if (m) ekle(sip, ki, { ...temel, asama: 'HATALI', alt, miktar: m });
+            });
+        }
+        /* Panel kalite girişi tamir / imha adetlerini aynı satırda taşır */
+        if (asama === 'KALITE') {
+            [['TAMIR', n.tamir], ['IMHA', n.imha]].forEach(([alt, v]) => {
+                const m = raporSayi(v);
+                if (m && n.kk_gecen !== undefined) ekle(sip, ki, { ...temel, asama: 'HATALI', alt, miktar: m });
+            });
+        }
+    });
+
+    /* 4) Kumaş kaleminin sevki — depo çıkışı (iade girişi eksi). Sipariş penceresinin yükleme
+          sayısıyla aynı eşleştirme: sevkiyatSiparisKalemDepoHareketleri. Ürün kaleminde depo
+          satırı günlük SEVK satırının aynası olduğu için alınmaz (çift sayılmasın). */
+    (dataCache.siparisler || []).forEach((sip) => {
+        kalemlerAl(sip).forEach((k, ki) => {
+            if (!siparisKalemKumasMi(k)) return;
+            sevkiyatSiparisKalemDepoHareketleri(sip.id, ki).forEach((h) => {
+                ekle(sip, ki, {
+                    ms: raporTarihMs(h.row.created_at), asama: 'SEVK', miktar: h.yon * h.miktar,
+                    platform: 'PROGRAM', kullanici: h.row.updated_by, kayit: `depo:${h.row.id}`
+                });
+            });
+        });
+    });
+
+    olaylar.sort((a, b) => b.ms - a.ms);
+    olaylar.forEach((o) => {
+        o.ara = planlamaTodoAramaNorm([o.sno, o.firma, o.urun, o.kullanici, RAPOR_PLATFORMLAR[o.platform] || ''].join(' '));
+    });
+    return { olaylar, eslesmeyen };
+}
+
+/* ── Resmi kalem sayıları (sipariş penceresiyle aynı fonksiyon) ─────── */
+
+function raporResmiKalemler() {
+    const out = [];
+    (dataCache.siparisler || []).forEach((sip) => {
+        siparisListeKalemleriArr(sip).forEach((k, ki) => {
+            out.push({ sip, k, ki, sid: String(sip.id), urun: raporKalemEtiket(k, ki), resmi: siparisKalemAsamaSayilari(sip, ki, k) });
+        });
+    });
+    return out;
+}
+
+/* ── Veri kontrol ────────────────────────────────────────────────────── */
+
+const RAPOR_KONTROL_KURALLARI = [
+    { kod: 'KALITE_KESIM', ad: 'Kalite geçen, kesimden fazla', seviye: 'hata', aciklama: 'Kesim girilmemiş ya da kalite fazla girilmiş. Kesimsiz yıkamaya giden mal kesim sayılır.' },
+    { kod: 'CIFT_GIRIS', ad: 'Muhtemel çift giriş', seviye: 'uyari', aciklama: 'Kesim, sipariş adedinin 1,8–2,3 katı (adet birimli kalem).' },
+    { kod: 'SIPARIS_ASIMI', ad: 'Kesim siparişi %20 aşıyor', seviye: 'uyari', aciklama: 'Adet birimli kalemde kesim, siparişin 1,2 katından fazla.' },
+    { kod: 'BIRIM', ad: 'Dokuma girişi sipariş birimine uymuyor', seviye: 'uyari', aciklama: 'ADET: metre + adet · KG: metre + kg · METRE: yalnız metre.' },
+    { kod: 'DOKUMA_TOPLAM', ad: 'Dokuma toplamı ≠ girişler', seviye: 'uyari', aciklama: 'Kalemin kayıtlı toplamı giriş listesinin toplamını tutmuyor.' },
+    { kod: 'EKSI_STOK', ad: 'Eksi stok', seviye: 'hata', aciklama: 'Ana bakiye sıfırın altında (çıkış, girişten fazla).' },
+    { kod: 'SIPARIS_ISARETSIZ', ad: 'Sipariş sevki sipariş işaretsiz', seviye: 'bilgi', aciklama: '"SIP-…" kimlikli depo hareketi sipariş numarası (siparis_id) olmadan yazılmış. Depo ekranları stok saymaz ama ana bakiye indeksine girer.' },
+    { kod: 'HAREKET_ISARET', ad: 'Hareket türü ile miktar uyuşmuyor', seviye: 'hata', aciklama: 'ÇIKIŞ türünde artı ya da GİRİŞ türünde eksi miktar. Ekranlar bu satırı farklı yorumlayabilir (ör. 2026005-1: Mamül Depo 93, ana bakiye 66).' },
+    { kod: 'KAYIT_EKSIK', ad: 'Pencerede var, kaydı eksik', seviye: 'uyari', aciklama: 'Sipariş penceresindeki sayı, tek tek kayıtların toplamından büyük: bir kısmı hiçbir girişte yok (eski KD kopyasına doğrudan yazılmış olabilir). Üretim raporunda bu fark hiçbir tarihe düşmez.' },
+    { kod: 'KAYIT_FAZLA', ad: 'Kayıtlar pencereden fazla', seviye: 'uyari', aciklama: 'Tek tek kayıtların toplamı sipariş penceresindeki sayıdan büyük: aynı iş iki kez kaydedilmiş olabilir (ör. 02.09 günlüğü + 03.09 aktarımı).' },
+    { kod: 'ESLESMEYEN', ad: 'Kalemi bulunamayan kayıt', seviye: 'bilgi', aciklama: 'Kaydın hangi sipariş kalemine ait olduğu belirlenemedi; sipariş toplamına girer, kaleme girmez.' }
+];
+
+/**
+ * Tüm kontrolleri çalıştırır. Satır: { kural, sid, sno, firma, ki, urun, detay, sonGun, durum }.
+ * sonGun = o kalemin defterdeki son kaydı — eski (kapanmış) ile yeni (devam eden) ayrılır.
+ */
+function raporKontrolleriBul(veri) {
+    const bulgular = [];
+    const olaylar = veri.olaylar || [];
+    const kalemOlay = new Map();   // "sid|ki" → { asama → toplam, sonGun }
+    olaylar.forEach((o) => {
+        const key = o.sid + '|' + o.ki;
+        let x = kalemOlay.get(key);
+        if (!x) { x = { top: {}, sonGun: '' }; kalemOlay.set(key, x); }
+        if (o.gun > x.sonGun) x.sonGun = o.gun;
+        /* Aktarım/devir satırı DAHİL: mutabakat "her birim tam bir kez kayıtlı mı" sorusudur.
+           Aynı iş hem 02.09 günlüğünde hem 03.09 aktarımında varsa "fazla kayıt" çıkar (doğru tespit).
+           Üretim raporu ise dönem toplamında aktarımı varsayılan olarak saymaz. */
+        const a = o.asama === 'HATALI' ? 'HATALI_' + o.alt : o.asama;
+        x.top[a] = (x.top[a] || 0) + o.miktar;
+    });
+    const kesimsiz = new Map();    // "sid|ki" → kesimsiz yıkama adedi (kesim sayılır)
+    (typeof _konfKesimGecmisCache !== 'undefined' ? _konfKesimGecmisCache || [] : []).forEach((r) => {
+        if (r.aktif === false || String(r.kaynak || '').toUpperCase() !== 'KESIMSIZ_YIKAMA') return;
+        const key = r.siparis_id + '|' + parseInt(r.kalem_idx, 10);
+        kesimsiz.set(key, (kesimsiz.get(key) || 0) + (parseInt(r.yikama_sevk_adet, 10) || 0));
+    });
+
+    raporResmiKalemler().forEach(({ sip, k, ki, sid, urun, resmi }) => {
+        const key = sid + '|' + ki;
+        const ko = kalemOlay.get(key) || { top: {}, sonGun: '' };
+        const temel = { sid, sno: sip.sno || sid, firma: sip.firma || '', ki, urun, sonGun: ko.sonGun, durum: sip.durum || '' };
+        const bul = (kural, detay) => bulgular.push({ ...temel, kural, detay });
+        const siparisAd = resmi.siparis;
+
+        if (!resmi.kumas) {
+            const kesToplam = resmi.kesim + (kesimsiz.get(key) || 0);
+            if (kesToplam > 0 && resmi.kalite > kesToplam) {
+                bul('KALITE_KESIM', `kalite ${raporFmt(resmi.kalite)} · kesim ${raporFmt(resmi.kesim)}${kesimsiz.get(key) ? ` + kesimsiz yıkama ${raporFmt(kesimsiz.get(key))}` : ''}`);
+            }
+            if (resmi.birim === 'ADET' && siparisAd >= 5 && resmi.kesim >= siparisAd * 1.8 && resmi.kesim <= siparisAd * 2.3) {
+                bul('CIFT_GIRIS', `sipariş ${raporFmt(siparisAd)} · kesim ${raporFmt(resmi.kesim)}`);
+            } else if (resmi.birim === 'ADET' && siparisAd > 0 && resmi.kesim > siparisAd * 1.2) {
+                bul('SIPARIS_ASIMI', `sipariş ${raporFmt(siparisAd)} · kesim ${raporFmt(resmi.kesim)}`);
+            }
+            [['KESIM', resmi.kesim, 'kesim'], ['YIKAMA', resmi.yikSevk, 'yıkamaya giden'], ['KALITE', resmi.kalite, 'kalite'], ['SEVK', resmi.sevk, 'sevk']]
+                .forEach(([asama, resmiN, ad]) => {
+                    const defter = Math.round(ko.top[asama] || 0);
+                    const r = Math.round(resmiN);
+                    if (defter < r) bul('KAYIT_EKSIK', `${ad}: pencere ${raporFmt(r)} · kayıtlar ${raporFmt(defter)} · ${raporFmt(r - defter)} kayıtsız`);
+                    else if (defter > r) bul('KAYIT_FAZLA', `${ad}: kayıtlar ${raporFmt(defter)} · pencere ${raporFmt(r)} · ${raporFmt(defter - r)} fazla`);
+                });
+        } else {
+            const defter = Math.round(ko.top.SEVK || 0);
+            const r = Math.round(resmi.metraj ? resmi.metraj.sevk : resmi.sevk);
+            const b = resmi.metraj ? ' ' + resmi.metraj.birimLbl : '';
+            if (defter < r) bul('KAYIT_EKSIK', `sevk: pencere ${raporFmt(r)}${b} · kayıtlar ${raporFmt(defter)}${b}`);
+            else if (defter > r) bul('KAYIT_FAZLA', `sevk: kayıtlar ${raporFmt(defter)}${b} · pencere ${raporFmt(r)}${b}`);
+        }
+
+        /* Dokuma: birim kuralı ve toplam ≠ girişler */
+        const urunler = (_kdCache[`KD_DOKUMA_${sid}`] || {}).urunler || {};
+        const u = urunler[ki] || urunler[String(ki)];
+        if (u) {
+            const tip = dtKalemIkinciBirimTip(k);
+            const g = u.girisler || [];
+            let yanlis = 0;
+            g.forEach((x) => {
+                if ((tip !== 'KG' && raporSayi(x.kg) > 0) || (tip !== 'ADET' && raporSayi(x.adet) > 0)) yanlis++;
+            });
+            if (yanlis) bul('BIRIM', `${yanlis} giriş · sipariş birimi ${tip === 'MT' ? 'metre' : tip.toLowerCase()}`);
+            const genelDurum = g.some((x) => x.kaynak === 'GENEL_DURUM_EXCEL');
+            if (!genelDurum && g.length) {
+                const t = g.reduce((a, x) => ({ mt: a.mt + raporSayi(x.metre), kg: a.kg + raporSayi(x.kg), ad: a.ad + raporSayi(x.adet) }), { mt: 0, kg: 0, ad: 0 });
+                const tm = raporSayi(u.toplam_metre), tk = raporSayi(u.toplam_kg), ta = raporSayi(u.toplam_adet);
+                const kayitli = tm > 0 || tk > 0 || ta > 0;
+                if (kayitli && (Math.abs(tm - t.mt) > 0.5 || Math.abs(tk - t.kg) > 0.5 || Math.abs(ta - t.ad) > 0.5)) {
+                    bul('DOKUMA_TOPLAM', `toplam ${raporFmt(tm, 1)} m · ${raporFmt(tk, 1)} kg · ${raporFmt(ta)} ad — girişler ${raporFmt(t.mt, 1)} m · ${raporFmt(t.kg, 1)} kg · ${raporFmt(t.ad)} ad`);
+                }
+            }
+        }
+    });
+
+    /* Eksi stok — ana bakiye indeksleri (sipariş sevki hariç, iplik kart lotu dahil). Yalnız
+       deponun ASIL birimine bakılır: kumaş metre (metresiz ise kg), mamül adet, iplik kg.
+       Top/çuval sayısı tutarlı tutulmuyor (SM-0001: 16.924 m stok, −198 top) — gürültü olmasın. */
+    const eksiKumas = (b) => (Math.abs(b.mt) > 0.5 ? b.mt < -0.5 : b.kg < -0.5);
+    const stokBul = (depo, kod, b) => bulgular.push({
+        kural: 'EKSI_STOK', sid: '', sno: depo, firma: '', ki: -1, urun: kod, sonGun: '', durum: '',
+        detay: [b.kg ? `${raporFmt(b.kg, 1)} kg` : '', b.mt ? `${raporFmt(b.mt, 1)} m` : '', b.adet ? `${raporFmt(b.adet)} ad` : ''].filter(Boolean).join(' · ')
+    });
+    /* Yalnız depo ekranlarının STOK saydığı kodlar denetlenir (Stok raporuyla aynı süzgeç):
+       kumaş kumasDepoStokKoduMu, mamül geçerli stok kartı. "SIP-…" kodlar aşağıda ayrı kural. */
+    try {
+        const idx = kumasBakiyeIndexAl();
+        idx.kumasKod.forEach((b, key) => {
+            const kod = key.replace(/\|(\d+)$/, (m, v) => (v === '0' ? '' : '-' + v));
+            if (eksiKumas(b) && kumasDepoStokKoduMu(kod)) stokBul('Kumaş', kod, b);
+        });
+        idx.mamulKod.forEach((b, kod) => { if (b.adet < 0 && depoMamulStokKartiDogrula(kod) === null) stokBul('Mamül', kod, b); });
+        iplikBakiyeIndexAl().forEach((b, kod) => { if (b.kg < -0.5) stokBul('İplik', kod, b); });
+    } catch (e) { console.warn('rapor eksi stok', e); }
+
+    /* Sipariş sevki sipariş işaretsiz: "SIP-…" kimlikli depo çıkışı siparis_id olmadan yazılmış.
+       Depo ekranları bunları stok saymaz ama ana bakiye indeksine girer (sipariş sevki stoktan düşmez kuralı). */
+    const sipIsaretsiz = new Map();
+    (dataCache.kumas_stok || []).forEach((x) => {
+        const kod = String(x.stok_kodu || '').trim().toUpperCase();
+        if (!/^SIP-/.test(kod) || (x.siparis_id != null && x.siparis_id !== '')) return;
+        const o = sipIsaretsiz.get(kod) || { n: 0, mt: 0, kg: 0, ad: 0, son: '' };
+        o.n++; o.mt += raporSayi(x.miktar_mt); o.kg += raporSayi(x.miktar_kg); o.ad += raporSayi(x.cuval_sayisi);
+        const g = raporLocalDateStr(x.created_at); if (g > o.son) o.son = g;
+        sipIsaretsiz.set(kod, o);
+    });
+    sipIsaretsiz.forEach((o, kod) => {
+        const m = kod.match(/^SIP-([^-]+)-K(\d+)/);
+        const sip = m ? (dataCache.siparisler || []).find((s) => String(s.sno || '').toUpperCase() === m[1]) : null;
+        bulgular.push({
+            kural: 'SIPARIS_ISARETSIZ', sid: sip ? String(sip.id) : '', sno: m ? m[1] : '—', firma: sip?.firma || '', ki: m ? +m[2] : -1,
+            urun: kod, detay: `${o.n} hareket · ${[o.mt ? raporFmt(o.mt, 1) + ' m' : '', o.kg ? raporFmt(o.kg, 1) + ' kg' : '', o.ad ? raporFmt(o.ad) + ' ad' : ''].filter(Boolean).join(' · ')}`,
+            sonGun: o.son, durum: sip?.durum || ''
+        });
+    });
+
+    /* Hareket türü ile işaret uyuşmazlığı (ÇIKIŞ + artı / GİRİŞ + eksi) */
+    const turNorm = (t) => String(t || '').toUpperCase().replace(/İ/g, 'I').replace(/Ç/g, 'C').replace(/Ş/g, 'S');
+    [['Kumaş/Mamül', dataCache.kumas_stok, (x) => raporSayi(x.miktar_mt) + raporSayi(x.miktar_kg) + raporSayi(x.cuval_sayisi)],
+        ['İplik', dataCache.iplik_stok, (x) => raporSayi(x.miktar_kg)]].forEach(([depo, liste, deger]) => {
+        (liste || []).forEach((x) => {
+            const t = turNorm(x.islem_turu);
+            const v = deger(x);
+            if (!((t.includes('CIKIS') && v > 0) || (t.includes('GIRIS') && v < 0))) return;
+            bulgular.push({
+                kural: 'HAREKET_ISARET', sid: '', sno: depo, firma: x.firma || '', ki: -1,
+                urun: `${x.stok_kodu || '—'} · ${x.kumas_cinsi || x.iplik_cinsi || ''}`.trim(),
+                detay: `${x.islem_turu} · ${[x.miktar_mt ? raporFmt(x.miktar_mt, 1) + ' m' : '', x.miktar_kg ? raporFmt(x.miktar_kg, 1) + ' kg' : '', x.cuval_sayisi ? raporFmt(x.cuval_sayisi) + ' ad' : ''].filter(Boolean).join(' · ')} · ${x.kaynak_birim || ''}`,
+                sonGun: raporLocalDateStr(x.created_at), durum: ''
+            });
+        });
+    });
+
+    (veri.eslesmeyen || []).forEach((e) => bulgular.push({
+        kural: 'ESLESMEYEN', sid: '', sno: e.sno || '—', firma: '', ki: -1,
+        urun: [e.satir?.desen || e.satir?.kalem_ad, e.satir?.renk, e.satir?.ebat].filter(Boolean).join(' · ') || '—',
+        detay: `${e.islem} · ${e.neden}`, sonGun: '', durum: ''
+    }));
+    return bulgular;
+}
+
+/* ── Ekran ───────────────────────────────────────────────────────────── */
+
+/* Geçiş dönemi: yeni sekmeler eski Raporlar şeridinin başında durur; eski 13 sekme, yeni
+   karşılıkları doğrulanınca silinecek (kullanıcı kararı, 28.09.2026). */
+const RAPOR_YENI_SEKMELER = [
+    { id: 'YR_OZET', label: '🧭 Özet', renk: '#4f46e5' },
+    { id: 'YR_URETIM', label: '🏭 Üretim', renk: '#7c3aed' },
+    { id: 'YR_SIPARIS', label: '📋 Siparişler', renk: '#2563eb' },
+    { id: 'YR_STOK', label: '📦 Stok', renk: '#059669' },
+    { id: 'YR_KONTROL', label: '🛡️ Veri Kontrol', renk: '#dc2626' }
+];
+const RAPOR_SAYFA = 300;
+let raporKontrolFiltre = { kural: '', son: 'TUMU', q: '', goster: RAPOR_SAYFA };
+let _raporKontrolOnbellek = { ts: 0, bulgular: null };
+
+function raporYeniSekmeMi(id) { return RAPOR_YENI_SEKMELER.some((t) => t.id === id); }
+
+/** Yeni sekmelerin üst çubuğu: veri zamanı + yenile. */
+function raporYeniUstCubukHtml() {
+    const v = _raporVeri;
+    const bilgi = v.olaylar
+        ? `${raporFmt(v.olaylar.length)} kayıt · ${new Date(v.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} itibarıyla`
+        : (v.hata ? 'Veri yüklenemedi' : 'Veriler yükleniyor…');
+    /* Mobilde Excel kapalı (mevcut mobil kural, ERP_MOBIL_NO_EXCEL) */
+    const excel = window.ERP_MOBIL_NO_EXCEL ? '' : `<button type="button" onclick="raporYeniDisaAktar('excel')" style="padding:5px 12px;border-radius:8px;font-size:10px;font-weight:600;cursor:pointer;background:rgba(52,211,153,0.1);color:var(--emerald-c);border:1px solid rgba(52,211,153,0.3)">Excel</button>`;
+    return `<div id="rapor-yeni-cubuk" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--text2);font-family:'DM Mono',monospace">${pdfEsc(bilgi)}</span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+            <button type="button" onclick="raporYeniIcerikCiz(true)" class="pro-input" style="width:auto;padding:5px 12px;font-size:10px;cursor:pointer;background:var(--surface2)">↻ Yenile</button>
+            ${excel}
+            <button type="button" onclick="raporYeniDisaAktar('pdf')" class="btn-pro btn-danger-pro" style="padding:5px 12px;font-size:10px">PDF</button>
+        </span>
+    </div>`;
+}
+
+async function raporYeniIcerikCiz(force) {
+    const kutu = document.getElementById('rapor-icerik');
+    if (!kutu) return;
+    if (!_raporVeri.olaylar || force) {
+        kutu.innerHTML = '<div class="panel-box" style="padding:32px;text-align:center;color:var(--text3)"><div style="font-size:26px;margin-bottom:8px">⏳</div>Rapor verileri yükleniyor…</div>';
+    }
+    try {
+        await raporVeriYukle(force);
+    } catch (e) {
+        kutu.innerHTML = `<div class="panel-box" style="padding:24px;color:var(--rose-c)">Rapor verisi yüklenemedi: ${pdfEsc(e?.message || e)}</div>`;
+        return;
+    }
+    if (appMode !== 'RAPORLAR' || !raporYeniSekmeMi(raporTab)) return;
+    const cubuk = document.getElementById('rapor-yeni-cubuk');
+    if (cubuk) cubuk.outerHTML = raporYeniUstCubukHtml();
+    const k2 = document.getElementById('rapor-icerik');
+    if (k2) k2.innerHTML = raporYeniSekmeHtml();
+}
+
+function raporYeniSekmeHtml() {
+    if (raporTab === 'YR_OZET') return raporOzetHtml();
+    if (raporTab === 'YR_URETIM') return raporUretimHtml();
+    if (raporTab === 'YR_SIPARIS') return raporSiparisHtml();
+    if (raporTab === 'YR_STOK') return raporStokHtml();
+    if (raporTab === 'YR_KONTROL') return raporKontrolHtml();
+    return '';
+}
+
+/** Görünen sekmenin tablo modelleri → Excel / PDF. Ekrandaki sayılar ile dosyadakiler aynı modelden. */
+async function raporYeniDisaAktar(tur) {
+    if (!_raporVeri.olaylar) { erpToast('Veriler henüz yüklenmedi.', 'warning'); return; }
+    let paket = null;
+    if (raporTab === 'YR_OZET') paket = raporOzetDisaPaket();
+    else if (raporTab === 'YR_URETIM') paket = raporUretimDisaPaket();
+    else if (raporTab === 'YR_SIPARIS') paket = raporSiparisDisaPaket();
+    else if (raporTab === 'YR_STOK') paket = raporStokDisaPaket();
+    else if (raporTab === 'YR_KONTROL') paket = raporKontrolDisaPaket();
+    if (!paket) return;
+    try {
+        if (tur === 'excel') await raporExcelIndir(paket);
+        else await raporPdfIndir(paket);
+    } catch (e) {
+        erpToast('Dışa aktarım başarısız: ' + (e?.message || e), 'error', 5000);
+    }
+}
+
+/**
+ * Raporlardan sipariş penceresini açar. showDetail sipariş görünümünü appMode'dan seçtiği için
+ * appMode yalnız açılış anında SIPARIS_LISTE yapılır ve hemen geri alınır — canlı yenileme
+ * rapor ekranının üstüne sipariş listesi çizmesin. Raporlardan açılan pencere yalnız görüntüler.
+ */
+function raporSiparisAc(sid) {
+    const liste = [...(dataCache.siparisler || [])];
+    const idx = liste.findIndex((s) => String(s.id) === String(sid));
+    if (idx < 0) { erpToast('Sipariş bulunamadı.', 'error'); return; }
+    const onceki = appMode;
+    currentData = liste;
+    appMode = 'SIPARIS_LISTE';
+    try { showDetail(idx); } finally { appMode = onceki; }
+    ['modal-edit-btn', 'modal-delete-btn'].forEach((id) => {
+        const b = document.getElementById(id);
+        if (b) b.style.display = 'none';
+    });
+}
+
+/* ── Veri Kontrol sekmesi ────────────────────────────────────────────── */
+
+const RAPOR_SEVIYE_RENK = { hata: 'var(--rose-c)', uyari: 'var(--amber-c)', bilgi: 'var(--text3)' };
+
+function raporKontrolBulgulari() {
+    if (_raporKontrolOnbellek.ts !== _raporVeri.ts || !_raporKontrolOnbellek.bulgular) {
+        const sira = { hata: 0, uyari: 1, bilgi: 2 };
+        const kuralMap = new Map(RAPOR_KONTROL_KURALLARI.map((k) => [k.kod, k]));
+        const bulgular = raporKontrolleriBul(_raporVeri);
+        bulgular.sort((a, b) => (sira[kuralMap.get(a.kural)?.seviye] - sira[kuralMap.get(b.kural)?.seviye])
+            || String(b.sonGun || '').localeCompare(String(a.sonGun || ''))
+            || String(a.sno || '').localeCompare(String(b.sno || ''), 'tr', { numeric: true }));
+        bulgular.forEach((x) => { x.ara = planlamaTodoAramaNorm([x.sno, x.firma, x.urun, x.detay].join(' ')); });
+        _raporKontrolOnbellek = { ts: _raporVeri.ts, bulgular };
+    }
+    return _raporKontrolOnbellek.bulgular;
+}
+
+/** kuralHaric: kural süzgeci uygulanmaz (kural sayaçları diğer süzgeçlere göre sayılır). */
+function raporKontrolSuz(bulgular, kuralHaric) {
+    const f = raporKontrolFiltre;
+    const bugun = raporLocalDateStr(new Date());
+    const esik = (gun) => { const d = new Date(); d.setDate(d.getDate() - gun); return raporLocalDateStr(d); };
+    const sinir = f.son === 'GUN7' ? esik(7) : (f.son === 'GUN30' ? esik(30) : '');
+    const q = planlamaTodoAramaNorm(f.q).split(/\s+/).filter(Boolean);
+    return bulgular.filter((b) => {
+        if (!kuralHaric && f.kural && b.kural !== f.kural) return false;
+        if (sinir && !(b.sonGun && b.sonGun >= sinir && b.sonGun <= bugun)) return false;
+        if (f.son === 'ACIK' && (!b.sid || String(b.durum).toUpperCase() === 'TAMAMLANDI')) return false;
+        return q.every((t) => b.ara.includes(t));
+    });
+}
+
+function raporKontrolHtml() {
+    const sayim = {};
+    raporKontrolSuz(raporKontrolBulgulari(), true).forEach((b) => { sayim[b.kural] = (sayim[b.kural] || 0) + 1; });
+    const f = raporKontrolFiltre;
+    const cipler = RAPOR_KONTROL_KURALLARI.map((k) => {
+        const n = sayim[k.kod] || 0;
+        const secili = f.kural === k.kod;
+        return `<button type="button" onclick="raporKontrolKural('${secili ? '' : k.kod}')" title="${pdfEsc(k.aciklama)}"
+            style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 12px;border-radius:10px;cursor:pointer;min-width:120px;text-align:left;
+            border:1px solid ${secili ? RAPOR_SEVIYE_RENK[k.seviye] : 'var(--border)'};background:${secili ? 'var(--surface2)' : 'var(--surface)'};opacity:${n ? 1 : 0.55}">
+            <span style="font-family:'Instrument Serif',serif;font-size:20px;line-height:1;color:${n ? RAPOR_SEVIYE_RENK[k.seviye] : 'var(--text3)'}">${raporFmt(n)}</span>
+            <span style="font-size:9.5px;font-weight:600;color:var(--text2);line-height:1.25">${pdfEsc(k.ad)}</span>
+        </button>`;
+    }).join('');
+    const sonSec = (v, et) => `<option value="${v}" ${f.son === v ? 'selected' : ''}>${et}</option>`;
+    return `
+    <div class="panel-box" style="padding:14px 16px;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px">
+            Sipariş penceresindeki sayılar tek tek kayıtlarla karşılaştırılır, mantığa aykırı durumlar listelenir.
+            <b>Son kayıt</b>, o kaleme yapılan en son giriştir — eski (kapanmış) sorunları devam edenlerden ayırır.
+            Kutuya tıklayınca o kurala süzülür; satıra tıklayınca sipariş penceresi açılır.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${cipler}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px">
+            <select class="pro-input" style="width:auto;padding:6px 10px;font-size:11px" onchange="raporKontrolFiltre.son=this.value;raporKontrolFiltre.goster=${RAPOR_SAYFA};raporKontrolYenile()">
+                ${sonSec('TUMU', 'Tüm kayıtlar')}${sonSec('ACIK', 'Yalnız açık siparişler')}${sonSec('GUN30', 'Son 30 günde kayıt görenler')}${sonSec('GUN7', 'Son 7 günde kayıt görenler')}
+            </select>
+            <input type="search" class="pro-input" style="flex:1;min-width:200px;padding:6px 10px;font-size:11px" placeholder="Sipariş, müşteri, ürün ara…"
+                value="${pdfEsc(f.q)}" oninput="raporKontrolFiltre.q=this.value;raporKontrolFiltre.goster=${RAPOR_SAYFA};raporKontrolTabloYenile()">
+        </div>
+    </div>
+    <div id="rapor-kontrol-tablo">${raporKontrolTabloHtml()}</div>`;
+}
+
+function raporKontrolTabloHtml() {
+    const kuralMap = new Map(RAPOR_KONTROL_KURALLARI.map((k) => [k.kod, k]));
+    const liste = raporKontrolSuz(raporKontrolBulgulari());
+    const f = raporKontrolFiltre;
+    if (!liste.length) {
+        return `<div class="panel-box" style="padding:28px;text-align:center;color:var(--emerald-c);font-size:12px">Bu süzgeçte sorun yok.</div>`;
+    }
+    const gorunen = liste.slice(0, f.goster);
+    const tarih = (g) => (g ? new Date(g + 'T00:00:00').toLocaleDateString('tr-TR') : '—');
+    const satirlar = gorunen.map((b) => {
+        const k = kuralMap.get(b.kural) || {};
+        const tik = b.sid ? `onclick="raporSiparisAc('${b.sid}')" style="cursor:pointer"` : '';
+        return `<tr ${tik}>
+            <td style="white-space:nowrap"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${RAPOR_SEVIYE_RENK[k.seviye]};margin-right:6px"></span>${pdfEsc(k.ad || b.kural)}</td>
+            <td style="font-family:'DM Mono',monospace;font-weight:700;white-space:nowrap">${pdfEsc(b.sno || '—')}</td>
+            <td>${pdfEsc(b.firma || '—')}</td>
+            <td>${pdfEsc(b.urun || '—')}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:10.5px">${pdfEsc(b.detay || '')}</td>
+            <td style="white-space:nowrap;color:var(--text2)">${tarih(b.sonGun)}</td>
+        </tr>`;
+    }).join('');
+    const daha = liste.length > gorunen.length
+        ? `<div style="text-align:center;padding:10px"><button type="button" class="pro-input" style="width:auto;padding:6px 14px;font-size:11px;cursor:pointer" onclick="raporKontrolFiltre.goster+=${RAPOR_SAYFA};raporKontrolTabloYenile()">Daha fazla göster (${raporFmt(liste.length - gorunen.length)} kaldı)</button></div>`
+        : '';
+    return `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div style="padding:8px 12px;font-size:10px;color:var(--text3);border-bottom:1px solid var(--border)">${raporFmt(liste.length)} bulgu${liste.length > gorunen.length ? ` · ilk ${raporFmt(gorunen.length)} gösteriliyor` : ''}</div>
+        <div style="overflow-x:auto">
+            <table class="dt-table" style="width:100%;min-width:860px;border-collapse:separate;border-spacing:0;font-size:11px">
+                <thead><tr><th style="text-align:left">Kural</th><th style="text-align:left">Sipariş</th><th style="text-align:left">Müşteri</th><th style="text-align:left">Ürün / kod</th><th style="text-align:left">Ayrıntı</th><th style="text-align:left">Son kayıt</th></tr></thead>
+                <tbody>${satirlar}</tbody>
+            </table>
+        </div>
+        ${daha}
+    </div>`;
+}
+
+function raporKontrolKural(kod) {
+    raporKontrolFiltre.kural = kod || '';
+    raporKontrolFiltre.goster = RAPOR_SAYFA;
+    raporKontrolYenile();
+}
+function raporKontrolYenile() {
+    const k = document.getElementById('rapor-icerik');
+    if (k && raporTab === 'YR_KONTROL') k.innerHTML = raporKontrolHtml();
+}
+function raporKontrolTabloYenile() {
+    const t = document.getElementById('rapor-kontrol-tablo');
+    if (t) t.innerHTML = raporKontrolTabloHtml();
+}
+
+function raporKontrolDisaPaket() {
+    const kuralMap = new Map(RAPOR_KONTROL_KURALLARI.map((k) => [k.kod, k]));
+    const liste = raporKontrolSuz(raporKontrolBulgulari());
+    const f = raporKontrolFiltre;
+    const sonEt = { TUMU: 'Tüm kayıtlar', ACIK: 'Yalnız açık siparişler', GUN30: 'Son 30 gün', GUN7: 'Son 7 gün' }[f.son] || '';
+    return {
+        baslik: 'VERİ KONTROL RAPORU', dosya: 'veri_kontrol',
+        filtre: [f.kural ? (kuralMap.get(f.kural)?.ad || f.kural) : 'Tüm kurallar', sonEt, f.q ? `Arama: ${f.q}` : ''].filter(Boolean).join(' · '),
+        modeller: [{
+            baslik: 'Bulgular', sayfa: 'Bulgular',
+            kolonlar: [{ ad: 'Kural' }, { ad: 'Sipariş' }, { ad: 'Müşteri' }, { ad: 'Ürün / kod', genislik: 36 }, { ad: 'Ayrıntı', genislik: 48 }, { ad: 'Son kayıt', tip: 'tarih' }],
+            satirlar: liste.map((b) => [kuralMap.get(b.kural)?.ad || b.kural, b.sno || '', b.firma || '', b.urun || '', b.detay || '', b.sonGun || '']),
+            toplam: null
+        }]
+    };
+}
+
+/* ── Ortak tablo modeli: ekran, Excel ve PDF AYNI veriden ────────────── */
+/* Model: { baslik, sayfa, kolonlar: [{ ad, tip: 'metin'|'sayi'|'tarih'|'zaman', ondalik, genislik }],
+            satirlar: [[ham değerler]], toplam: [..] | null, not }
+   Hücre değeri ham tutulur: ekranda biçimlenir, Excel'e sayı sayı olarak gider. */
+
+function raporHucreMetni(k, v) {
+    if (v == null || v === '') return '—';
+    if (k.tip === 'sayi') {
+        const n = Number(v) || 0;
+        return n === 0 ? '—' : raporFmt(n, k.ondalik);
+    }
+    if (k.tip === 'tarih') {
+        const d = new Date(String(v).length === 10 ? v + 'T00:00:00' : v);
+        return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('tr-TR');
+    }
+    if (k.tip === 'zaman') {
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? String(v) : d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+    return String(v);
+}
+
+/** opts: { maks, satirTik(i) → js, hucreTik(i, c) → js, vurgula(i) → bool, minGenislik } */
+function raporTabloHtml(m, opts) {
+    const o = opts || {};
+    const hiz = (k) => (k.tip === 'sayi' ? 'right' : 'left');
+    const bas = m.kolonlar.map((k) => `<th style="text-align:${hiz(k)};white-space:nowrap">${pdfEsc(k.ad)}</th>`).join('');
+    const govde = m.satirlar.slice(0, o.maks || m.satirlar.length).map((s, i) => {
+        const tik = o.satirTik ? o.satirTik(i) : '';
+        const stil = [tik ? 'cursor:pointer' : '', o.vurgula && o.vurgula(i) ? 'background:rgba(124,58,237,0.12)' : ''].filter(Boolean).join(';');
+        const hucreler = s.map((v, c) => {
+            const k = m.kolonlar[c];
+            const ht = o.hucreTik && k.tip === 'sayi' && Number(v) ? o.hucreTik(i, c) : '';
+            const ic = pdfEsc(raporHucreMetni(k, v));
+            return `<td style="text-align:${hiz(k)};${k.tip === 'sayi' ? "font-family:'DM Mono',monospace;" : ''}${k.tip === 'metin' || !k.tip ? '' : 'white-space:nowrap'}">${ht ? `<span onclick="event.stopPropagation();${ht}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">${ic}</span>` : ic}</td>`;
+        }).join('');
+        return `<tr${tik ? ` onclick="${tik}"` : ''}${stil ? ` style="${stil}"` : ''}>${hucreler}</tr>`;
+    }).join('');
+    const top = m.toplam
+        ? `<tfoot><tr>${m.toplam.map((v, c) => `<td style="text-align:${hiz(m.kolonlar[c])};font-weight:800;border-top:2px solid var(--border);${m.kolonlar[c].tip === 'sayi' ? "font-family:'DM Mono',monospace" : ''}">${v == null || v === '' ? '' : pdfEsc(raporHucreMetni(m.kolonlar[c], v))}</td>`).join('')}</tr></tfoot>`
+        : '';
+    return `<div style="overflow-x:auto"><table class="dt-table" style="width:100%;min-width:${o.minGenislik || 560}px;border-collapse:separate;border-spacing:0;font-size:11px"><thead><tr>${bas}</tr></thead><tbody>${govde}</tbody>${top}</table></div>`;
+}
+
+function raporOlusturmaMetni() {
+    const u = (typeof erpCurrentUser !== 'undefined' && erpCurrentUser) ? (erpCurrentUser.display_name || erpCurrentUser.username || '') : '';
+    return `Oluşturma: ${new Date().toLocaleString('tr-TR')}${u ? ' · ' + u : ''}`;
+}
+function raporDosyaAdi(temel) {
+    return `${temel}_${raporLocalDateStr(new Date())}`.replace(/[^\wçğıöşüÇĞİÖŞÜ\-]+/g, '_');
+}
+function raporExcelDeger(k, v) {
+    if (v == null) return '';
+    if (k.tip === 'sayi') return Number(v) || 0;
+    if (k.tip === 'tarih' || k.tip === 'zaman') return raporHucreMetni(k, v);
+    return String(v);
+}
+
+/** paket: { baslik, dosya, filtre, modeller: [model], not } — her model ayrı sayfa. */
+async function raporExcelIndir(paket) {
+    await erpEnsureXLSX();
+    if (typeof XLSX === 'undefined') throw new Error('Excel kütüphanesi yüklenemedi');
+    const wb = XLSX.utils.book_new();
+    const adlar = new Set();
+    paket.modeller.forEach((m) => {
+        const aoa = [[`${paket.baslik} — ${m.baslik}`], [paket.filtre || ''], [raporOlusturmaMetni()], []];
+        aoa.push(m.kolonlar.map((k) => k.ad));
+        m.satirlar.forEach((s) => aoa.push(s.map((v, c) => raporExcelDeger(m.kolonlar[c], v))));
+        if (m.toplam) aoa.push(m.toplam.map((v, c) => raporExcelDeger(m.kolonlar[c], v)));
+        if (m.not) { aoa.push([]); aoa.push([m.not]); }
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = m.kolonlar.map((k) => ({ wch: k.genislik || (k.tip === 'sayi' ? 12 : (k.tip === 'zaman' ? 17 : 20)) }));
+        let ad = String(m.sayfa || m.baslik).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31);
+        for (let n = 2; adlar.has(ad); n++) ad = ad.slice(0, 27) + ' ' + n;
+        adlar.add(ad);
+        XLSX.utils.book_append_sheet(wb, ws, ad);
+    });
+    XLSX.writeFile(wb, raporDosyaAdi(paket.dosya) + '.xlsx');
+}
+
+/* html2canvas tüm tabloyu tek tuvale çizer; çok uzun listede tarayıcı belleği yetmez. */
+const RAPOR_PDF_SATIR_SINIRI = 1500;
+
+function raporPdfTabloHtml(m) {
+    const hiz = (k) => (k.tip === 'sayi' ? 'right' : 'left');
+    const td = 'padding:4px 6px;border-bottom:1px solid #e5e7eb;font-size:9px;color:#111827';
+    const satirlar = m.satirlar.slice(0, RAPOR_PDF_SATIR_SINIRI);
+    const kesik = m.satirlar.length > satirlar.length
+        ? `<div style="font-size:9px;color:#b45309;margin-top:4px">PDF'e ilk ${raporFmt(satirlar.length)} satır alındı (toplam ${raporFmt(m.satirlar.length)}). Tamamı için Excel'i kullanın.</div>` : '';
+    return `<div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:700;color:#1f2937;margin-bottom:4px">${pdfEsc(m.baslik)}</div>
+        <table style="width:100%;border-collapse:collapse">
+            <thead><tr>${m.kolonlar.map((k) => `<th style="padding:5px 6px;text-align:${hiz(k)};font-size:8px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;color:#334155">${pdfEsc(k.ad)}</th>`).join('')}</tr></thead>
+            <tbody>${satirlar.map((s) => `<tr>${s.map((v, c) => `<td style="${td};text-align:${hiz(m.kolonlar[c])}">${pdfEsc(raporHucreMetni(m.kolonlar[c], v))}</td>`).join('')}</tr>`).join('')}</tbody>
+            ${m.toplam ? `<tfoot><tr>${m.toplam.map((v, c) => `<td style="${td};text-align:${hiz(m.kolonlar[c])};font-weight:700;border-top:1.5px solid #94a3b8">${v == null || v === '' ? '' : pdfEsc(raporHucreMetni(m.kolonlar[c], v))}</td>`).join('')}</tr></tfoot>` : ''}
+        </table>${kesik}
+        ${m.not ? `<div style="font-size:8.5px;color:#475467;margin-top:4px">${pdfEsc(m.not)}</div>` : ''}
+    </div>`;
+}
+
+/** Hazır html2pdf işçisi (kaydetmeden): raporPdfIndir kaydeder, doğrulama outputPdf ile ölçer.
+    İşçi "thenable" olduğu için { isci } içinde döner — async dönüşte beklenip kaybolmasın. */
+async function raporPdfIsci(paket) {
+    await erpEnsureHtml2Pdf();
+    if (typeof html2pdf === 'undefined') throw new Error('PDF kütüphanesi yüklenemedi');
+    const shell = buildPdfShellElement({
+        title: paket.baslik,
+        subtitle: paket.filtre || '',
+        docNo: `RPR-${Date.now()}`,
+        bodyHtml: paket.modeller.map(raporPdfTabloHtml).join(''),
+        note: [paket.not, raporOlusturmaMetni()].filter(Boolean).join(' · ')
+    });
+    const isci = html2pdf().set({
+        margin: [0, 0],
+        filename: raporDosyaAdi(paket.dosya) + '.pdf',
+        /* 545 satırlık hafta raporu: 0,95 / 1,4 ile 6,2 MB; 0,85 / 1,3 ile ~4 MB, metin okunaklı */
+        image: { type: 'jpeg', quality: 0.85 },
+        html2canvas: { scale: 1.3, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' }
+    }).from(shell);
+    return { isci };
+}
+async function raporPdfIndir(paket) {
+    const { isci } = await raporPdfIsci(paket);
+    await isci.save();
+}
+
+/* ── Dönem seçici (Gün / Hafta / Ay / Yıl / Özel) ────────────────────── */
+
+let raporDonem = { tip: 'AY', tarih: '', bas: '', bit: '' };
+const RAPOR_DONEM_TIPLERI = [['GUN', 'Gün'], ['HAFTA', 'Hafta'], ['AY', 'Ay'], ['YIL', 'Yıl'], ['OZEL', 'Özel']];
+
+function raporGunFmt(iso) { return iso ? new Date(iso + 'T00:00:00').toLocaleDateString('tr-TR') : '—'; }
+
+/** { bas, bitHaric, etiket } — bas dahil, bitHaric hariç (YYYY-MM-DD). Hafta Pazartesi başlar. */
+function raporDonemAralik() {
+    const d = raporDonem;
+    const iso = raporLocalDateStr;
+    if (d.tip === 'OZEL') {
+        const bas = d.bas || iso(new Date());
+        const bit = d.bit && d.bit >= bas ? d.bit : bas;
+        const son = new Date(bit + 'T00:00:00');
+        son.setDate(son.getDate() + 1);
+        return { bas, bitHaric: iso(son), etiket: bas === bit ? raporGunFmt(bas) : `${raporGunFmt(bas)} – ${raporGunFmt(bit)}` };
+    }
+    const t = d.tarih ? new Date(d.tarih + 'T00:00:00') : new Date();
+    t.setHours(0, 0, 0, 0);
+    let bas = new Date(t), bit;
+    let etiket;
+    if (d.tip === 'HAFTA') {
+        bas.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+        bit = new Date(bas); bit.setDate(bas.getDate() + 7);
+        const son = new Date(bit); son.setDate(son.getDate() - 1);
+        etiket = `${bas.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} – ${son.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}`;
+    } else if (d.tip === 'AY') {
+        bas = new Date(t.getFullYear(), t.getMonth(), 1);
+        bit = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+        etiket = bas.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+    } else if (d.tip === 'YIL') {
+        bas = new Date(t.getFullYear(), 0, 1);
+        bit = new Date(t.getFullYear() + 1, 0, 1);
+        etiket = String(t.getFullYear());
+    } else {
+        bit = new Date(bas); bit.setDate(bas.getDate() + 1);
+        etiket = bas.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+    }
+    return { bas: iso(bas), bitHaric: iso(bit), etiket };
+}
+
+function raporDonemCubukHtml() {
+    const d = raporDonem;
+    const a = raporDonemAralik();
+    const btn = (id, et) => `<button type="button" onclick="raporDonemTip('${id}')" style="font-size:10.5px;font-weight:700;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;${d.tip === id ? 'background:#7c3aed;color:#fff' : 'background:transparent;color:var(--text2)'}">${et}</button>`;
+    const nav = d.tip === 'OZEL'
+        ? `<input type="date" class="pro-input" style="width:auto;padding:5px 8px;font-size:11px" value="${a.bas}" onchange="raporDonemOzel('bas', this.value)">
+           <span style="color:var(--text3)">–</span>
+           <input type="date" class="pro-input" style="width:auto;padding:5px 8px;font-size:11px" value="${raporDonem.bit || a.bas}" onchange="raporDonemOzel('bit', this.value)">`
+        : `<button type="button" onclick="raporDonemKaydir(-1)" class="pro-input" style="width:auto;padding:5px 10px;font-size:12px;cursor:pointer" title="Önceki">‹</button>
+           <span style="font-size:12px;font-weight:700;min-width:170px;text-align:center">${pdfEsc(a.etiket)}</span>
+           <button type="button" onclick="raporDonemKaydir(1)" class="pro-input" style="width:auto;padding:5px 10px;font-size:12px;cursor:pointer" title="Sonraki">›</button>
+           <button type="button" onclick="raporDonemBugun()" class="pro-input" style="width:auto;padding:5px 10px;font-size:10.5px;cursor:pointer">Bugün</button>
+           <input type="date" class="pro-input" style="width:auto;padding:5px 8px;font-size:11px" title="Tarihe git" value="${d.tarih || ''}" onchange="raporDonemTarih(this.value)">`;
+    return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">${RAPOR_DONEM_TIPLERI.map(([id, et]) => btn(id, et)).join('')}</div>
+        ${nav}
+    </div>`;
+}
+
+function raporYeniYenidenCiz() {
+    const k = document.getElementById('rapor-icerik');
+    if (k && raporYeniSekmeMi(raporTab)) k.innerHTML = raporYeniSekmeHtml();
+}
+function raporDonemTip(tip) {
+    if (tip === 'OZEL' && raporDonem.tip !== 'OZEL') {
+        const a = raporDonemAralik();
+        const son = new Date(a.bitHaric + 'T00:00:00'); son.setDate(son.getDate() - 1);
+        raporDonem.bas = a.bas;
+        raporDonem.bit = raporLocalDateStr(son);
+    }
+    raporDonem.tip = tip;
+    raporUretim.secim = null;
+    raporUretim.goster = RAPOR_SAYFA;
+    raporYeniYenidenCiz();
+}
+function raporDonemKaydir(yon) {
+    const t = raporDonem.tarih ? new Date(raporDonem.tarih + 'T00:00:00') : new Date();
+    if (raporDonem.tip === 'AY') t.setMonth(t.getMonth() + yon, 1);
+    else if (raporDonem.tip === 'YIL') t.setFullYear(t.getFullYear() + yon, 0, 1);
+    else t.setDate(t.getDate() + yon * (raporDonem.tip === 'HAFTA' ? 7 : 1));
+    raporDonem.tarih = raporLocalDateStr(t);
+    raporUretim.secim = null;
+    raporUretim.goster = RAPOR_SAYFA;
+    raporYeniYenidenCiz();
+}
+function raporDonemBugun() { raporDonem.tarih = ''; raporUretim.secim = null; raporYeniYenidenCiz(); }
+function raporDonemTarih(v) { raporDonem.tarih = v || ''; raporUretim.secim = null; raporYeniYenidenCiz(); }
+function raporDonemOzel(alan, v) { raporDonem[alan] = v || ''; raporUretim.secim = null; raporYeniYenidenCiz(); }
+
+/* ── Üretim sekmesi — dönemde YAPILAN iş, birleştirilebilir ─────────── */
+
+const RAPOR_KIRILIMLAR = [
+    ['GUN', 'Gün'], ['HAFTA', 'Hafta'], ['AY', 'Ay'], ['MUSTERI', 'Müşteri'], ['SIPARIS', 'Sipariş'],
+    ['URUN', 'Ürün'], ['ASAMA', 'Aşama'], ['PLATFORM', 'Platform'], ['KISI', 'Kişi']
+];
+const RAPOR_ZAMAN_KIRILIM = new Set(['GUN', 'HAFTA', 'AY']);
+const RAPOR_BIRIMLER = [['AD', 'Adet'], ['MT', 'Metre'], ['KG', 'Kg']];
+
+let raporUretim = {
+    k1: 'GUN', k2: '', birim: 'AD',
+    asamalar: ['DOKUMA', 'KESIM', 'YIKAMA', 'DIKIM', 'KALITE', 'HATALI', 'KOLI', 'SEVK'],
+    aktarim: false, q: '', secim: null, goster: RAPOR_SAYFA
+};
+let _raporUretimSon = null;   // son çizilen pivot (hücre tıklaması satır/aşama bulur)
+
+function raporOlayDeger(o, birim) { return birim === 'MT' ? o.mt : (birim === 'KG' ? o.kg : o.ad); }
+function raporHaftaBasi(gun) {
+    const d = new Date(gun + 'T00:00:00');
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return raporLocalDateStr(d);
+}
+function raporAsamaAd(kod, alt) {
+    const a = (RAPOR_ASAMALAR.find((x) => x.kod === kod) || {}).ad || kod;
+    return alt ? `${a} · ${RAPOR_HATALI_ALT[alt] || alt}` : a;
+}
+
+/** Olayın kırılımdaki anahtarı + etiketi. */
+function raporGrup(o, kir) {
+    switch (kir) {
+        case 'GUN': return [o.gun, raporGunFmt(o.gun)];
+        case 'HAFTA': { const b = raporHaftaBasi(o.gun); return [b, `${raporGunFmt(b)} haftası`]; }
+        case 'AY': return [o.gun.slice(0, 7), new Date(o.gun.slice(0, 7) + '-01T00:00:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })];
+        case 'MUSTERI': return [o.firma || '—', o.firma || '—'];
+        case 'SIPARIS': return [o.sno, `${o.sno}${o.firma ? ' · ' + o.firma : ''}`];
+        case 'URUN': return [o.sno + '|' + o.ki + '|' + o.urun, `${o.urun} (${o.sno})`];
+        case 'ASAMA': return [String(RAPOR_ASAMALAR.findIndex((a) => a.kod === o.asama)).padStart(2, '0'), raporAsamaAd(o.asama)];
+        case 'PLATFORM': return [o.platform, RAPOR_PLATFORMLAR[o.platform] || o.platform];
+        case 'KISI': return [o.kullanici || '—', o.kullanici || '—'];
+        default: return ['', ''];
+    }
+}
+
+/** Dönem + aşama + aktarım + arama süzgeci (hücre seçimi hariç). */
+function raporUretimSuz() {
+    const { bas, bitHaric } = raporDonemAralik();
+    const as = new Set(raporUretim.asamalar);
+    const q = planlamaTodoAramaNorm(raporUretim.q).split(/\s+/).filter(Boolean);
+    return (_raporVeri.olaylar || []).filter((o) => o.gun >= bas && o.gun < bitHaric && as.has(o.asama)
+        && (raporUretim.aktarim || !o.aktarim) && q.every((t) => o.ara.includes(t)));
+}
+
+function raporUretimPivot(olaylar) {
+    const u = raporUretim;
+    const kolonAsama = RAPOR_ASAMALAR.filter((a) => u.asamalar.includes(a.kod));
+    const map = new Map();
+    olaylar.forEach((o) => {
+        const v = raporOlayDeger(o, u.birim);
+        if (!v) return;
+        const [k1, e1] = raporGrup(o, u.k1);
+        const [k2, e2] = u.k2 ? raporGrup(o, u.k2) : ['', ''];
+        const key = k1 + '\u0001' + k2;
+        let s = map.get(key);
+        if (!s) { s = { k1, e1, k2, e2, deg: {}, top: 0 }; map.set(key, s); }
+        s.deg[o.asama] = (s.deg[o.asama] || 0) + v;
+    });
+    const satirlar = [...map.values()];
+    satirlar.forEach((s) => { s.top = kolonAsama.reduce((a, k) => a + Math.abs(s.deg[k.kod] || 0), 0); });
+    const grupTop = new Map();
+    satirlar.forEach((s) => grupTop.set(s.k1, (grupTop.get(s.k1) || 0) + s.top));
+    const zaman1 = RAPOR_ZAMAN_KIRILIM.has(u.k1) || u.k1 === 'ASAMA';
+    const zaman2 = RAPOR_ZAMAN_KIRILIM.has(u.k2) || u.k2 === 'ASAMA';
+    satirlar.sort((a, b) => {
+        const c1 = zaman1 ? a.k1.localeCompare(b.k1) : ((grupTop.get(b.k1) - grupTop.get(a.k1)) || a.e1.localeCompare(b.e1, 'tr'));
+        if (c1) return c1;
+        return zaman2 ? a.k2.localeCompare(b.k2) : ((b.top - a.top) || a.e2.localeCompare(b.e2, 'tr'));
+    });
+    const toplam = {};
+    satirlar.forEach((s) => kolonAsama.forEach((k) => { toplam[k.kod] = (toplam[k.kod] || 0) + (s.deg[k.kod] || 0); }));
+    return { kolonAsama, satirlar, toplam };
+}
+
+function raporUretimModeller() {
+    const u = raporUretim;
+    const olaylar = raporUretimSuz();
+    const p = raporUretimPivot(olaylar);
+    _raporUretimSon = p;
+    const kirAd = (k) => (RAPOR_KIRILIMLAR.find((x) => x[0] === k) || [k, k])[1];
+    const birimAd = (RAPOR_BIRIMLER.find((x) => x[0] === u.birim) || [])[1];
+    const pivot = {
+        baslik: `Özet · ${kirAd(u.k1)}${u.k2 ? ' × ' + kirAd(u.k2) : ''} · ${birimAd}`,
+        sayfa: 'Özet',
+        kolonlar: [{ ad: kirAd(u.k1), genislik: 28 }, ...(u.k2 ? [{ ad: kirAd(u.k2), genislik: 28 }] : []),
+            ...p.kolonAsama.map((a) => ({ ad: a.ad, tip: 'sayi', ondalik: u.birim === 'AD' ? 0 : 1 }))],
+        satirlar: p.satirlar.map((s) => [s.e1, ...(u.k2 ? [s.e2] : []), ...p.kolonAsama.map((a) => s.deg[a.kod] || 0)]),
+        toplam: ['Toplam', ...(u.k2 ? [''] : []), ...p.kolonAsama.map((a) => p.toplam[a.kod] || 0)],
+        not: u.birim === 'AD'
+            ? 'Adet: dokumada adet birimli kalemler, sevkte ürün adedi. Metre/kg için birimi değiştirin.'
+            : `${birimAd}: dokuma ve kumaş kaleminin sevki. Konfeksiyon aşamaları adettir, bu birimde boş görünür.`
+    };
+    let secili = olaylar;
+    const sec = u.secim;
+    if (sec && p.satirlar[sec.i]) {
+        const s = p.satirlar[sec.i];
+        secili = olaylar.filter((o) => raporGrup(o, u.k1)[0] === s.k1 && (!u.k2 || raporGrup(o, u.k2)[0] === s.k2) && (!sec.asama || o.asama === sec.asama));
+    }
+    const kayit = {
+        baslik: 'Tek tek kayıtlar', sayfa: 'Kayıtlar',
+        kolonlar: [{ ad: 'Tarih', tip: 'zaman' }, { ad: 'Aşama' }, { ad: 'Sipariş' }, { ad: 'Müşteri' }, { ad: 'Ürün', genislik: 36 },
+            { ad: 'Adet', tip: 'sayi' }, { ad: 'Metre', tip: 'sayi', ondalik: 1 }, { ad: 'Kg', tip: 'sayi', ondalik: 1 },
+            { ad: 'Platform' }, { ad: 'Kişi' }],
+        satirlar: secili.map((o) => [o.ms, raporAsamaAd(o.asama, o.alt), o.sno, o.firma, o.urun, o.ad, o.mt, o.kg,
+            RAPOR_PLATFORMLAR[o.platform] || o.platform, o.kullanici || '—']),
+        toplam: ['Toplam', '', '', '', `${raporFmt(secili.length)} kayıt`, secili.reduce((a, o) => a + (o.ad || 0), 0),
+            secili.reduce((a, o) => a + (o.mt || 0), 0), secili.reduce((a, o) => a + (o.kg || 0), 0), '', ''],
+        _olaylar: secili
+    };
+    return { olaylar, pivot, kayit, aktarimSayi: raporUretimAktarimSayisi() };
+}
+
+/** Dönemde süzgeç dışında kalan aktarım/devir kaydı sayısı (bilgi amaçlı). */
+function raporUretimAktarimSayisi() {
+    if (raporUretim.aktarim) return 0;
+    const { bas, bitHaric } = raporDonemAralik();
+    return (_raporVeri.olaylar || []).filter((o) => o.aktarim && o.gun >= bas && o.gun < bitHaric).length;
+}
+
+function raporUretimHtml() {
+    const u = raporUretim;
+    const sec = (id, deger, secenekler, onch) => `<select id="${id}" class="pro-input" style="width:auto;padding:6px 10px;font-size:11px" onchange="${onch}">${secenekler.map(([v, e]) => `<option value="${v}" ${deger === v ? 'selected' : ''}>${e}</option>`).join('')}</select>`;
+    const asamaCip = RAPOR_ASAMALAR.map((a) => {
+        const acik = u.asamalar.includes(a.kod);
+        return `<button type="button" onclick="raporUretimAsama('${a.kod}')" style="font-size:10.5px;font-weight:600;padding:4px 10px;border-radius:999px;cursor:pointer;border:1px solid ${acik ? a.renk : 'var(--border)'};background:${acik ? a.renk + '22' : 'transparent'};color:${acik ? 'var(--text)' : 'var(--text3)'}">${pdfEsc(a.ad)}</button>`;
+    }).join('');
+    const birimBtn = RAPOR_BIRIMLER.map(([v, e]) => `<button type="button" onclick="raporUretimAyar('birim','${v}')" style="font-size:10.5px;font-weight:700;padding:5px 10px;border-radius:7px;border:none;cursor:pointer;${u.birim === v ? 'background:#7c3aed;color:#fff' : 'background:transparent;color:var(--text2)'}">${e}</button>`).join('');
+    return `
+    <div class="panel-box" style="padding:12px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px">
+        ${raporDonemCubukHtml()}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text2)">
+            <span>Satır:</span>${sec('ru-k1', u.k1, RAPOR_KIRILIMLAR, "raporUretimAyar('k1',this.value)")}
+            <span>Alt kırılım:</span>${sec('ru-k2', u.k2, [['', 'Yok'], ...RAPOR_KIRILIMLAR.filter((k) => k[0] !== u.k1)], "raporUretimAyar('k2',this.value)")}
+            <span>Birim:</span><div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">${birimBtn}</div>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer" title="03.09.2026 toplu aktarımı ve devir satırları o gün yapılmış yeni iş değildir">
+                <input type="checkbox" ${u.aktarim ? 'checked' : ''} onchange="raporUretimAyar('aktarim', this.checked)"> Aktarım/devir kayıtlarını say
+            </label>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${asamaCip}
+            <input type="search" class="pro-input" style="flex:1;min-width:200px;padding:6px 10px;font-size:11px" placeholder="Sipariş, müşteri, ürün, kişi ara…"
+                value="${pdfEsc(u.q)}" oninput="raporUretim.q=this.value;raporUretim.secim=null;raporUretim.goster=${RAPOR_SAYFA};raporUretimSonucYenile()">
+        </div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.5">
+            Kayıt tarihine göre (yıkama fişinde fiş tarihi). Yıkamadan dönüşün tarihli kaydı yok — bu raporda gösterilmez, Siparişler raporunda anlık değer olarak görünür.
+            Sayıya tıklayınca o hücrenin kayıtları aşağıda listelenir.
+        </div>
+    </div>
+    <div id="rapor-uretim-sonuc">${raporUretimSonucHtml()}</div>`;
+}
+
+function raporUretimSonucHtml() {
+    const u = raporUretim;
+    const m = raporUretimModeller();
+    const aktarimNot = m.aktarimSayi ? `<div style="font-size:10px;color:var(--amber-c);padding:6px 12px">Bu dönemde ${raporFmt(m.aktarimSayi)} aktarım/devir kaydı toplama katılmadı.</div>` : '';
+    if (!m.olaylar.length) {
+        return `<div class="panel-box" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu dönemde seçili aşamalarda kayıt yok.</div>${aktarimNot}`;
+    }
+    const kolBas = u.k2 ? 2 : 1;
+    const pivotHtml = raporTabloHtml(m.pivot, {
+        vurgula: (i) => u.secim && u.secim.i === i,
+        satirTik: (i) => `raporUretimSec(${i},'')`,
+        hucreTik: (i, c) => (c >= kolBas ? `raporUretimSec(${i},'${_raporUretimSon.kolonAsama[c - kolBas].kod}')` : ''),
+        minGenislik: 520
+    });
+    const secS = u.secim && _raporUretimSon.satirlar[u.secim.i];
+    const secMetin = secS ? `${secS.e1}${u.k2 ? ' · ' + secS.e2 : ''}${u.secim.asama ? ' · ' + raporAsamaAd(u.secim.asama) : ''}` : '';
+    const gorunen = Math.min(u.goster, m.kayit.satirlar.length);
+    const daha = m.kayit.satirlar.length > gorunen
+        ? `<div style="text-align:center;padding:10px"><button type="button" class="pro-input" style="width:auto;padding:6px 14px;font-size:11px;cursor:pointer" onclick="raporUretim.goster+=${RAPOR_SAYFA};raporUretimSonucYenile()">Daha fazla göster (${raporFmt(m.kayit.satirlar.length - gorunen)} kaldı)</button></div>` : '';
+    return `
+    <div class="panel-box" style="padding:0;overflow:hidden;margin-bottom:10px">
+        <div style="padding:8px 12px;font-size:10.5px;font-weight:700;border-bottom:1px solid var(--border)">${pdfEsc(m.pivot.baslik)}</div>
+        ${pivotHtml}
+        <div style="padding:6px 12px;font-size:10px;color:var(--text3)">${pdfEsc(m.pivot.not)}</div>
+        ${aktarimNot}
+    </div>
+    <div class="panel-box" style="padding:0;overflow:hidden">
+        <div style="padding:8px 12px;font-size:10.5px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--border)">
+            <b>Tek tek kayıtlar</b><span style="color:var(--text3)">${raporFmt(m.kayit.satirlar.length)} kayıt${gorunen < m.kayit.satirlar.length ? ` · ilk ${raporFmt(gorunen)}` : ''}</span>
+            ${secMetin ? `<span class="pill pill-violet" style="font-size:10px">${pdfEsc(secMetin)}</span><button type="button" onclick="raporUretimSec(-1,'')" class="pro-input" style="width:auto;padding:2px 8px;font-size:10px;cursor:pointer">✕ seçimi kaldır</button>` : ''}
+        </div>
+        ${raporTabloHtml(m.kayit, { maks: gorunen, satirTik: (i) => `raporSiparisAc('${m.kayit._olaylar[i].sid}')`, minGenislik: 980 })}
+        ${daha}
+    </div>`;
+}
+
+function raporUretimSonucYenile() {
+    const k = document.getElementById('rapor-uretim-sonuc');
+    if (k) k.innerHTML = raporUretimSonucHtml();
+}
+function raporUretimAyar(alan, v) {
+    raporUretim[alan] = v;
+    if (alan === 'k1' && raporUretim.k2 === v) raporUretim.k2 = '';
+    raporUretim.secim = null;
+    raporUretim.goster = RAPOR_SAYFA;
+    raporYeniYenidenCiz();
+}
+function raporUretimAsama(kod) {
+    const s = new Set(raporUretim.asamalar);
+    if (s.has(kod)) s.delete(kod); else s.add(kod);
+    raporUretim.asamalar = RAPOR_ASAMALAR.map((a) => a.kod).filter((k) => s.has(k));
+    raporUretim.secim = null;
+    raporYeniYenidenCiz();
+}
+function raporUretimSec(i, asama) {
+    raporUretim.secim = i >= 0 ? { i, asama: asama || '' } : null;
+    raporUretim.goster = RAPOR_SAYFA;
+    raporUretimSonucYenile();
+}
+
+function raporUretimDisaPaket() {
+    const m = raporUretimModeller();
+    const a = raporDonemAralik();
+    const u = raporUretim;
+    const filtre = [
+        `Dönem: ${a.etiket}`,
+        `Aşamalar: ${u.asamalar.map((k) => raporAsamaAd(k)).join(', ')}`,
+        u.aktarim ? 'Aktarım/devir dahil' : '',
+        u.q ? `Arama: ${u.q}` : ''
+    ].filter(Boolean).join(' · ');
+    return {
+        baslik: 'ÜRETİM RAPORU', dosya: 'uretim_raporu', filtre,
+        not: 'Kayıt tarihine göre. Yıkamadan dönüş tarihli kaydı olmadığı için bu raporda yoktur.',
+        modeller: [m.pivot, m.kayit]
+    };
+}
+
+/* ── Siparişler sekmesi — siparişin tüm hayatı (açılış / termin tarihine göre) ── */
+/* Sayılar sipariş penceresiyle AYNI fonksiyondan (siparisKalemAsamaSayilari). Pencere gibi iki
+   tablo: ürün kalemleri (adet, konfeksiyon akışı) ve kumaş kalemleri (metre / kg, dokuma → sevk).
+   Karma sipariş (8 adet) iki tabloda da görünür. */
+
+let raporSiparis = { tur: 'URUN', durum: 'ACIK', tarihAlan: '', q: '', acik: new Set(), goster: RAPOR_SAYFA };
+let _raporSiparisOnbellek = { ts: 0, urun: null, kumas: null };
+
+function raporSiparisVerisi() {
+    if (_raporSiparisOnbellek.ts === _raporVeri.ts && _raporSiparisOnbellek.urun) return _raporSiparisOnbellek;
+    const urun = [], kumas = [];
+    const topla = (kalemler, alanlar) => {
+        const t = {};
+        alanlar.forEach((a) => { t[a] = kalemler.reduce((s, k) => s + (k[a] || 0), 0); });
+        return t;
+    };
+    const U_ALAN = ['siparis', 'dokunan', 'kesim', 'yikSevk', 'yikGel', 'yikamada', 'kalite', 'hatali', 'sevk', 'kalan'];
+    const K_ALAN = ['siparis', 'dokunan', 'sevk', 'hazir', 'kalan'];
+    (dataCache.siparisler || []).forEach((sip) => {
+        const kl = siparisListeKalemleriArr(sip);
+        if (!kl.length) return;
+        const ortak = {
+            sid: String(sip.id), sno: sip.sno || String(sip.id), firma: sip.firma || sip.musteri || '',
+            starih: String(sip.starih || '').slice(0, 10), ttarih: String(sip.ttarih || '').slice(0, 10), durum: sip.durum || ''
+        };
+        const uk = [], kk = { MT: [], KG: [] };
+        kl.forEach((k, ki) => {
+            const r = siparisKalemAsamaSayilari(sip, ki, k);
+            const et = raporKalemEtiket(k, ki);
+            if (r.kumas) {
+                const m = r.metraj;
+                kk[m.birim === 'KG' ? 'KG' : 'MT'].push({ ki, urun: et, siparis: m.siparis, dokunan: m.dokunan, sevk: m.sevk, hazir: m.hazir, kalan: Math.max(0, m.siparis - m.sevk) });
+            } else {
+                const hatali = (r.ikiKalite || 0) + (r.tamir || 0) + (r.imha || 0);
+                uk.push({
+                    ki, urun: et, siparis: r.siparis, dokunan: Math.round(r.dokuma.ikinci || 0), kesim: r.kesim,
+                    yikSevk: r.yikSevk, yikGel: r.yikGel, yikamada: Math.max(0, r.yikSevk - r.yikGel),
+                    kalite: r.kalite, hatali, sevk: r.sevk, kalan: Math.max(0, r.siparis - r.sevk)
+                });
+            }
+        });
+        const ara = planlamaTodoAramaNorm([ortak.sno, ortak.firma, ...kl.map((k, i) => raporKalemEtiket(k, i))].join(' '));
+        if (uk.length) urun.push({ ...ortak, ara, kalemler: uk, top: topla(uk, U_ALAN) });
+        ['MT', 'KG'].forEach((b) => {
+            if (kk[b].length) kumas.push({ ...ortak, ara, birim: b, kalemler: kk[b], top: topla(kk[b], K_ALAN) });
+        });
+    });
+    const sira = (a, b) => (b.starih || '').localeCompare(a.starih || '') || String(b.sno).localeCompare(String(a.sno), 'tr', { numeric: true });
+    urun.sort(sira);
+    kumas.sort(sira);
+    _raporSiparisOnbellek = { ts: _raporVeri.ts, urun, kumas };
+    return _raporSiparisOnbellek;
+}
+
+function raporSiparisSuz(liste) {
+    const f = raporSiparis;
+    const q = planlamaTodoAramaNorm(f.q).split(/\s+/).filter(Boolean);
+    const a = f.tarihAlan ? raporDonemAralik() : null;
+    return liste.filter((s) => {
+        if (f.durum === 'ACIK' && String(s.durum).toUpperCase() === 'TAMAMLANDI') return false;
+        if (f.durum !== 'ACIK' && f.durum !== 'TUMU' && s.durum !== f.durum) return false;
+        if (a) {
+            const t = f.tarihAlan === 'TERMIN' ? s.ttarih : s.starih;
+            if (!t || t < a.bas || t >= a.bitHaric) return false;
+        }
+        return q.every((x) => s.ara.includes(x));
+    });
+}
+
+/** Açık siparişte termine kalan gün (eksi = gecikme); kapalı ya da terminsiz: null. */
+function raporTerminGun(s) {
+    if (!s.ttarih || String(s.durum).toUpperCase() === 'TAMAMLANDI') return null;
+    const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+    return Math.round((new Date(s.ttarih + 'T00:00:00') - bugun) / 86400000);
+}
+function raporTerminMetni(g) {
+    if (g == null) return '';
+    if (g < 0) return `${-g} gün gecikti`;
+    return g === 0 ? 'bugün' : `${g} gün kaldı`;
+}
+
+function raporSiparisModeller() {
+    const v = raporSiparisVerisi();
+    const f = raporSiparis;
+    const urun = raporSiparisSuz(v.urun);
+    const kumas = raporSiparisSuz(v.kumas);
+    const oran = (sevk, sip) => (sip > 0 ? Math.round((sevk / sip) * 100) : 0);
+    const bas = [{ ad: 'Sipariş' }, { ad: 'Müşteri', genislik: 24 }, { ad: 'Sipariş tarihi', tip: 'tarih' }, { ad: 'Termin', tip: 'tarih' }, { ad: 'Termin durumu' }, { ad: 'Durum' }];
+    const u = {
+        baslik: 'Ürün siparişleri (adet)', sayfa: 'Ürün siparişleri',
+        kolonlar: [...bas, { ad: 'Sipariş', tip: 'sayi' }, { ad: 'Dokunan', tip: 'sayi' }, { ad: 'Kesilen', tip: 'sayi' }, { ad: 'Yıkamada', tip: 'sayi' },
+            { ad: 'Kalite geçen', tip: 'sayi' }, { ad: 'Hatalı', tip: 'sayi' }, { ad: 'Sevk', tip: 'sayi' }, { ad: 'Kalan', tip: 'sayi' }, { ad: 'Sevk %', tip: 'sayi' }],
+        satirlar: urun.map((s) => [s.sno, s.firma, s.starih, s.ttarih, raporTerminMetni(raporTerminGun(s)), s.durum,
+            s.top.siparis, s.top.dokunan, s.top.kesim, s.top.yikamada, s.top.kalite, s.top.hatali, s.top.sevk, s.top.kalan, oran(s.top.sevk, s.top.siparis)]),
+        _liste: urun
+    };
+    const T = (liste, a) => liste.reduce((x, s) => x + (s.top[a] || 0), 0);
+    u.toplam = ['Toplam', `${raporFmt(urun.length)} sipariş`, '', '', '', '',
+        T(urun, 'siparis'), T(urun, 'dokunan'), T(urun, 'kesim'), T(urun, 'yikamada'), T(urun, 'kalite'), T(urun, 'hatali'), T(urun, 'sevk'), T(urun, 'kalan'),
+        oran(T(urun, 'sevk'), T(urun, 'siparis'))];
+    const k = {
+        baslik: 'Kumaş siparişleri (metre / kg)', sayfa: 'Kumaş siparişleri',
+        kolonlar: [...bas, { ad: 'Birim' }, { ad: 'Sipariş', tip: 'sayi' }, { ad: 'Dokunan', tip: 'sayi' }, { ad: 'Sevk', tip: 'sayi' },
+            { ad: 'Depoda hazır', tip: 'sayi' }, { ad: 'Kalan', tip: 'sayi' }, { ad: 'Sevk %', tip: 'sayi' }],
+        satirlar: kumas.map((s) => [s.sno, s.firma, s.starih, s.ttarih, raporTerminMetni(raporTerminGun(s)), s.durum, s.birim === 'KG' ? 'kg' : 'm',
+            s.top.siparis, s.top.dokunan, s.top.sevk, s.top.hazir, s.top.kalan, oran(s.top.sevk, s.top.siparis)]),
+        _liste: kumas,
+        /* metre ile kg toplanmaz — toplam satırı birim birim not olarak yazılır */
+        toplam: null,
+        not: ['MT', 'KG'].map((b) => {
+            const l = kumas.filter((s) => s.birim === b);
+            if (!l.length) return '';
+            const e = b === 'KG' ? 'kg' : 'm';
+            return `${b === 'KG' ? 'Kg' : 'Metre'} toplamı (${l.length} sipariş): sipariş ${raporFmt(T(l, 'siparis'))} ${e} · dokunan ${raporFmt(T(l, 'dokunan'))} ${e} · sevk ${raporFmt(T(l, 'sevk'))} ${e} · kalan ${raporFmt(T(l, 'kalan'))} ${e}`;
+        }).filter(Boolean).join(' — ')
+    };
+    const uKalem = {
+        baslik: 'Ürün kalemleri', sayfa: 'Ürün kalemleri',
+        kolonlar: [{ ad: 'Sipariş' }, { ad: 'Müşteri' }, { ad: 'Kalem', genislik: 36 }, { ad: 'Sipariş', tip: 'sayi' }, { ad: 'Dokunan', tip: 'sayi' }, { ad: 'Kesilen', tip: 'sayi' },
+            { ad: 'Yıkamaya giden', tip: 'sayi' }, { ad: 'Yıkamadan gelen', tip: 'sayi' }, { ad: 'Kalite geçen', tip: 'sayi' }, { ad: 'Hatalı', tip: 'sayi' }, { ad: 'Sevk', tip: 'sayi' }, { ad: 'Kalan', tip: 'sayi' }],
+        satirlar: urun.flatMap((s) => s.kalemler.map((x) => [s.sno, s.firma, x.urun, x.siparis, x.dokunan, x.kesim, x.yikSevk, x.yikGel, x.kalite, x.hatali, x.sevk, x.kalan])),
+        toplam: null
+    };
+    const kKalem = {
+        baslik: 'Kumaş kalemleri', sayfa: 'Kumaş kalemleri',
+        kolonlar: [{ ad: 'Sipariş' }, { ad: 'Müşteri' }, { ad: 'Kalem', genislik: 36 }, { ad: 'Birim' }, { ad: 'Sipariş', tip: 'sayi' }, { ad: 'Dokunan', tip: 'sayi' }, { ad: 'Sevk', tip: 'sayi' }, { ad: 'Depoda hazır', tip: 'sayi' }, { ad: 'Kalan', tip: 'sayi' }],
+        satirlar: kumas.flatMap((s) => s.kalemler.map((x) => [s.sno, s.firma, x.urun, s.birim === 'KG' ? 'kg' : 'm', x.siparis, x.dokunan, x.sevk, x.hazir, x.kalan])),
+        toplam: null
+    };
+    return { u, k, uKalem, kKalem };
+}
+
+function raporSiparisHtml() {
+    const f = raporSiparis;
+    const durumlar = [['ACIK', 'Açık siparişler'], ['TUMU', 'Tümü'], ...[...new Set((dataCache.siparisler || []).map((s) => s.durum).filter(Boolean))].sort().map((d) => [d, d])];
+    const sec = (deger, secenekler, onch) => `<select class="pro-input" style="width:auto;padding:6px 10px;font-size:11px" onchange="${onch}">${secenekler.map(([v, e]) => `<option value="${pdfEsc(v)}" ${deger === v ? 'selected' : ''}>${pdfEsc(e)}</option>`).join('')}</select>`;
+    const turBtn = [['URUN', 'Ürün (adet)'], ['KUMAS', 'Kumaş (metre / kg)']].map(([v, e]) => `<button type="button" onclick="raporSiparisAyar('tur','${v}')" style="font-size:10.5px;font-weight:700;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;${f.tur === v ? 'background:#2563eb;color:#fff' : 'background:transparent;color:var(--text2)'}">${e}</button>`).join('');
+    return `
+    <div class="panel-box" style="padding:12px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text2)">
+            <div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">${turBtn}</div>
+            <span>Durum:</span>${sec(f.durum, durumlar, "raporSiparisAyar('durum',this.value)")}
+            <span>Tarih:</span>${sec(f.tarihAlan, [['', 'Tüm tarihler'], ['SIPARIS', 'Sipariş tarihine göre'], ['TERMIN', 'Termine göre']], "raporSiparisAyar('tarihAlan',this.value)")}
+            <input type="search" class="pro-input" style="flex:1;min-width:200px;padding:6px 10px;font-size:11px" placeholder="Sipariş, müşteri, ürün ara…"
+                value="${pdfEsc(f.q)}" oninput="raporSiparis.q=this.value;raporSiparis.goster=${RAPOR_SAYFA};raporSiparisSonucYenile()">
+        </div>
+        ${f.tarihAlan ? raporDonemCubukHtml() : ''}
+        <div style="font-size:10px;color:var(--text3);line-height:1.5">
+            Sayılar sipariş penceresiyle aynı hesaptan gelir (siparişin tüm zamanı). Yıkamada = yıkamaya giden − yıkamadan gelen.
+            Termin yalnız ${raporFmt((dataCache.siparisler || []).filter((s) => s.ttarih).length)} siparişte girilmiş. Satıra tıklayınca kalemler açılır, ↗ sipariş penceresini açar.
+        </div>
+    </div>
+    <div id="rapor-siparis-sonuc">${raporSiparisSonucHtml()}</div>`;
+}
+
+function raporSiparisSonucHtml() {
+    const f = raporSiparis;
+    const m = raporSiparisModeller();
+    const model = f.tur === 'KUMAS' ? m.k : m.u;
+    const liste = model._liste;
+    if (!liste.length) return `<div class="panel-box" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu süzgeçte sipariş yok.</div>`;
+    const hiz = (k) => (k.tip === 'sayi' ? 'right' : 'left');
+    const gorunen = liste.slice(0, f.goster);
+    const kalemKol = f.tur === 'KUMAS'
+        ? [['siparis', 'Sipariş'], ['dokunan', 'Dokunan'], ['sevk', 'Sevk'], ['hazir', 'Depoda hazır'], ['kalan', 'Kalan']]
+        : [['siparis', 'Sipariş'], ['dokunan', 'Dokunan'], ['kesim', 'Kesilen'], ['yikamada', 'Yıkamada'], ['kalite', 'Kalite'], ['hatali', 'Hatalı'], ['sevk', 'Sevk'], ['kalan', 'Kalan']];
+    const govde = gorunen.map((s, i) => {
+        const anahtar = s.sid + '|' + (s.birim || 'U');
+        const acik = f.acik.has(anahtar);
+        const satir = model.satirlar[i];
+        const g = raporTerminGun(s);
+        const hucreler = satir.map((v, c) => {
+            const k = model.kolonlar[c];
+            let stil = `text-align:${hiz(k)};${k.tip === 'sayi' ? "font-family:'DM Mono',monospace;" : ''}`;
+            if (k.ad === 'Termin durumu' && g != null && g < 0) stil += 'color:var(--rose-c);font-weight:700;';
+            const ic = c === 0
+                ? `<span style="font-family:'DM Mono',monospace;font-weight:700">${acik ? '▾' : '▸'} ${pdfEsc(v)}</span> <button type="button" title="Sipariş penceresi" onclick="event.stopPropagation();raporSiparisAc('${s.sid}')" style="border:none;background:none;cursor:pointer;color:var(--accent);font-size:12px">↗</button>`
+                : pdfEsc(raporHucreMetni(k, v)) + (k.ad === 'Sevk %' && Number(v) ? '%' : '');
+            return `<td style="${stil}">${ic}</td>`;
+        }).join('');
+        const alt = acik ? `<tr><td colspan="${model.kolonlar.length}" style="padding:0 0 8px 28px;background:var(--surface2)">
+            <table class="dt-table" style="width:100%;border-collapse:separate;border-spacing:0;font-size:10.5px">
+                <thead><tr><th style="text-align:left">#</th><th style="text-align:left">Kalem</th>${kalemKol.map(([, e]) => `<th style="text-align:right">${e}</th>`).join('')}</tr></thead>
+                <tbody>${s.kalemler.map((x) => `<tr><td style="color:var(--text3)">${x.ki + 1}</td><td>${pdfEsc(x.urun)}</td>${kalemKol.map(([a]) => `<td style="text-align:right;font-family:'DM Mono',monospace">${pdfEsc(raporHucreMetni({ tip: 'sayi' }, x[a]))}</td>`).join('')}</tr>`).join('')}</tbody>
+            </table></td></tr>` : '';
+        return `<tr onclick="raporSiparisAcKapa('${anahtar}')" style="cursor:pointer${acik ? ';background:rgba(37,99,235,0.08)' : ''}">${hucreler}</tr>${alt}`;
+    }).join('');
+    const top = model.toplam
+        ? `<tfoot><tr>${model.toplam.map((v, c) => `<td style="text-align:${hiz(model.kolonlar[c])};font-weight:800;border-top:2px solid var(--border)">${v === '' || v == null ? '' : pdfEsc(raporHucreMetni(model.kolonlar[c], v)) + (model.kolonlar[c].ad === 'Sevk %' && Number(v) ? '%' : '')}</td>`).join('')}</tr></tfoot>`
+        : '';
+    const daha = liste.length > gorunen.length
+        ? `<div style="text-align:center;padding:10px"><button type="button" class="pro-input" style="width:auto;padding:6px 14px;font-size:11px;cursor:pointer" onclick="raporSiparis.goster+=${RAPOR_SAYFA};raporSiparisSonucYenile()">Daha fazla göster (${raporFmt(liste.length - gorunen.length)} kaldı)</button></div>` : '';
+    return `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div style="padding:8px 12px;font-size:10.5px;font-weight:700;border-bottom:1px solid var(--border)">${pdfEsc(model.baslik)} · ${raporFmt(liste.length)} sipariş</div>
+        <div style="overflow-x:auto"><table class="dt-table" style="width:100%;min-width:1100px;border-collapse:separate;border-spacing:0;font-size:11px">
+            <thead><tr>${model.kolonlar.map((k) => `<th style="text-align:${hiz(k)};white-space:nowrap">${pdfEsc(k.ad)}</th>`).join('')}</tr></thead>
+            <tbody>${govde}</tbody>${top}
+        </table></div>
+        ${model.not ? `<div style="padding:6px 12px;font-size:10px;color:var(--text2)">${pdfEsc(model.not)}</div>` : ''}
+        ${daha}
+    </div>`;
+}
+
+function raporSiparisSonucYenile() {
+    const k = document.getElementById('rapor-siparis-sonuc');
+    if (k) k.innerHTML = raporSiparisSonucHtml();
+}
+function raporSiparisAyar(alan, v) {
+    raporSiparis[alan] = v;
+    raporSiparis.goster = RAPOR_SAYFA;
+    raporYeniYenidenCiz();
+}
+function raporSiparisAcKapa(anahtar) {
+    if (raporSiparis.acik.has(anahtar)) raporSiparis.acik.delete(anahtar);
+    else raporSiparis.acik.add(anahtar);
+    raporSiparisSonucYenile();
+}
+
+function raporSiparisDisaPaket() {
+    const f = raporSiparis;
+    const m = raporSiparisModeller();
+    const durumEt = f.durum === 'ACIK' ? 'Açık siparişler' : (f.durum === 'TUMU' ? 'Tüm siparişler' : `Durum: ${f.durum}`);
+    const tarihEt = f.tarihAlan ? `${f.tarihAlan === 'TERMIN' ? 'Termin' : 'Sipariş tarihi'}: ${raporDonemAralik().etiket}` : 'Tüm tarihler';
+    return {
+        baslik: 'SİPARİŞ DURUM RAPORU', dosya: 'siparis_durum',
+        filtre: [durumEt, tarihEt, f.q ? `Arama: ${f.q}` : ''].filter(Boolean).join(' · '),
+        not: 'Sayılar sipariş penceresiyle aynı hesaptan (siparişin tüm zamanı).',
+        modeller: f.tur === 'KUMAS' ? [m.k, m.kKalem] : [m.u, m.uKalem]
+    };
+}
+
+/* ── Stok sekmesi — dönem stoku: açılış + giriş − çıkış = kapanış ───── */
+/* Satır kuralı ana bakiyeyle AYNI: kumaş/mamül kumasBakiyeSatirSinifi (sipariş hareketi hariç),
+   kumaş ekranının kod süzgeci (kumasDepoStokKoduMu — "SIP-…" sipariş kumaşı stok değil), iplik
+   iplikDepoStokHareketleriHazirla (kart lot açılışı dahil). Bugünü kapsayan dönemin kapanışı her
+   kodda depoKumas/Mamul/IplikBakiyeHesapla ile birebir aynıdır. Eksi bakiye gizlenmez. */
+
+const RAPOR_STOK_DEPOLAR = [
+    { kod: 'KUMAS', ad: 'Kumaş', birimler: [['mt', 'Metre'], ['kg', 'Kg']] },
+    { kod: 'MAMUL', ad: 'Mamül', birimler: [['adet', 'Adet'], ['kg', 'Kg']] },
+    { kod: 'IPLIK', ad: 'İplik', birimler: [['kg', 'Kg'], ['adet', 'Çuval']] }
+];
+let raporStok = { depo: 'KUMAS', birim: 'mt', kapsam: 'BAKIYELI', q: '', acik: new Set() };
+
+/** Depoya giren hareket satırları: { x, kod, lot, ad, mt, kg, adet, kart } */
+function raporStokSatirlari(depo) {
+    if (depo === 'IPLIK') {
+        return iplikDepoStokHareketleriHazirla(dataCache.iplik_stok || []).map((x) => {
+            const kod = String(x.stok_kodu || '').trim().toUpperCase();
+            if (!kod) return null;
+            return {
+                x, kod, lot: String(x.lot_no || 'LOTSUZ').trim().toUpperCase() || 'LOTSUZ',
+                ad: [x.iplik_cinsi || x.cins, x.marka].filter(Boolean).join(' · '),
+                mt: raporSayi(x.miktar_mt), kg: raporSayi(x.miktar_kg), adet: raporSayi(x.cuval_sayisi), kart: !!x._fromKart
+            };
+        }).filter(Boolean);
+    }
+    /* Mamül Depo ekranı yalnız geçerli stok kartı olan kodu gösterir (depoMamulStokKartiDogrula);
+       "SIP-…" sipariş sevk kimlikleri ve serbest metin kodlar stok değildir. */
+    const kartGecerli = new Map();
+    const mamulKartVar = (kod) => {
+        if (!kartGecerli.has(kod)) kartGecerli.set(kod, depoMamulStokKartiDogrula(kod) === null);
+        return kartGecerli.get(kod);
+    };
+    return (dataCache.kumas_stok || []).map((x) => {
+        const s = kumasBakiyeSatirSinifi(x);
+        if (!s || s.sinif !== depo) return null;
+        let kod = s.kod;
+        if (depo === 'KUMAS') {
+            const raw = String(x.stok_kodu || x.desen_kodu || '').trim();
+            if (!kumasDepoStokKoduMu(raw)) return null;
+            kod = kumasStokListeKoduNorm(raw).toUpperCase();
+        } else if (!mamulKartVar(kod)) {
+            return null;
+        }
+        return { x, kod, lot: '', ad: x.kumas_cinsi || x.urun_adi || '', mt: raporSayi(x.miktar_mt), kg: raporSayi(x.miktar_kg), adet: raporSayi(x.cuval_sayisi), kart: false };
+    }).filter(Boolean);
+}
+
+function raporStokHesap() {
+    const { bas, bitHaric } = raporDonemAralik();
+    const b = raporStok.birim;
+    const map = new Map();
+    raporStokSatirlari(raporStok.depo).forEach((r) => {
+        const gun = raporLocalDateStr(r.x.created_at);
+        if (gun && gun >= bitHaric) return;   // dönem sonrası kapanışa girmez
+        const v = r[b];
+        let g = map.get(r.kod);
+        if (!g) { g = { kod: r.kod, ad: '', adGun: '', acilis: 0, giris: 0, cikis: 0, hareket: [], lotlar: new Map() }; map.set(r.kod, g); }
+        if (r.ad && gun >= g.adGun) { g.ad = r.ad; g.adGun = gun; }
+        const hedefler = [g];
+        if (raporStok.depo === 'IPLIK') {
+            let l = g.lotlar.get(r.lot);
+            if (!l) { l = { kod: r.lot, acilis: 0, giris: 0, cikis: 0 }; g.lotlar.set(r.lot, l); }
+            hedefler.push(l);
+        }
+        const donemde = gun && gun >= bas;
+        hedefler.forEach((h) => {
+            if (!donemde) h.acilis += v;
+            else if (v > 0) h.giris += v;
+            else h.cikis += -v;
+        });
+        if (donemde && v) g.hareket.push({ ...r, gun, v });
+    });
+    const q = planlamaTodoAramaNorm(raporStok.q).split(/\s+/).filter(Boolean);
+    const esik = raporStok.birim === 'adet' ? 0.5 : 0.05;
+    const liste = [...map.values()].map((g) => {
+        g.kapanis = g.acilis + g.giris - g.cikis;
+        g.lotlar.forEach((l) => { l.kapanis = l.acilis + l.giris - l.cikis; });
+        g.hareket.sort((a, b2) => String(b2.x.created_at).localeCompare(String(a.x.created_at)));
+        g.ara = planlamaTodoAramaNorm(`${g.kod} ${g.ad}`);
+        return g;
+    }).filter((g) => {
+        if (raporStok.kapsam === 'HAREKETLI' && !g.hareket.length) return false;
+        if (raporStok.kapsam === 'BAKIYELI' && !g.hareket.length && Math.abs(g.kapanis) < esik) return false;
+        return q.every((t) => g.ara.includes(t));
+    });
+    liste.sort((a, b2) => a.kod.localeCompare(b2.kod, 'tr', { numeric: true }));
+    return liste;
+}
+
+function raporStokModeller() {
+    const s = raporStok;
+    const depo = RAPOR_STOK_DEPOLAR.find((d) => d.kod === s.depo);
+    const birimAd = (depo.birimler.find((x) => x[0] === s.birim) || [])[1] || s.birim;
+    const ond = s.birim === 'adet' ? 0 : 1;
+    const liste = raporStokHesap();
+    const T = (a) => liste.reduce((x, g) => x + g[a], 0);
+    const stok = {
+        baslik: `${depo.ad} stoku · ${birimAd}`, sayfa: `${depo.ad} stoku`,
+        kolonlar: [{ ad: 'Stok kodu' }, { ad: depo.kod === 'IPLIK' ? 'Cins · marka' : 'Ad', genislik: 34 },
+            { ad: 'Açılış', tip: 'sayi', ondalik: ond }, { ad: 'Giriş', tip: 'sayi', ondalik: ond }, { ad: 'Çıkış', tip: 'sayi', ondalik: ond },
+            { ad: 'Kapanış', tip: 'sayi', ondalik: ond }, { ad: 'Hareket', tip: 'sayi' }],
+        satirlar: liste.map((g) => [g.kod, g.ad, g.acilis, g.giris, g.cikis, g.kapanis, g.hareket.length]),
+        toplam: ['Toplam', `${raporFmt(liste.length)} kod`, T('acilis'), T('giris'), T('cikis'), T('kapanis'), liste.reduce((x, g) => x + g.hareket.length, 0)],
+        _liste: liste
+    };
+    const hareket = {
+        baslik: 'Dönem hareketleri', sayfa: 'Hareketler',
+        kolonlar: [{ ad: 'Tarih', tip: 'zaman' }, { ad: 'Stok kodu' }, ...(depo.kod === 'IPLIK' ? [{ ad: 'Lot' }] : []), { ad: 'Tür' },
+            { ad: birimAd, tip: 'sayi', ondalik: ond }, { ad: 'Firma' }, { ad: 'Açıklama', genislik: 40 }, { ad: 'Kullanıcı' }],
+        satirlar: liste.flatMap((g) => g.hareket.map((h) => [h.x.created_at, g.kod, ...(depo.kod === 'IPLIK' ? [h.lot] : []),
+            h.kart ? 'Kart açılış stoğu' : (h.x.islem_turu || (h.v > 0 ? 'GİRİŞ' : 'ÇIKIŞ')), h.v,
+            h.x.firma || h.x.gidecegi_firma || h.x.araci_firma || '', String(h.x.notlar || '').replace(/\[[A-Z_]+:[^\]]*\]/g, '').trim().slice(0, 120), h.x.updated_by || ''])),
+        toplam: null
+    };
+    return { stok, hareket, liste };
+}
+
+function raporStokHtml() {
+    const s = raporStok;
+    const depoBtn = RAPOR_STOK_DEPOLAR.map((d) => `<button type="button" onclick="raporStokAyar('depo','${d.kod}')" style="font-size:10.5px;font-weight:700;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;${s.depo === d.kod ? 'background:#059669;color:#fff' : 'background:transparent;color:var(--text2)'}">${d.ad}</button>`).join('');
+    const depo = RAPOR_STOK_DEPOLAR.find((d) => d.kod === s.depo);
+    const birimBtn = depo.birimler.map(([v, e]) => `<button type="button" onclick="raporStokAyar('birim','${v}')" style="font-size:10.5px;font-weight:700;padding:5px 10px;border-radius:7px;border:none;cursor:pointer;${s.birim === v ? 'background:#059669;color:#fff' : 'background:transparent;color:var(--text2)'}">${e}</button>`).join('');
+    const kapsam = [['BAKIYELI', 'Bakiyesi ya da hareketi olanlar'], ['HAREKETLI', 'Yalnız dönemde hareket görenler'], ['TUMU', 'Tüm kodlar']];
+    return `
+    <div class="panel-box" style="padding:12px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px">
+        ${raporDonemCubukHtml()}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text2)">
+            <div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">${depoBtn}</div>
+            <span>Birim:</span><div style="display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px">${birimBtn}</div>
+            <select class="pro-input" style="width:auto;padding:6px 10px;font-size:11px" onchange="raporStokAyar('kapsam',this.value)">${kapsam.map(([v, e]) => `<option value="${v}" ${s.kapsam === v ? 'selected' : ''}>${e}</option>`).join('')}</select>
+            <input type="search" class="pro-input" style="flex:1;min-width:180px;padding:6px 10px;font-size:11px" placeholder="Stok kodu, ad ara…"
+                value="${pdfEsc(s.q)}" oninput="raporStok.q=this.value;raporStokSonucYenile()">
+        </div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.5">
+            Kapanış = açılış + giriş − çıkış; bugünü kapsayan dönemde depo ekranındaki bakiyeyle aynıdır. Siparişe bağlı sevkler stoktan düşmez;
+            "SIP-…" kodlu sipariş kumaşları stok sayılmaz. İplikte kart lot açılış stoğu kartın açıldığı gün giriş olarak görünür. Satıra tıklayınca dönem hareketleri açılır.
+        </div>
+    </div>
+    <div id="rapor-stok-sonuc">${raporStokSonucHtml()}</div>`;
+}
+
+function raporStokSonucHtml() {
+    const s = raporStok;
+    const m = raporStokModeller();
+    const liste = m.liste;
+    if (!liste.length) return `<div class="panel-box" style="padding:28px;text-align:center;color:var(--text3);font-size:12px">Bu süzgeçte stok kodu yok.</div>`;
+    const ond = s.birim === 'adet' ? 0 : 1;
+    const say = (v) => pdfEsc(raporHucreMetni({ tip: 'sayi', ondalik: ond }, v));
+    const td = "text-align:right;font-family:'DM Mono',monospace";
+    const govde = liste.map((g) => {
+        const acik = s.acik.has(g.kod);
+        const eksi = g.kapanis < -(s.birim === 'adet' ? 0.5 : 0.05);
+        const lotlar = s.depo === 'IPLIK' && acik && g.lotlar.size > 1
+            ? [...g.lotlar.values()].sort((a, b) => a.kod.localeCompare(b.kod, 'tr', { numeric: true })).map((l) => `<tr style="background:var(--surface2);font-size:10.5px"><td style="padding-left:24px;color:var(--text2)">Lot ${pdfEsc(l.kod)}</td><td></td><td style="${td}">${say(l.acilis)}</td><td style="${td}">${say(l.giris)}</td><td style="${td}">${say(l.cikis)}</td><td style="${td};${l.kapanis < 0 ? 'color:var(--rose-c)' : ''}">${say(l.kapanis)}</td><td></td></tr>`).join('')
+            : '';
+        const hareket = acik && g.hareket.length
+            ? `<tr><td colspan="7" style="padding:0 0 8px 24px;background:var(--surface2)"><table class="dt-table" style="width:100%;font-size:10.5px;border-collapse:separate;border-spacing:0">
+                <thead><tr><th style="text-align:left">Tarih</th>${s.depo === 'IPLIK' ? '<th style="text-align:left">Lot</th>' : ''}<th style="text-align:left">Tür</th><th style="text-align:right">Miktar</th><th style="text-align:left">Firma</th><th style="text-align:left">Açıklama</th><th style="text-align:left">Kullanıcı</th></tr></thead>
+                <tbody>${g.hareket.map((h) => `<tr><td style="white-space:nowrap">${pdfEsc(raporHucreMetni({ tip: 'zaman' }, h.x.created_at))}</td>${s.depo === 'IPLIK' ? `<td>${pdfEsc(h.lot)}</td>` : ''}<td>${pdfEsc(h.kart ? 'Kart açılış stoğu' : (h.x.islem_turu || ''))}</td><td style="${td};color:${h.v < 0 ? 'var(--rose-c)' : 'var(--emerald-c)'}">${h.v > 0 ? '+' : ''}${pdfEsc(raporFmt(h.v, ond))}</td><td>${pdfEsc(h.x.firma || h.x.gidecegi_firma || h.x.araci_firma || '')}</td><td style="color:var(--text2)">${pdfEsc(String(h.x.notlar || '').replace(/\[[A-Z_]+:[^\]]*\]/g, '').trim().slice(0, 120))}</td><td>${pdfEsc(h.x.updated_by || '')}</td></tr>`).join('')}</tbody>
+              </table></td></tr>` : '';
+        return `<tr onclick="raporStokAcKapa('${pdfEsc(g.kod)}')" style="cursor:pointer${acik ? ';background:rgba(5,150,105,0.08)' : ''}">
+            <td style="font-family:'DM Mono',monospace;font-weight:700;white-space:nowrap">${acik ? '▾' : '▸'} ${pdfEsc(g.kod)}</td><td>${pdfEsc(g.ad || '—')}</td>
+            <td style="${td}">${say(g.acilis)}</td><td style="${td};color:var(--emerald-c)">${say(g.giris)}</td><td style="${td};color:var(--rose-c)">${say(g.cikis)}</td>
+            <td style="${td};font-weight:800;${eksi ? 'color:var(--rose-c)' : ''}">${say(g.kapanis)}</td><td style="${td}">${g.hareket.length || '—'}</td></tr>${lotlar}${hareket}`;
+    }).join('');
+    const t = m.stok.toplam;
+    return `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div style="padding:8px 12px;font-size:10.5px;font-weight:700;border-bottom:1px solid var(--border)">${pdfEsc(m.stok.baslik)} · ${pdfEsc(raporDonemAralik().etiket)} · ${raporFmt(liste.length)} kod</div>
+        <div style="overflow-x:auto"><table class="dt-table" style="width:100%;min-width:760px;border-collapse:separate;border-spacing:0;font-size:11px">
+            <thead><tr>${m.stok.kolonlar.map((k) => `<th style="text-align:${k.tip === 'sayi' ? 'right' : 'left'}">${pdfEsc(k.ad)}</th>`).join('')}</tr></thead>
+            <tbody>${govde}</tbody>
+            <tfoot><tr><td style="font-weight:800;border-top:2px solid var(--border)">${pdfEsc(t[0])}</td><td style="border-top:2px solid var(--border);color:var(--text2)">${pdfEsc(t[1])}</td>${t.slice(2).map((v, i) => `<td style="${td};font-weight:800;border-top:2px solid var(--border)">${i === 4 ? raporFmt(v) : say(v)}</td>`).join('')}</tr></tfoot>
+        </table></div>
+    </div>`;
+}
+
+function raporStokSonucYenile() {
+    const k = document.getElementById('rapor-stok-sonuc');
+    if (k) k.innerHTML = raporStokSonucHtml();
+}
+function raporStokAyar(alan, v) {
+    raporStok[alan] = v;
+    if (alan === 'depo') {
+        raporStok.birim = RAPOR_STOK_DEPOLAR.find((d) => d.kod === v).birimler[0][0];
+        raporStok.acik = new Set();
+    }
+    raporYeniYenidenCiz();
+}
+function raporStokAcKapa(kod) {
+    if (raporStok.acik.has(kod)) raporStok.acik.delete(kod);
+    else raporStok.acik.add(kod);
+    raporStokSonucYenile();
+}
+
+function raporStokDisaPaket() {
+    const m = raporStokModeller();
+    const s = raporStok;
+    const kapsamEt = { BAKIYELI: 'Bakiyesi ya da hareketi olanlar', HAREKETLI: 'Dönemde hareket görenler', TUMU: 'Tüm kodlar' }[s.kapsam];
+    return {
+        baslik: 'STOK RAPORU', dosya: `stok_${s.depo.toLowerCase()}`,
+        filtre: [`Dönem: ${raporDonemAralik().etiket}`, m.stok.baslik, kapsamEt, s.q ? `Arama: ${s.q}` : ''].filter(Boolean).join(' · '),
+        not: 'Kapanış = açılış + giriş − çıkış. Siparişe bağlı sevkler stoktan düşmez.',
+        modeller: [m.stok, m.hareket]
+    };
+}
+
+/* ── Özet sekmesi ─────────────────────────────────────────────────────── */
+/* Dönemde yapılan iş (Üretim defteri, aktarım/devir hariç) + önceki dönem, açık siparişler
+   (Siparişler hesabı), bugünkü stok (Stok hesabı), veri kontrol sayaçları. Grafik kütüphanesi
+   yok — çubuklar düz HTML, telefonda da hafif. Oranlar yalnız aynı birimde ve anlamlıysa. */
+
+const RAPOR_OZET_OLCULER = [
+    { ad: 'Dokuma', asama: 'DOKUMA', alan: 'mt', birim: 'm' },
+    { ad: 'Dokuma', asama: 'DOKUMA', alan: 'kg', birim: 'kg' },
+    { ad: 'Dokuma', asama: 'DOKUMA', alan: 'ad', birim: 'ad' },
+    { ad: 'Kesim', asama: 'KESIM', alan: 'ad', birim: 'ad' },
+    { ad: 'Yıkamaya giden', asama: 'YIKAMA', alan: 'ad', birim: 'ad' },
+    { ad: 'Kalite geçen', asama: 'KALITE', alan: 'ad', birim: 'ad' },
+    { ad: 'Hatalı', asama: 'HATALI', alan: 'ad', birim: 'ad' },
+    { ad: 'Sevk (ürün)', asama: 'SEVK', alan: 'ad', birim: 'ad' },
+    { ad: 'Sevk (kumaş)', asama: 'SEVK', alan: 'mt', birim: 'm' },
+    { ad: 'Sevk (kumaş)', asama: 'SEVK', alan: 'kg', birim: 'kg' }
+];
+
+/** Aynı uzunlukta bir önceki dönem. */
+function raporDonemOnceki() {
+    const a = raporDonemAralik();
+    const bas = new Date(a.bas + 'T00:00:00');
+    const bit = new Date(a.bitHaric + 'T00:00:00');
+    let obas, obit = new Date(bas);
+    if (raporDonem.tip === 'AY') obas = new Date(bas.getFullYear(), bas.getMonth() - 1, 1);
+    else if (raporDonem.tip === 'YIL') obas = new Date(bas.getFullYear() - 1, 0, 1);
+    else { obas = new Date(bas); obas.setDate(bas.getDate() - Math.round((bit - bas) / 86400000)); }
+    return { bas: raporLocalDateStr(obas), bitHaric: raporLocalDateStr(obit) };
+}
+
+function raporOzetVeri() {
+    const a = raporDonemAralik();
+    const o = raporDonemOnceki();
+    /* Süren dönem (bugünü içeriyor) önceki dönemin AYNI gün sayısıyla kıyaslanır:
+       28 günlük Eylül, 31 günlük tam Ağustos'la değil 1–28 Ağustos'la. */
+    const yarin = new Date(); yarin.setHours(0, 0, 0, 0); yarin.setDate(yarin.getDate() + 1);
+    const yarinIso = raporLocalDateStr(yarin);
+    let onceBit = o.bitHaric;
+    let suruyor = false;
+    if (a.bas < yarinIso && yarinIso < a.bitHaric) {
+        suruyor = true;
+        const gun = Math.round((yarin - new Date(a.bas + 'T00:00:00')) / 86400000);
+        const ob = new Date(o.bas + 'T00:00:00'); ob.setDate(ob.getDate() + gun);
+        onceBit = raporLocalDateStr(ob) < o.bitHaric ? raporLocalDateStr(ob) : o.bitHaric;
+    }
+    const sec = (bas, bit) => (_raporVeri.olaylar || []).filter((x) => !x.aktarim && x.gun >= bas && x.gun < bit);
+    const bu = sec(a.bas, a.bitHaric);
+    const once = sec(o.bas, onceBit);
+    const topla = (l, m) => l.reduce((t, x) => t + (x.asama === m.asama ? (x[m.alan] || 0) : 0), 0);
+    const olcu = RAPOR_OZET_OLCULER.map((m) => ({ ...m, bu: topla(bu, m), once: topla(once, m) })).filter((m) => m.bu || m.once);
+    /* Günlük akış (yıl seçiliyse aylık) — kesim / kalite / sevk (adet) */
+    const aylik = raporDonem.tip === 'YIL' || (new Date(a.bitHaric) - new Date(a.bas)) / 86400000 > 62;
+    const akis = new Map();
+    bu.forEach((x) => {
+        if (!['KESIM', 'KALITE', 'SEVK'].includes(x.asama) || !x.ad) return;
+        const k = aylik ? x.gun.slice(0, 7) : x.gun;
+        const r = akis.get(k) || { KESIM: 0, KALITE: 0, SEVK: 0 };
+        r[x.asama] += x.ad;
+        akis.set(k, r);
+    });
+    /* Müşteriler — dönemde en çok iş (adet: kesim + kalite + sevk) */
+    const mus = new Map();
+    bu.forEach((x) => {
+        const r = mus.get(x.firma || '—') || { firma: x.firma || '—', DOKUMA_MT: 0, KESIM: 0, KALITE: 0, SEVK: 0 };
+        if (x.asama === 'DOKUMA') r.DOKUMA_MT += x.mt || 0;
+        else if (r[x.asama] !== undefined) r[x.asama] += x.ad || 0;
+        mus.set(r.firma, r);
+    });
+    const musteri = [...mus.values()].sort((p, q) => (q.KESIM + q.KALITE + q.SEVK) - (p.KESIM + p.KALITE + p.SEVK) || q.DOKUMA_MT - p.DOKUMA_MT).slice(0, 10);
+    /* Açık siparişler (siparişin tüm zamanı) */
+    const sv = raporSiparisVerisi();
+    const acik = (l) => l.filter((s) => String(s.durum).toUpperCase() !== 'TAMAMLANDI');
+    const au = acik(sv.urun);
+    const ak = acik(sv.kumas);
+    const T = (l, f) => l.reduce((t, s) => t + (s.top[f] || 0), 0);
+    const siparis = {
+        urunAdet: au.length, urunSiparis: T(au, 'siparis'), urunSevk: T(au, 'sevk'), urunKalan: T(au, 'kalan'),
+        geciken: [...au, ...ak].filter((s) => { const g = raporTerminGun(s); return g != null && g < 0; }).length,
+        kumasMt: ak.filter((s) => s.birim === 'MT'), kumasKg: ak.filter((s) => s.birim === 'KG')
+    };
+    /* Bugünkü stok — Stok sekmesiyle aynı satır kuralı */
+    const stokTop = (depo, alan) => raporStokSatirlari(depo).reduce((t, r) => t + (r[alan] || 0), 0);
+    const stok = { kumasMt: stokTop('KUMAS', 'mt'), mamulAd: stokTop('MAMUL', 'adet'), iplikKg: stokTop('IPLIK', 'kg') };
+    /* Veri kontrol */
+    const kuralMap = new Map(RAPOR_KONTROL_KURALLARI.map((k) => [k.kod, k]));
+    const kontrol = { hata: 0, uyari: 0, bilgi: 0 };
+    raporKontrolBulgulari().forEach((b) => { const s = kuralMap.get(b.kural)?.seviye; if (s) kontrol[s]++; });
+    return { a, o, suruyor, olcu, akis: [...akis.entries()].sort((p, q) => p[0].localeCompare(q[0])), aylik, musteri, siparis, stok, kontrol };
+}
+
+function raporDegisimHtml(bu, once) {
+    if (!once) return bu ? '<span style="color:var(--text3)">önceki dönemde yok</span>' : '';
+    const d = Math.round(((bu - once) / Math.abs(once)) * 100);
+    const renk = d > 0 ? 'var(--emerald-c)' : (d < 0 ? 'var(--rose-c)' : 'var(--text3)');
+    return `<span style="color:${renk}">${d > 0 ? '▲' : (d < 0 ? '▼' : '•')} %${Math.abs(d)}</span> <span style="color:var(--text3)">(önceki ${raporFmt(once, 1)})</span>`;
+}
+
+function raporOzetHtml() {
+    const v = raporOzetVeri();
+    const kart = (baslik, deger, alt, renk) => `<div class="panel-box" style="padding:12px 14px;min-width:150px;flex:1;border-left:3px solid ${renk}">
+        <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">${baslik}</div>
+        <div style="font-family:'Instrument Serif',serif;font-size:24px;line-height:1.15;color:${renk};margin:4px 0">${deger}</div>
+        <div style="font-size:10px;line-height:1.35">${alt}</div></div>`;
+    const renk = (asama) => (RAPOR_ASAMALAR.find((x) => x.kod === asama) || {}).renk || '#64748b';
+    /* 03.09.2026 öncesi konfeksiyon kesim/yıkaması eksik kayıtlı (eski hat yalnız KUMAS_GELIS'e
+       yazıyordu) — önceki dönem oraya düşüyorsa yüzde yanıltır, kartta yazılır. */
+    const eskiDonem = v.o.bas < RAPOR_TABLO_BASLANGIC;
+    const konfAsama = new Set(['KESIM', 'YIKAMA', 'KALITE', 'HATALI']);
+    const olcuKart = v.olcu.map((m) => kart(`${m.ad} · ${m.birim}`, raporFmt(m.bu, m.birim === 'ad' ? 0 : 1),
+        raporDegisimHtml(m.bu, m.once) + (eskiDonem && konfAsama.has(m.asama) ? '<div style="color:var(--amber-c);margin-top:2px">önceki dönem 03.09 öncesi: kayıt eksik, kıyas yanıltıcı</div>' : ''),
+        renk(m.asama))).join('')
+        || `<div class="panel-box" style="padding:18px;color:var(--text3);font-size:12px">Bu dönemde kayıt yok.</div>`;
+    /* Kalite / kesim oranı: aynı birim (adet), ikisi de varsa */
+    const kes = (v.olcu.find((m) => m.asama === 'KESIM') || {}).bu || 0;
+    const kal = (v.olcu.find((m) => m.asama === 'KALITE') || {}).bu || 0;
+    const oran = kes > 0 && kal > 0 ? `<div style="font-size:10.5px;color:var(--text2);margin-top:6px">Dönemde kalite geçen / kesilen: <b>%${Math.round((kal / kes) * 100)}</b> (aynı dönemin girişleri; farklı dönemde kesilip kaliteye giren mal oranı etkiler)</div>` : '';
+    const maks = Math.max(1, ...v.akis.map(([, r]) => Math.max(r.KESIM, r.KALITE, r.SEVK)));
+    const cubuk = (n, r) => `<div title="${raporFmt(n)}" style="width:6px;height:${Math.max(n ? 2 : 0, Math.round((n / maks) * 64))}px;background:${r};border-radius:2px 2px 0 0"></div>`;
+    const akisHtml = v.akis.length ? `<div class="panel-box" style="padding:12px 14px">
+        <div style="font-size:10.5px;font-weight:700;margin-bottom:8px">${v.aylik ? 'Aylık' : 'Günlük'} akış (adet) — <span style="color:${renk('KESIM')}">■ kesim</span> <span style="color:${renk('KALITE')}">■ kalite</span> <span style="color:${renk('SEVK')}">■ sevk</span></div>
+        <div style="display:flex;align-items:flex-end;gap:6px;overflow-x:auto;padding-bottom:4px">${v.akis.map(([k, r]) => `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;min-width:${v.aylik ? 40 : 24}px">
+            <div style="display:flex;align-items:flex-end;gap:1px;height:66px">${cubuk(r.KESIM, renk('KESIM'))}${cubuk(r.KALITE, renk('KALITE'))}${cubuk(r.SEVK, renk('SEVK'))}</div>
+            <div style="font-size:8.5px;color:var(--text3);white-space:nowrap">${v.aylik ? new Date(k + '-01T00:00:00').toLocaleDateString('tr-TR', { month: 'short' }) : k.slice(8, 10) + '.' + k.slice(5, 7)}</div></div>`).join('')}</div></div>` : '';
+    const musHtml = v.musteri.length ? `<div class="panel-box" style="padding:0;overflow:hidden"><div style="padding:8px 12px;font-size:10.5px;font-weight:700;border-bottom:1px solid var(--border)">Dönemde en çok iş yapılan müşteriler</div>
+        ${raporTabloHtml(raporOzetMusteriModel(v), { minGenislik: 480 })}</div>` : '';
+    const s = v.siparis;
+    const kumasKalan = [['MT', s.kumasMt, 'm'], ['KG', s.kumasKg, 'kg']].filter(([, l]) => l.length).map(([, l, e]) => `${raporFmt(l.reduce((t, x) => t + x.top.kalan, 0))} ${e} (${l.length} sipariş)`).join(' · ');
+    const k = v.kontrol;
+    return `
+    <div class="panel-box" style="padding:12px 14px;margin-bottom:10px">${raporDonemCubukHtml()}
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">Dönemde yapılan iş, kayıt tarihine göre (aktarım/devir hariç). Değişim, ${v.suruyor ? 'dönem sürdüğü için önceki dönemin aynı gün sayısına' : 'bir önceki döneme'} göre.</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${olcuKart}</div>${oran}
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        ${akisHtml}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${kart('Açık ürün siparişi', raporFmt(s.urunAdet), `sipariş ${raporFmt(s.urunSiparis)} · sevk ${raporFmt(s.urunSevk)} · kalan <b>${raporFmt(s.urunKalan)}</b> adet`, '#2563eb')}
+            ${kart('Açık kumaş siparişi', raporFmt(s.kumasMt.length + s.kumasKg.length), kumasKalan ? `kalan ${kumasKalan}` : 'yok', '#0891b2')}
+            ${kart('Termini geçen', raporFmt(s.geciken), `termin girilmiş açık siparişlerden`, s.geciken ? '#dc2626' : '#64748b')}
+            ${kart('Stok (bugün)', `${raporFmt(v.stok.kumasMt)} m`, `mamül ${raporFmt(v.stok.mamulAd)} ad · iplik ${raporFmt(v.stok.iplikKg)} kg`, '#059669')}
+            <div class="panel-box" onclick="raporSekmeSec('YR_KONTROL')" style="cursor:pointer;padding:12px 14px;min-width:150px;flex:1;border-left:3px solid #dc2626">
+                <div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">Veri kontrol</div>
+                <div style="font-size:12px;margin-top:6px"><b style="color:var(--rose-c)">${raporFmt(k.hata)}</b> hata · <b style="color:var(--amber-c)">${raporFmt(k.uyari)}</b> uyarı · ${raporFmt(k.bilgi)} bilgi</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">Ayrıntı için tıklayın</div></div>
+        </div>
+        ${musHtml}
+    </div>`;
+}
+
+function raporOzetMusteriModel(v) {
+    return {
+        baslik: 'Dönemde en çok iş yapılan müşteriler', sayfa: 'Müşteriler',
+        kolonlar: [{ ad: 'Müşteri', genislik: 28 }, { ad: 'Dokuma (m)', tip: 'sayi', ondalik: 1 }, { ad: 'Kesim', tip: 'sayi' }, { ad: 'Kalite geçen', tip: 'sayi' }, { ad: 'Sevk (ad)', tip: 'sayi' }],
+        satirlar: v.musteri.map((r) => [r.firma, r.DOKUMA_MT, r.KESIM, r.KALITE, r.SEVK]),
+        toplam: null
+    };
+}
+
+function raporOzetDisaPaket() {
+    const v = raporOzetVeri();
+    const olcu = {
+        baslik: 'Dönem toplamları', sayfa: 'Özet',
+        kolonlar: [{ ad: 'Aşama' }, { ad: 'Birim' }, { ad: 'Bu dönem', tip: 'sayi', ondalik: 1 }, { ad: 'Önceki dönem', tip: 'sayi', ondalik: 1 }, { ad: 'Değişim %', tip: 'sayi' }],
+        satirlar: v.olcu.map((m) => [m.ad, m.birim, m.bu, m.once, m.once ? Math.round(((m.bu - m.once) / Math.abs(m.once)) * 100) : 0]),
+        toplam: null
+    };
+    const s = v.siparis;
+    const durum = {
+        baslik: 'Açık siparişler ve stok', sayfa: 'Durum',
+        kolonlar: [{ ad: 'Gösterge', genislik: 34 }, { ad: 'Değer', tip: 'sayi', ondalik: 1 }, { ad: 'Birim' }],
+        satirlar: [
+            ['Açık ürün siparişi', s.urunAdet, 'sipariş'], ['Açık ürün sipariş miktarı', s.urunSiparis, 'ad'], ['Açık ürün sevk edilen', s.urunSevk, 'ad'], ['Açık ürün kalan', s.urunKalan, 'ad'],
+            ['Açık kumaş siparişi (metre)', s.kumasMt.reduce((t, x) => t + x.top.kalan, 0), 'm kalan'], ['Açık kumaş siparişi (kg)', s.kumasKg.reduce((t, x) => t + x.top.kalan, 0), 'kg kalan'],
+            ['Termini geçen açık sipariş', s.geciken, 'sipariş'],
+            ['Kumaş stoku', v.stok.kumasMt, 'm'], ['Mamül stoku', v.stok.mamulAd, 'ad'], ['İplik stoku', v.stok.iplikKg, 'kg'],
+            ['Veri kontrol — hata', v.kontrol.hata, 'bulgu'], ['Veri kontrol — uyarı', v.kontrol.uyari, 'bulgu']
+        ],
+        toplam: null
+    };
+    return {
+        baslik: 'YÖNETİCİ ÖZETİ', dosya: 'rapor_ozet', filtre: `Dönem: ${v.a.etiket} · aktarım/devir hariç`,
+        not: 'Dönem toplamları kayıt tarihine göre; sipariş ve stok göstergeleri bugünkü durumdur.',
+        modeller: [olcu, durum, raporOzetMusteriModel(v)]
+    };
+}
+
+/* ── Raporlar ekranı (giriş) ──────────────────────────────────────────── */
+/* 28.09.2026: eski 13 sekme (siparişi açılış tarihine göre süzen, her biri sayıyı kendi yolundan
+   toplayan) kaldırıldı; tüm raporlar bu modülün ortak verisinden. */
+let raporTab = 'YR_OZET';
+
+async function renderRaporlar() {
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    if (!raporYeniSekmeMi(raporTab)) raporTab = 'YR_OZET';
+    const sekme = RAPOR_YENI_SEKMELER.map((t) => {
+        const secili = raporTab === t.id;
+        return `<button type="button" onclick="raporSekmeSec('${t.id}')" style="font-size:11px;font-weight:700;padding:7px 14px;border-radius:999px;cursor:pointer;border:1px solid ${secili ? 'transparent' : 'var(--border)'};background:${secili ? t.renk : 'var(--surface)'};color:${secili ? '#fff' : 'var(--text2)'}">${t.label}</button>`;
+    }).join('');
+    list.innerHTML = `
+    <div id="rapor-root" style="display:flex;flex-direction:column;gap:12px;padding:4px">
+        <div class="panel-box" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+            ${raporYeniUstCubukHtml()}
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${sekme}</div>
+        </div>
+        <div id="rapor-icerik">${_raporVeri.olaylar ? raporYeniSekmeHtml() : ''}</div>
+    </div>`;
+    await raporYeniIcerikCiz();
+}
+
+function raporSekmeSec(id) {
+    raporTab = id;
+    renderRaporlar();
+}
+
+/* Dışarıdan açılış (menü "İşlem Raporu", Konfeksiyon Kesim ekranındaki bugün/hafta/ay düğmeleri).
+   Eski ayrı sekmeler yerine Üretim sekmesi ilgili aşama + kırılımla açılır. */
+const RAPOR_DIS_DONEM = { 'bugün': 'GUN', 'hafta': 'HAFTA', 'ay': 'AY', 'yıl': 'YIL' };
+async function openKonfIslemRaporu(donem) {
+    raporDonem = { tip: RAPOR_DIS_DONEM[donem] || 'HAFTA', tarih: '', bas: '', bit: '' };
+    raporUretim = { ...raporUretim, k1: 'SIPARIS', k2: 'URUN', birim: 'AD', asamalar: ['KESIM', 'YIKAMA', 'KALITE', 'HATALI', 'SEVK'], secim: null, q: '', goster: RAPOR_SAYFA };
+    raporTab = 'YR_URETIM';
+    await setAppMode('RAPORLAR');
+}
+async function openKonfKesimRaporu(donem) {
+    raporDonem = { tip: RAPOR_DIS_DONEM[donem] || 'HAFTA', tarih: '', bas: '', bit: '' };
+    raporUretim = { ...raporUretim, k1: 'GUN', k2: 'SIPARIS', birim: 'AD', asamalar: ['KESIM'], secim: null, q: '', goster: RAPOR_SAYFA };
+    raporTab = 'YR_URETIM';
+    await setAppMode('RAPORLAR');
+}
+window.openKonfIslemRaporu = openKonfIslemRaporu;
+window.openKonfKesimRaporu = openKonfKesimRaporu;
