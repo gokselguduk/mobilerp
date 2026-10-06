@@ -812,6 +812,35 @@ function mamulTopluSatirOku(idx) {
     rows[idx].not = document.getElementById('mt-not-' + idx)?.value || '';
 }
 
+/* Stoktan siparişe sevk (src/stok/js/19-stoktan-sevk): stok kartı satırı bir sipariş kalemine
+   bağlanır — hareket stoktan düşer, siparişin "sevk edilen"ine eklenir. Hedef seçildiği karta
+   bağlıdır; satırın kodu değişirse bağlantı kendiliğinden geçersiz olur. */
+function mamulTopluHedef(r, kod) {
+    if (!r?.hedef || r.noKart || r.siparis_id || /^SIP-/i.test(String(kod || ''))) return null;
+    const k = String(kod || '').trim().toUpperCase();
+    return [r.hedef.kartKod, r.hedef.kartHam].some(x => String(x || '').trim().toUpperCase() === k) ? r.hedef : null;
+}
+function mamulTopluHedefSec(idx) {
+    const rows = window._mamulTopluSatirlar || [];
+    const row = rows[idx];
+    if (!row || typeof stoktanSevkSecAc !== 'function') return;
+    mamulTopluSatirOku(idx);
+    const kod = String(row.kod || '').trim();
+    const kart = kod ? mamulTopluKartBul(kod) : null;
+    if (!kart) return;
+    /* Kayıtta kod mamulTopluKodCoz ile tekilleşir — bağlantı iki yazımı da tanısın */
+    const coz = mamulTopluKodCoz(kod);
+    const kanon = (!coz.hata && !coz.coklu && coz.kod) ? coz.kod : kod;
+    stoktanSevkSecAc('MAMUL', kanon, kart.urun_adi || kart.desen_adi || row.ad || '', (h) => {
+        row.hedef = { ...h, kartKod: kanon, kartHam: kod };
+        mamulTopluListeRender();
+    }, { renk: kart.renk || row.renk || '', ebat: kart.ebat || kart.olcu || row.ebat || '' });
+}
+function mamulTopluHedefTemizle(idx) {
+    const row = (window._mamulTopluSatirlar || [])[idx];
+    if (row) { mamulTopluSatirOku(idx); row.hedef = null; mamulTopluListeRender(); }
+}
+
 function mamulTopluListeRender() {
     const host = document.getElementById('mamul-toplu-hareket-body');
     if (!host) return;
@@ -842,6 +871,9 @@ function mamulTopluListeRender() {
             urunInner = mamulTopluUrunDetayHtml(detay, esc);
         } else {
             urunInner = esc(r.ad || '—');
+        }
+        if (kart && !r.hata && movementType === 'ÇIKIŞ' && typeof stoktanSevkChipHtml === 'function') {
+            urunInner += `<div style="margin-top:3px">${stoktanSevkChipHtml(mamulTopluHedef(r, r.kod), `mamulTopluHedefSec(${idx})`, `mamulTopluHedefTemizle(${idx})`)}</div>`;
         }
         return `
         <div class="mamul-toplu-hareket-row${r.hata ? ' has-error' : ''}">
@@ -895,6 +927,7 @@ function mamulTopluPayloadOlustur() {
     const payloads = [];
     const kodToplam = {};
     const hatalar = [];
+    const hedefler = [];
     rows.forEach((r, i) => {
         let kod = (r.kod || '').trim();
         let noKart = !!(r.noKart || /^SIP-/i.test(kod));
@@ -952,9 +985,16 @@ function mamulTopluPayloadOlustur() {
             ? parseInt(src?.kalem_idx != null ? src.kalem_idx : r.kalem_idx, 10)
             : null;
         const sno = String(src?.siparis_sno || r.siparis_sno || src?.lot_no || '').trim();
+        /* Stoktan siparişe sevk: stok satırı (siparis_id boş → stoktan düşer) + sipariş etiketi */
+        const hedef = (isCikis && !noKart && !kodsuzFallback && !sidTag) ? mamulTopluHedef(r, kod) : null;
+        if (isCikis && r.hedef && !hedef && !noKart && !sidTag) {
+            hatalar.push(`Satır ${i + 1}: sipariş bağlantısı seçildiği karttan farklı bir koda ait — "→ Siparişe say" ile yeniden seçin`);
+            return;
+        }
+        if (hedef) hedefler.push({ h: hedef, kartKod: kod, kartAd: r.ad || '', miktar: ad });
         const sevkTag = (isCikis && sidTag && kiTag != null && kiTag >= 0)
             ? `[SEVK_MERKEZ_ADET:sip=${sidTag}|k=${kiTag}|ad=${ad}]`
-            : '';
+            : (hedef && typeof stoktanSevkEtiket === 'function' ? stoktanSevkEtiket(hedef, 'MAMUL', { ad }) : '');
         const renkVal = String(kart?.renk || src?.renk || r.renk || '').trim();
         const ebatVal = String(kart?.ebat || kart?.olcu || src?.ebat || src?.olcu || r.ebat || '').trim();
         const grupVal = String(kart?.urun_grubu || src?.grup || src?.urun_grubu || r.grup || '').trim();
@@ -1009,14 +1049,25 @@ function mamulTopluPayloadOlustur() {
             if (bak + 1e-6 < istenen) return { err: `${kod}: yetersiz stok (mevcut ${bak}, istenen ${istenen})` };
         }
     }
-    return { payloads };
+    return { payloads, hedefler };
 }
 
 async function mamulTopluKaydet() {
     if (isSaveInProgress) return;
-    const { payloads, err } = mamulTopluPayloadOlustur();
+    const { payloads, err, hedefler } = mamulTopluPayloadOlustur();
     if (err) { erpToast(err, 'error', 7000); return; }
-    const onayMsg = `${payloads.length} satır mamül ${movementType === 'ÇIKIŞ' ? 'çıkış' : 'giriş'} kaydedilsin mi?`;
+    let onayMsg = `${payloads.length} satır mamül ${movementType === 'ÇIKIŞ' ? 'çıkış' : 'giriş'} kaydedilsin mi?`;
+    /* Stoktan siparişe sevk: farklı ürün / kalandan fazla → uyarı + onay (kullanıcı kararı 02.10) */
+    if (hedefler?.length && typeof stoktanSevkUyarilari === 'function') {
+        const uyari = await stoktanSevkUyarilari(hedefler);
+        onayMsg = `${hedefler.length} satır stoktan düşüp siparişin sevk edilenine eklenecek.\n`
+            + (uyari.length ? `\n⚠ ${uyari.join('\n⚠ ')}\n` : '') + '\n' + onayMsg;
+    }
+    /* Veri bekçisi (26-veri-bekcisi.js): aynı kaleme çok satır, sipariş / kalite aşımı — sorulur, engellemez */
+    if (movementType === 'ÇIKIŞ' && typeof erpSevkGirisUyarilari === 'function') {
+        const veriUyari = await erpSevkGirisUyarilari(payloads);
+        if (veriUyari.length) onayMsg = `⚠ KONTROL EDİN:\n• ${veriUyari.join('\n• ')}\n\n${onayMsg}`;
+    }
     const ok = typeof erpAskConfirm === 'function' ? await erpAskConfirm(onayMsg) : confirm(onayMsg);
     if (!ok) return;
     try { mamulTopluKodDropKapat(); } catch (e) {}
@@ -1029,6 +1080,8 @@ async function mamulTopluKaydet() {
         const KUMAS_STOK_OLMAYAN_ALANLAR = ['urun_adi', 'marka', 'renk', 'ebat', 'urun_grubu', 'irsaliye_no', 'ana_grup'];
         let insertPayload = payloads.map(x => {
             const r = { ...x };
+            /* irsaliye → notlarda [IRS:], renk → kumas_rengi (eskiden irsaliye sessizce düşüyordu) */
+            if (typeof kumasStokYazimUyarla === 'function') kumasStokYazimUyarla(r);
             KUMAS_STOK_OLMAYAN_ALANLAR.forEach(c => { delete r[c]; });
             return r;
         });
@@ -1070,6 +1123,11 @@ async function mamulTopluKaydet() {
                 const stok = String(p.stok_kodu || '').trim();
                 const mSip = stok.match(/^SIP-([^-]+)-K(\d+)/i);
                 let sidUse = sid;
+                /* Stoktan siparişe sevk: siparis_id boş (stoktan düşer), sipariş etiketten */
+                if (!sidUse && typeof stoktanSevkHedefCoz === 'function') {
+                    const h = stoktanSevkHedefCoz(p.notlar);
+                    if (h) { sidUse = h.sid; ki = h.ki; }
+                }
                 if (mSip && !sidUse) {
                     const sno = String(mSip[1] || '').trim();
                     const sip = (dataCache.siparisler || []).find(s => String(s.sno || '').trim() === sno);

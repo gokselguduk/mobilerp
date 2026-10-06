@@ -1112,7 +1112,7 @@ function erpApplyNavPermissions() {
         mark(el, m);
     });
 
-    ['siparis', 'depo', 'kart', 'terbiye', 'dokuma', 'konfeksiyon', 'fason', 'planlama', 'yonetim'].forEach(prefix => {
+    ['siparis', 'depo', 'kart', 'terbiye', 'dokuma', 'konfeksiyon', 'fason', 'numune', 'planlama', 'yonetim'].forEach(prefix => {
         const area = document.getElementById('sub-' + prefix);
         const toggle = document.getElementById('nav-' + prefix + '-toggle');
         if (!area || !toggle) return;
@@ -2626,7 +2626,8 @@ function erpSyncQuery(table, light) {
 async function erpSyncFetchTable(table, light, fetchOpts) {
     fetchOpts = fetchOpts || {};
     const mobil = typeof document !== 'undefined' && document.body?.classList?.contains('erp-mobil-lite');
-    const paged = table === 'siparisler' || table === 'kumas_kutuphanesi' || mobil;
+    /* Büyüyen tablolar her durumda sayfalı (sunucu tek istekte 1000 satır verir; kumas_stok 01.10.2026'da 1090) */
+    const paged = mobil || ['siparisler', 'kumas_kutuphanesi', 'kumas_stok', 'iplik_stok', 'siparis_akis', 'konf_kesim_yikama'].includes(table);
     if (paged) {
         const useLight = table === 'siparisler' ? true : !!light;
         const pageOpts = { ...fetchOpts };
@@ -2705,6 +2706,10 @@ async function erpRefreshCurrentScreen(opts = {}) {
         }
         if (mode === 'DOKUMA_FASON_TAKIP') {
             if (typeof renderDokumaFasonTakip === 'function') renderDokumaFasonTakip();
+            return;
+        }
+        if (mode === 'NUMUNE') {
+            if (typeof numuneListeYenile === 'function') numuneListeYenile();
             return;
         }
         if (mode === 'KONFEKSIYON_YIKAMA') {
@@ -5432,6 +5437,8 @@ async function setAppMode(mode, keepEditingId = false) {
     const prevMode = appMode;
     appMode = mode;
     if (mode === 'SIPARIS_KAPANAN' && prevMode !== 'SIPARIS_KAPANAN') siparisKapananLimitSifirla();
+    /* Aktif kullanıcılar: yeni ekran yöneticinin listesine hemen düşsün (17-aktif.js) */
+    if (typeof erpNabizEkranDegisti === 'function') erpNabizEkranDegisti();
     try { document.body.setAttribute('data-erp-mode', mode); } catch (e) {}
     if (prevMode !== mode) {
         try { erpMobilEkranGecis(); } catch (e) {}
@@ -5491,6 +5498,7 @@ async function setAppMode(mode, keepEditingId = false) {
         'KONFEKSIYON': 'Konfeksiyon',
         'FASON_TAKIP': 'Konfeksiyon Fason',
         'DOKUMA_FASON_TAKIP': 'Dokuma Fason',
+        'NUMUNE': 'Numune',
         'DOKUMA_SIPARIS_GIRIS': 'Dokuma Siparişi',
         'KONFEKSIYON_YIKAMA': 'Yıkama',
         'KONFEKSIYON_PLANLAMA': 'Konfeksiyon Planlama',
@@ -5520,7 +5528,7 @@ async function setAppMode(mode, keepEditingId = false) {
     }
 
     if (toggleArea) {
-        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'KONFEKSIYON_KESIM', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM', 'MUHASEBE_FIS'];
+        const staticModes = ['KART_GIRIS', 'IPLIK_KART_GIRIS', 'KUMAS_KART_GIRIS', 'MAMUL_KART_GIRIS', 'SIPARIS_GIRIS', 'KART_LISTE', 'SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'PLANLAMA', 'KONFEKSIYON', 'KONFEKSIYON_KESIM', 'FASON_TAKIP', 'DOKUMA_FASON_TAKIP', 'DOKUMA_SIPARIS_GIRIS', 'KONFEKSIYON_YIKAMA', 'KONFEKSIYON_PLANLAMA', 'TEKNIK_FOY', 'URUN_AGACI', 'RAPORLAR', 'DOKUMA_TAKIP', 'DOKUMA_DEPO', 'BOYAHANE_URETIM', 'DASHBOARD', 'STOK_SAYIM', 'MUHASEBE_FIS', 'NUMUNE'];
         const depoListeModes = ['IPLIK', 'HAM_KUMAS', 'MAMUL_KUMAS', 'KUMAS', 'MAMUL_DEPO'];
         if (staticModes.includes(mode) || depoListeModes.includes(mode) || mode === 'DEPO_HAREKET' || mode === 'DEPO_HAREKET_LISTE') {
             toggleArea.style.display = 'none';
@@ -5690,6 +5698,14 @@ async function setAppMode(mode, keepEditingId = false) {
         return;
     }
 
+    /* Numune: mobilde salt okunur liste + föy (15-numune.js, kullanıcı 01.10.2026) */
+    if (mode === 'NUMUNE') {
+        if (formContainer) formContainer.style.display = 'none';
+        if (listTitle) listTitle.innerText = 'NUMUNELER';
+        if (typeof renderNumune === 'function') await renderNumune();
+        return;
+    }
+
     if (mode === 'DOKUMA_FASON_TAKIP') {
         if (formContainer) formContainer.style.display = 'none';
         if (listTitle) listTitle.innerText = "DOKUMA FASON";
@@ -5854,6 +5870,7 @@ function loadData(opts) {
     if (!list) return;
 
     // Özel ekranlarda (üretim girişi, planlama, konfeksiyon…) liste renderı içeriği siler → beyaz sayfa.
+    if (appMode === 'NUMUNE') { if (typeof numuneListeYenile === 'function') numuneListeYenile(); return; }
     if (!erpModeLoadDataGuvenliMi(appMode)) return;
 
     depoStokListeChromeUygula();
@@ -8269,13 +8286,7 @@ const MAMUL_DOKUMA_TALIMAT_ALANLARI = [
 
 // stokKartDokumaAlanlariOku: ana programın assets/stok-kart-desktop.js sürümü kullanılır (mobil kopyası silindi — ezmesin).
 // mamulDokumaTalimatDetayPanelHtml: ana programın assets/stok-kart-desktop.js sürümü kullanılır (mobil kopyası silindi — ezmesin).
-function mamulVaryantDoluMu(v) {
-    if (!v) return false;
-    if (String(v.renk_etiket || '').trim()) return true;
-    return (Array.isArray(v.atki) ? v.atki : []).some(a =>
-        String(a?.iplik_no || '').trim() || String(a?.renk || '').trim() || String(a?.atki_sayisi || '').trim()
-    );
-}
+// mamulVaryantDoluMu: ölü mobil kopyası silindi (02.10.2026) — mobilde ve erp-core'da hiç çağrılmıyordu
 
 // mamulVaryantRenkEtiket: ölü mobil kopyası silindi — mamül seçici ana programın assets/stok-kart-desktop.js sürümünü kullanır.
 // mamulAtkiRenkleriParse: ölü mobil kopyası silindi — mamül seçici ana programın assets/stok-kart-desktop.js sürümünü kullanır.
@@ -9472,7 +9483,7 @@ async function siparisGenelDurumDokumaUygula(veri, opts = {}) {
     }
     let siparis = (dataCache.siparisler || []).find(s => normalizeSiparisNo(s.sno) === snoNorm);
     if (!siparis?.id) {
-        const { data: rows, error } = await sb.from('siparisler').select('id,sno,cins').limit(10000);
+        const { data: rows, error } = await sbTumSatirlar(() => sb.from('siparisler').select('id,sno,cins').order('id', { ascending: true }));
         if (error) throw error;
         siparis = (rows || []).find(s => normalizeSiparisNo(s.sno) === snoNorm);
         if (siparis?.id) await syncAllData();
