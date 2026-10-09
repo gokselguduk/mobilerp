@@ -20,13 +20,6 @@
     }
     window.yeniKartGirisBaslikMetin = yeniKartGirisBaslikMetin;
 
-    window.kumasKartListeFiltreSet = function (tip) {
-        kumasKartListeFiltre = String(tip || '').toUpperCase() === 'MAMUL' ? 'MAMUL' : 'HAM';
-        window.kumasKartListeFiltre = kumasKartListeFiltre;
-        if (typeof saveUiState === 'function') saveUiState({ kumasKartListeFiltre });
-        if (appMode === 'KART_LISTE' && typeof loadData === 'function') loadData();
-    };
-
     function mamulEkAlanMetaDecode(notlar) {
         if (typeof kumasMetaDecode === 'function') {
             const m = kumasMetaDecode(notlar);
@@ -235,19 +228,28 @@
     /* Varyant fotoğraflarını bellekte tut: { v1: 'data:image/...', v2: ... } */
     if (!window._mamulVaryantFotolar) window._mamulVaryantFotolar = {};
 
-    window.mamulVaryantFotoYukle = function(vNo, input) {
+    /* Kart fotoğrafı gibi küçültülür (900 px JPEG); Kaydet Storage'a yükler, meta'ya yalnız
+       adres yazılır (07-render.js handleSave) — bütün kartlar açılışta notlar ile okunur. */
+    window.mamulVaryantFotoYukle = async function(vNo, input) {
         const file = input?.files?.[0];
+        if (input) input.value = '';
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const base64 = e.target.result;
-            window._mamulVaryantFotolar[`v${vNo}`] = base64;
-            const preview = document.getElementById(`val-mamul-v${vNo}-foto-preview`);
-            const ph = document.getElementById(`val-mamul-v${vNo}-foto-ph`);
-            if (preview) { preview.src = base64; preview.style.display = 'inline-block'; }
-            if (ph) ph.textContent = '✓ Değiştir';
-        };
-        reader.readAsDataURL(file);
+        let base64 = '';
+        try { if (typeof siparisFotoDosyaSikistir === 'function') base64 = await siparisFotoDosyaSikistir(file); } catch (e) { base64 = ''; }
+        if (!base64) {
+            base64 = await new Promise(r => {
+                const reader = new FileReader();
+                reader.onload = (e) => r(e.target.result || '');
+                reader.onerror = () => r('');
+                reader.readAsDataURL(file);
+            });
+        }
+        if (!base64) return;
+        window._mamulVaryantFotolar[`v${vNo}`] = base64;
+        const preview = document.getElementById(`val-mamul-v${vNo}-foto-preview`);
+        const ph = document.getElementById(`val-mamul-v${vNo}-foto-ph`);
+        if (preview) { preview.src = base64; preview.style.display = 'inline-block'; }
+        if (ph) ph.textContent = '✓ Değiştir';
     };
 
 
@@ -1166,8 +1168,9 @@
     async function stokKartFotoTamamla(kayitlar) {
         const src = (r) => typeof kartFotografSrc === 'function' ? kartFotografSrc(r) : (r.fotograf || r.fotograf_url);
         const durum = (id, d) => { if (typeof kartFotoDurum === 'function') kartFotoDurum(id, d); };
+        /* Okunmuş ('yok') kart tekrar istenmez; okunamamış ('hata') kart sonraki açılışta yeniden denenir */
         const eksik = (kayitlar || []).filter(r => r && r.id != null && r.id !== '' && !src(r)
-            && !(typeof kartFotoDurum === 'function' && kartFotoDurum(r.id)));
+            && !(typeof kartFotoDurum === 'function' && kartFotoDurum(r.id) === 'yok'));
         if (!eksik.length || typeof sb === 'undefined' || !sb) return;
         const idler = [...new Set(eksik.map(r => String(r.id)))];
         const oku = async (cols) => {
@@ -1346,6 +1349,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             String(a?.iplik_no || '').trim() || String(a?.renk || '').trim() || String(a?.atki_sayisi || '').trim()
         );
     }
+    window.mamulVaryantDoluMu = mamulVaryantDoluMu;
 
     function mamulAtkiRenkleriParse(raw) {
         const s = String(raw || '').trim();
@@ -1749,6 +1753,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         }
         return max;
     }
+    /* 07 renderInputs gecikmeli adımı bunu arar; açık değilken düzenleme formu varyant sayısını 0 alıp
+       boyalı varyantları boşaltıyordu → kart kaydı tanımları meta'dan silecekti (09.10, SM-0048: 5 → 0). */
+    window.kumasVaryantKolonSayisiIhtiyac = kumasVaryantKolonSayisiIhtiyac;
 
     function kumasVaryantKolonSayisiAyarla(n) {
         const sayi = Math.max(0, parseInt(n, 10) || 0);
@@ -2298,12 +2305,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.kumasVaryantCokluMu = kumasVaryantCokluMu;
 
-    function kumasKartListeAnaMi(rec) {
-        const kod = String(rec?.desen_kodu || rec?.stok_kodu || '').trim().toUpperCase();
-        if (!/^(SM|NU)-?\d+$/i.test(kod)) return false;
-        return kumasVaryantNoBul(kod) === 0;
-    }
-
     function kumasKartListeGosterilebilirMi(rec) {
         const kod = String(rec?.desen_kodu || rec?.stok_kodu || '').trim().toUpperCase();
         const vNo = kumasVaryantNoBul(kod);
@@ -2540,7 +2541,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const vSayToplam = typeof kumasKartListeVaryantSayisi === 'function'
             ? kumasKartListeVaryantSayisi(grup.anaKod)
             : varyantlar.length;
-        const cokluVaryant = vSayToplam >= 2;
+        /* Tek varyantlı kart da açılır + "1 varyant" rozeti (07.10.2026): eskiden ≥2 idi, SM-0039-1 gibi
+           tek varyant listede hiç görünmüyordu. Varyantsız kartta terbiye sütunu kartın kendi terbiyesi. */
+        const cokluVaryant = vSayToplam >= 1;
         const expanded = cokluVaryant && window._kumasKartExpanded.has(grup.anaKod);
         const anaEsc = typeof erpAttr === 'function' ? erpAttr(grup.anaKod) : grup.anaKod;
         const hucre0 = !cokluVaryant ? (kumasVaryantAileVerisiOku(grup.anaKod)[0] || null) : null;
@@ -2552,6 +2555,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             ? `<span class="sk-kart-badge">${vSayToplam} varyant</span>`
             : esc(hucre0?.terbiye || d.terbiye || '—');
         const stokMetin = `${toplamMt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} mt`;
+        /* Tarak eni / mamül en (07.10.2026): aynı adlı kartlar çoğu zaman yalnız enle ayrılıyor —
+           listede görünsün. Telefonda sütunlar gizli; desen adının yanına kısa "180 / 155" eklenir. */
+        const enCm = (v) => { const t = String(v || '').trim(); return t ? esc(/^\d+([.,]\d+)?$/.test(t) ? `${t} cm` : t) : '—'; };
+        const enMini = (d.tarak_eni || d.mamul_en) ? ` · ${esc(d.tarak_eni || '—')} / ${esc(d.mamul_en || '—')}` : '';
         const expandBtn = cokluVaryant
             ? `<button type="button" class="mamul-stok-grid__expand" onclick="kumasKartListeToggle('${anaEsc}', event)" title="Terbiye / renk varyantlarını aç-kapat">${expanded ? '▼' : '▶'}</button>`
             : `<span class="mamul-stok-grid__expand mamul-stok-grid__expand--ghost"></span>`;
@@ -2562,7 +2569,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             <span class="mamul-stok-liste-grid__cell">${esc(d.tarih || '—')}</span>
             <span class="mamul-stok-liste-grid__cell">${esc(d.musteri || '—')}</span>
             <span class="mamul-stok-liste-grid__cell">${esc(d.kumas_cinsi || '—')}</span>
-            <span class="mamul-stok-liste-grid__cell">${esc(d.desen_adi || '—')}</span>
+            <span class="mamul-stok-liste-grid__cell">${esc(d.desen_adi || '—')}<span class="kumas-liste-en-mini">${enMini}</span></span>
+            <span class="mamul-stok-liste-grid__cell kumas-liste-en">${enCm(d.tarak_eni)}</span>
+            <span class="mamul-stok-liste-grid__cell kumas-liste-en">${enCm(d.mamul_en)}</span>
             <span class="mamul-stok-liste-grid__cell">${terbiyeOzet}</span>
             <span class="mamul-stok-liste-grid__cell mamul-stok-liste-grid__cell--stok" style="color:${mtClr}">${stokMetin}</span>
             <span class="mamul-stok-liste-grid__cell">
@@ -3475,6 +3484,17 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             govde.className = 'modal-body-scroll ' + g.cls;
             govde.innerHTML = g.html;
             stokKartGosterKilitle(govde);
+            /* Tek istisna fotoğraf (08.10.2026 kullanıcı: "stok kartı açabilen herkes stok
+               kartlarına foto yükleyebilecek"): kilitlenen fotoğraf bölümü büyütme ve
+               "Fotoğraf ekle/değiştir" düğmesiyle yeniden çizilir. Kart bilgisi yine kilitli. */
+            if (typeof kartFotografSheetHtml === 'function') {
+                govde.querySelectorAll('.mamul-talimat-sheet__foto[data-kart-id]').forEach(el => {
+                    const id = el.getAttribute('data-kart-id');
+                    const rec = (dataCache.kumas_kutuphanesi || []).find(r => String(r.id) === id)
+                        || (String(kayit.id) === id ? kayit : null);
+                    if (rec) el.outerHTML = kartFotografSheetHtml(rec);
+                });
+            }
         };
         ciz(ana);
         /* Pencere dışına (perdeye) dokununca ya da Kapat / Esc ile kapanır. */
@@ -3737,6 +3757,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.mamulKartListeShellBaslikHtml = mamulKartListeShellBaslikHtml;
 
+    /* Başlıklar: iki kelimelik ad alt alta (<br>), tek satırlıklar alta hizalı (07.10.2026) */
     function stokKartListeTabloShellBaslikHtml(gridExtraClass, headColsHtml) {
         return `<div class="sk-kart-table-wrap">
             <div class="mamul-stok-liste-wrap">
@@ -3753,8 +3774,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function mamulStokListeTabloBaslikHtml() {
         return stokKartListeTabloShellBaslikHtml('mamul-stok-liste-grid',
-            '<span></span><span>Stok kodu</span><span>Tarih</span><span>Müşteri</span><span>Kumaş cinsi</span>'
-            + '<span>Desen adı</span><span>İstenen ebat</span><span>Renk</span>'
+            '<span></span><span>Stok<br>kodu</span><span>Tarih</span><span>Müşteri</span><span>Kumaş<br>cinsi</span>'
+            + '<span>Desen<br>adı</span><span>İstenen<br>ebat</span><span>Renk</span>'
             + '<span style="text-align:right">Stok</span><span></span>');
     }
     window.mamulStokListeTabloBaslikHtml = mamulStokListeTabloBaslikHtml;
@@ -3825,6 +3846,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                         <span style="font-size:12px;color:${toplam ? 'var(--text2)' : 'var(--rose-c)'}">${toplam ? `<b>${toplam}</b> kart bulundu` : 'Uyan kart yok'}</span>` : ''}
                     <button type="button" onclick="stokKartIkizToggle()" class="btn-pro btn-ghost-pro" style="padding:8px 12px;font-size:11px"
                         title="Birkaç harf farkıyla iki kez açılmış olabilecek kartları gösterir">${window._stokKartIkizAcik ? '✕ İkiz listesini kapat' : '⚠ Olası ikiz kartlar'}</button>
+                    ${typeof kartGecmisiAc === 'function' ? `<button type="button" onclick="kartGecmisiAc()" class="btn-pro btn-ghost-pro" style="padding:8px 12px;font-size:11px"
+                        title="Silinen, düzenlenen ve yeni açılan stok kartları (kim, ne zaman, ne değişti)">🕘 Kart geçmişi</button>` : ''}
                 </div>`;
             const aktif = archiveTab === 'TUMU' ? 'Tüm stok kartları'
                 : archiveTab === 'IPLIK' ? 'İplik stok kartları'
@@ -4093,6 +4116,56 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         return '';
     }
 
+    /* 09.10.2026 kullanıcı: "o varyantta kullanılan renk kodlarını sipariş girişinde otomatik doldursun, kaç renk
+       varsa o kadar renk kodu" + "RENK-RENK KODU olsun; renk kodu sadece 4 haneli olmuyor, sorun istemiyorum".
+       Kaynak: varyantın atkı satırlarındaki renk (ana kart meta'sı; yoksa kartın atki_renkleri) — kartta nasıl
+       yazıldıysa öyle ("BAKIR-33150"); biçim tahmini/ayıklama YOK. Boyasız iplik (HAM, POLY, AKTARMA, DENYE)
+       renk değildir, gelmez. Tek renkli varyantta kartta yalnız kod yazılıysa ("32927") ad varyant etiketinden
+       eklenir: "GRİ-32927". */
+    const SIPARIS_RKOD_BOYASIZ = /^(HAM|POLY|POLYESTER|AKTARMA|AKTARMA HAM|\d*\s*DENYE)$/;
+    const SIPARIS_RKOD_HARF = /[A-ZÇĞİÖŞÜ]/;
+    function siparisMamulRenkKodlariOku(k) {
+        if (!k) return [];
+        const { self, parent, vNo } = siparisMamulKaynakOku(k);
+        const hedef = self || k;
+        const meta = mamulEkAlanMetaDecode((parent || hedef)?.notlar || '');
+        const v = vNo > 0 && Array.isArray(meta.varyantlar) ? meta.varyantlar[vNo - 1] : null;
+        let atki = Array.isArray(v?.atki) ? v.atki : [];
+        if (!atki.some(a => String(a?.renk || '').trim()) && hedef.atki_renkleri) atki = mamulAtkiRenkleriParse(hedef.atki_renkleri);
+        const buyuk = (x) => String(x || '').trim().toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ');
+        const renkler = [];
+        atki.forEach(a => {
+            const r = buyuk(a?.renk);
+            if (r && !SIPARIS_RKOD_BOYASIZ.test(r) && !renkler.includes(r)) renkler.push(r);
+        });
+        const etiket = buyuk(v ? v.renk_etiket : (vNo > 0 ? hedef.renk : ''));
+        if (renkler.length === 1 && !SIPARIS_RKOD_HARF.test(renkler[0]) && SIPARIS_RKOD_HARF.test(etiket)) {
+            renkler[0] = etiket.includes(renkler[0]) ? etiket : `${etiket}-${renkler[0]}`;
+        }
+        return renkler.slice(0, 6);
+    }
+
+    /** RK kutularını kodlarla doldur: kaç kod varsa o kadar kutu (RK-1 hep kalır).
+     *  mod 'ez': seçicide ürün seçildi → kutular karttakiyle değişir (kod yoksa boşalır, önceki ürünün kodu kalmaz)
+     *  mod 'karttan': satır ↻ Kart → kartta kod varsa yazar, yoksa elle girileni bırakır
+     *  mod 'bos': yalnız kutular boşsa yazar */
+    function siparisKalemRenkKodlariYaz(kalemNo, kodlar, mod) {
+        const kutu = document.getElementById(`color-fields-container-${kalemNo}`);
+        if (!kutu) return;
+        const inputs = () => [...kutu.querySelectorAll('input')];
+        if (!kodlar.length && mod !== 'ez') return;
+        if (mod === 'bos' && inputs().some(el => String(el.value || '').trim())) return;
+        while (inputs().length < kodlar.length && typeof addExtraColorToThisCard === 'function') {
+            const once = inputs().length;
+            addExtraColorToThisCard(kalemNo);
+            if (inputs().length === once) break;
+        }
+        inputs().forEach((el, i) => {
+            el.value = kodlar[i] || '';
+            if (i >= kodlar.length && i > 0) el.parentElement?.remove();
+        });
+    }
+
     function siparisMamulAnaVaryantliMi(k) {
         const ana = String(mamulAnaKodBul(k?.desen_kodu) || '').toUpperCase();
         if (!ana) return false;
@@ -4114,17 +4187,97 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
        hepsi bu fonksiyona düşer) kartın fotoğrafı, siparişin kendi foto listesine
        (siparisFotograflar) eklenir. DB'ye HEMEN yazılmaz — form nasılsa Kaydet ile
        kaydedilir; kullanıcı isterse 🗑 ile kaldırabilir. Aynı karttan tekrar tekrar
-       eklenmesin diye satır üstünde işaretlenir (_karttan). */
-    function siparisKalemMamulFotografCek(k) {
+       eklenmesin diye satır üstünde işaretlenir (_karttan).
+       08.10.2026 kullanıcı: "stok kartında foto varsa sipariş formunda da olacak net".
+       Kart fotoğrafı açılışta okunmadığı için (`fotograf` ağır kolon) çoğu kartta önbellekte
+       yoktu ve sessizce atlanıyordu → artık önbellekte yoksa sunucudan okunur (aynı anda
+       dolan kalemler TEK istekte), varyantta foto yoksa ana kartınki alınır, Kaydet bunu bekler. */
+    /* 09.10.2026 kullanıcı: "ana varyantın fotoğrafı ve seçilen her varyantın fotoğrafı sipariş formuna".
+       Varyant seçilince İKİSİ birden gelir (önceden yalnız biri: varyantınki, yoksa ana kartınki).
+       Varyant fotoğrafı = ana kart meta'sındaki varyant (kart formunda eklenen) ya da varyantın kendi
+       satırı; meta'dan sentezlenen varyant kartı ana kartın fotoğrafını kopyaladığı için o sayılmaz. */
+    /** Kalemin kart bağları: ana kart + (varyantsa) varyantın kendi satırı ve meta fotoğrafı. */
+    function siparisKartFotoBaglari(k) {
+        const kartKod = String(k.desen_kodu || k.stok_kodu || '').trim().toUpperCase();
+        const b = stokKartKoddanBul(kartKod);
+        const ana = (b && b.ana) || k;
+        const varyantNo = b ? (b.varyantNo || 0) : 0;
+        const anaKod = String(ana.desen_kodu || ana.stok_kodu || kartKod).trim().toUpperCase();
+        let varKayit = null, metaSrc = '';
+        if (varyantNo > 0 && anaKod !== kartKod) {
+            if (k !== ana && !k._mamulVaryantSentez) varKayit = k;
+            if (b.grup === 'MAMUL') {
+                const meta = mamulEkAlanMetaDecode(ana.notlar || '');
+                const v = Array.isArray(meta.varyantlar) ? meta.varyantlar[varyantNo - 1] : null;
+                metaSrc = String(v?.fotograf || '').trim();
+            }
+        }
+        return { kartKod, anaKod, ana, varyant: varyantNo > 0 && anaKod !== kartKod, varKayit, metaSrc };
+    }
+    /** [{ src, kod, varyant }]: önce ana kartın, sonra seçilen varyantın fotoğrafı (aynı foto bir kez). */
+    function siparisKartFotolari(k) {
+        if (!k || typeof kartFotografSrc !== 'function') return [];
+        const g = siparisKartFotoBaglari(k);
+        const out = [];
+        const ekle = (src, kod, varyant) => { if (src && !out.some(f => f.src === src)) out.push({ src: String(src), kod, varyant }); };
+        ekle(kartFotografSrc(g.ana) || (g.varyant || k._mamulVaryantSentez ? '' : kartFotografSrc(k)), g.anaKod, false);
+        if (g.varyant) ekle(g.metaSrc || (g.varKayit ? kartFotografSrc(g.varKayit) : ''), g.kartKod, true);
+        return out;
+    }
+    const _siparisKartFotoBekleyen = new Set();
+    let _siparisKartFotoKuyruk = null;
+    function siparisKartFotoOku(kayitlar) {
+        if (!_siparisKartFotoKuyruk) {
+            const q = { kayitlar: [] };
+            q.p = new Promise(r => setTimeout(r, 0)).then(() => {
+                if (_siparisKartFotoKuyruk === q) _siparisKartFotoKuyruk = null;
+                return stokKartFotoTamamla(q.kayitlar);
+            });
+            _siparisKartFotoKuyruk = q;
+        }
+        _siparisKartFotoKuyruk.kayitlar.push(...kayitlar);
+        return _siparisKartFotoKuyruk.p;
+    }
+    /** handleSave (07-render.js) sipariş kaydından önce bekler — okunmakta olan kart fotoğrafı kaçmasın. */
+    window.siparisKartFotoBekle = function (ms) {
+        if (!_siparisKartFotoBekleyen.size) return Promise.resolve();
+        return Promise.race([Promise.all([..._siparisKartFotoBekleyen]), new Promise(r => setTimeout(r, ms || 8000))]);
+    };
+    function siparisKalemMamulFotografCek(k, kalemNo) {
         if (!k || typeof kartFotografSrc !== 'function') return;
-        const src = kartFotografSrc(k);
-        if (!src) return;
         if (typeof siparisFotograflar === 'undefined') return;
-        if (!Array.isArray(siparisFotograflar)) siparisFotograflar = [];
-        if (siparisFotograflar.some(f => f && (f.src === src || f._karttan === k.desen_kodu))) return;
-        const ad = (typeof siparisMamulUrunAdiOku === 'function' ? siparisMamulUrunAdiOku(k) : '') || k.desen_kodu || '';
-        siparisFotograflar.push({ src, aciklama: `Ürün kartından: ${ad}`.trim(), _karttan: k.desen_kodu || true });
-        try { if (typeof siparisFotoRenderList === 'function') siparisFotoRenderList(); } catch (e) {}
+        const ekle = () => {
+            const fotolar = siparisKartFotolari(k);
+            if (!fotolar.length) return;
+            if (!Array.isArray(siparisFotograflar)) siparisFotograflar = [];
+            const ad = (typeof siparisMamulUrunAdiOku === 'function' ? siparisMamulUrunAdiOku(k) : '') || '';
+            const renk = (typeof siparisMamulRenkOku === 'function' ? siparisMamulRenkOku(k) : '') || '';
+            let eklendi = false;
+            fotolar.forEach(foto => {
+                const src = foto.src;
+                const ek = foto.varyant && renk ? ` (${renk})` : '';
+                const aciklama = `Ürün kartından: ${foto.kod}${ad && ad.toUpperCase() !== foto.kod ? ' — ' + ad : ''}${ek}`.trim();
+                if (siparisFotograflar.some(f => f && (f.src === src || (foto.kod && f._karttan === foto.kod) || f.aciklama === aciklama))) return;
+                siparisFotograflar.push({ src, aciklama, _karttan: foto.kod || true });
+                eklendi = true;
+            });
+            if (eklendi) { try { if (typeof siparisFotoRenderList === 'function') siparisFotoRenderList(); } catch (e) {} }
+        };
+        /* Fotoğrafı henüz okunmamış kart (ana / varyant satırı) varsa önce okunur, sonra sırayla (ana, varyant) eklenir */
+        const g = siparisKartFotoBaglari(k);
+        const kayitlar = [g.ana, g.varKayit, g.varyant ? null : k].filter((r, i, a) => r && a.indexOf(r) === i
+            && r.id != null && r.id !== '' && !kartFotografSrc(r)
+            && !(typeof kartFotoDurum === 'function' && kartFotoDurum(r.id) === 'yok'));
+        if (!kayitlar.length) { ekle(); return; }
+        /* Sonuç geldiğinde form hâlâ aynı kalemi gösteriyorsa eklenir (başka forma karışmaz) */
+        const kodEl = kalemNo ? document.getElementById(`sk-kod-${kalemNo}`) : null;
+        const kodDeger = kodEl ? kodEl.value : null;
+        const is = siparisKartFotoOku(kayitlar).then(() => {
+            if (typeof appMode !== 'undefined' && appMode !== 'SIPARIS_GIRIS') return;
+            if (kodEl && (!kodEl.isConnected || kodEl.value !== kodDeger)) return;
+            ekle();
+        }).catch(() => {}).finally(() => _siparisKartFotoBekleyen.delete(is));
+        _siparisKartFotoBekleyen.add(is);
     }
 
     window.siparisKalemMamulDoldur = function (kalemNo, k, opts) {
@@ -4136,9 +4289,13 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         mv(`sk-desen-${kalemNo}`, siparisMamulDesenOku(k));
         mv(`sk-ad-${kalemNo}`, siparisMamulUrunAdiOku(k));
         mv(`sk-ebat-${kalemNo}`, String(siparisMamulEbatOku(k) || '').trim().replace(/\s+/g, ''));
-        if (anaSecim && siparisMamulAnaVaryantliMi(k)) mv(`sk-renk-${kalemNo}`, '');
+        const anaVaryantli = anaSecim && siparisMamulAnaVaryantliMi(k);
+        if (anaVaryantli) mv(`sk-renk-${kalemNo}`, '');
         else mv(`sk-renk-${kalemNo}`, siparisMamulRenkOku(k));
-        siparisKalemMamulFotografCek(k);
+        /* opts.rkod: siparisKalemRenkKodlariYaz modu | yok → RK'ya dokunulmaz
+           (kayıtlı sipariş açılırken çalışan sessiz yenileme elle girilmiş kodları değiştirmesin) */
+        if (opts.rkod) siparisKalemRenkKodlariYaz(kalemNo, anaVaryantli ? [] : siparisMamulRenkKodlariOku(k), opts.rkod);
+        siparisKalemMamulFotografCek(k, kalemNo);
         if (typeof updateSiparisPreview === 'function') updateSiparisPreview();
     };
 
@@ -4189,21 +4346,25 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             /* Kumaş kalemi (SM…) kumaş kartından yenilenir */
             const kumasKart = kart ? null : siparisKumasKartBul(kod);
             if (!kart && !kumasKart) continue;
+            const rkodlar = () => [...document.querySelectorAll(`#color-fields-container-${j} input`)].map(el => el.value).join('|');
             const onceki = {
                 desen: document.getElementById(`sk-desen-${j}`)?.value || '',
                 ad: document.getElementById(`sk-ad-${j}`)?.value || '',
                 ebat: document.getElementById(`sk-ebat-${j}`)?.value || '',
-                renk: document.getElementById(`sk-renk-${j}`)?.value || ''
+                renk: document.getElementById(`sk-renk-${j}`)?.value || '',
+                rkod: rkodlar()
             };
             if (kumasKart) siparisKalemKumasDoldur(j, kumasKart);
-            else siparisKalemMamulDoldur(j, kart, { anaSecim: mamulVaryantNoBul(kart.desen_kodu) <= 0 });
+            /* Düğmeyle yenilemede boş RK'lar karttan dolar; sessiz (sipariş açılışı) yenileme RK'ya dokunmaz */
+            else siparisKalemMamulDoldur(j, kart, { anaSecim: mamulVaryantNoBul(kart.desen_kodu) <= 0, rkod: opts.silent ? null : 'bos' });
             const sonra = {
                 desen: document.getElementById(`sk-desen-${j}`)?.value || '',
                 ad: document.getElementById(`sk-ad-${j}`)?.value || '',
                 ebat: document.getElementById(`sk-ebat-${j}`)?.value || '',
-                renk: document.getElementById(`sk-renk-${j}`)?.value || ''
+                renk: document.getElementById(`sk-renk-${j}`)?.value || '',
+                rkod: rkodlar()
             };
-            if (onceki.desen !== sonra.desen || onceki.ad !== sonra.ad || onceki.ebat !== sonra.ebat || onceki.renk !== sonra.renk) n++;
+            if (onceki.desen !== sonra.desen || onceki.ad !== sonra.ad || onceki.ebat !== sonra.ebat || onceki.renk !== sonra.renk || onceki.rkod !== sonra.rkod) n++;
         }
         if (typeof updateSiparisPreview === 'function') updateSiparisPreview();
         if (!opts.silent && typeof erpToast === 'function') {
@@ -4231,7 +4392,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             if (typeof erpToast === 'function') erpToast('Stok kartı bulunamadı: ' + kod, 'warn');
             return;
         }
-        siparisKalemMamulDoldur(n, kart, { anaSecim: mamulVaryantNoBul(kart.desen_kodu) <= 0 });
+        siparisKalemMamulDoldur(n, kart, { anaSecim: mamulVaryantNoBul(kart.desen_kodu) <= 0, rkod: 'karttan' });
         if (typeof erpToast === 'function') erpToast('Ürün mamül karttan yenilendi.', 'success', 2500);
     };
 
@@ -4622,7 +4783,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             birim.value = 'MT';
             birim.dispatchEvent(new Event('change', { bubbles: true }));
         }
-        siparisKalemMamulFotografCek(k);
+        siparisKalemMamulFotografCek(k, kalemNo);
         if (typeof updateSiparisPreview === 'function') updateSiparisPreview();
     };
 
@@ -4641,7 +4802,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             || siparisMamulSeciciListe.find(x => String(x.desen_kodu || '').trim().toUpperCase() === hedef);
         if (!k) return;
         siparisKalemMamulDoldur(siparisMamulSeciciKalemNo, k, {
-            anaSecim: mamulVaryantNoBul(k.desen_kodu) <= 0
+            anaSecim: mamulVaryantNoBul(k.desen_kodu) <= 0,
+            rkod: 'ez'
         });
         siparisMamulSeciciKapat();
     };
@@ -5075,10 +5237,13 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const leg = mamulVaryantAtkiDensify(legacyV || mamulVaryantBosHucre());
         const renk_etiket = String(leg.renk_etiket || db.renk_etiket || '').trim();
         const dbAtkiDolu = db.atki.some(a => a.iplik_no || a.renk || a.atki_sayisi);
-        return {
+        const out = {
             renk_etiket,
             atki: dbAtkiDolu ? db.atki : leg.atki
         };
+        const foto = leg.fotograf || db.fotograf;
+        if (foto) out.fotograf = foto;
+        return out;
     }
 
     function mamulVaryantlariKayittanTopla(anaKod, legacyMeta) {
@@ -5574,6 +5739,27 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             return { ...l, miktar_kg: Math.round((parseFloat(live.kg) || 0) * 1000) / 1000 };
         });
     }
+    /** Kart formu lotlarda KALANI gösterir (yukarıdaki); bakiye ise kart lotu (açılış) + depo hareketleri.
+     *  Kayıtta formdaki kalan açılışa çevrilir: açılış = kalan − (canlı bakiye − eski açılış); kalanı değişmeyen
+     *  lotun açılışı aynen kalır. Çevrilmeden yazılsaydı hareketler bakiyeden ikinci kez düşerdi (denetim D-06). */
+    function iplikKartLotlariAcilisaCevir(eskiKart, lots, stokKodu) {
+        const kod = String(stokKodu || eskiKart?.stok_kodu || '').trim();
+        const anahtar = (lot) => String(lot || 'LOTSUZ').trim().toUpperCase() || 'LOTSUZ';
+        const yuvarla = (n) => Math.round(n * 1000) / 1000;
+        const eski = new Map();
+        (eskiKart ? iplikKartLotlariAl(eskiKart) : []).forEach(l => {
+            if (String(l.lot_no || '').trim()) eski.set(anahtar(l.lot_no), l.miktar_kg);
+        });
+        const bak = kod && typeof depoIplikBakiyeHesapla === 'function' ? depoIplikBakiyeHesapla(kod) : null;
+        return (lots || []).map(l => {
+            const k = anahtar(l.lot_no);
+            const canli = parseFloat(bak?.lots?.[k]?.kg) || 0;
+            const kalan = parseFloat(l.miktar_kg) || 0;
+            if (eski.has(k) && Math.abs(kalan - yuvarla(canli)) < 0.0005) return { ...l, miktar_kg: eski.get(k) };
+            return { ...l, miktar_kg: yuvarla(kalan - (canli - (parseFloat(eski.get(k)) || 0))) };
+        });
+    }
+    window.iplikKartLotlariAcilisaCevir = iplikKartLotlariAcilisaCevir;
     function iplikKartLotToplamKg(lots) {
         return (lots || []).reduce((a, l) => a + (parseFloat(l.miktar_kg) || 0), 0);
     }
@@ -5626,8 +5812,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 <span style="font-size:8px;color:var(--text3);margin-left:6px">toplam</span>
                 ${cuvalTop ? `<span style="margin:0 8px;color:var(--border2)">·</span><span style="font-family:'DM Mono',monospace">${cuvalTop} çuval/koli</span>` : ''}`;
         }
-        const prev = document.getElementById('prev-iplik-lot-ozet');
-        if (prev) prev.textContent = dolu.length ? (dolu.map(l => l.lot_no + ' (' + (parseFloat(l.miktar_kg) || 0) + ' kg)').join(' · ')) : '—';
     }
     function iplikKartLotSatirHtml(lot, opts) {
         lot = lot || {};
@@ -5915,8 +6099,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function iplikKartListeTabloBaslikHtml() {
         return stokKartListeTabloShellBaslikHtml('iplik-kart-liste-grid',
-            '<span></span><span>Stok kodu</span><span>İplik no</span><span>Cins</span>'
-            + '<span>Lotlar</span><span style="text-align:right">Toplam kg</span><span></span>');
+            '<span></span><span>Stok<br>kodu</span><span>İplik<br>no</span><span>Cins</span>'
+            + '<span>Lotlar</span><span style="text-align:right">Toplam<br>kg</span><span></span>');
     }
     window.iplikKartListeTabloBaslikHtml = iplikKartListeTabloBaslikHtml;
 
@@ -6100,8 +6284,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function kumasKartListeTabloBaslikHtml() {
         return stokKartListeTabloShellBaslikHtml('kumas-stok-liste-grid',
-            '<span></span><span>Stok kodu</span><span>Tarih</span><span>Müşteri</span><span>Kumaş cinsi</span>'
-            + '<span>Desen adı</span><span>Boyalı renkler</span><span style="text-align:right">Stok</span><span></span>');
+            '<span></span><span>Stok<br>kodu</span><span>Tarih</span><span>Müşteri</span><span>Kumaş<br>cinsi</span>'
+            + '<span>Desen<br>adı</span><span>Tarak<br>eni</span><span>Mamül<br>en</span><span>Boyalı<br>renkler</span><span style="text-align:right">Stok</span><span></span>');
     }
     window.kumasKartListeTabloBaslikHtml = kumasKartListeTabloBaslikHtml;
 
@@ -6529,119 +6713,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.iplikKartlardanSentetikHareketler = iplikKartlardanSentetikHareketler;
 
-    /** Kart kaydındaki lot kg’lerini kalıcı depo GİRİŞ satırı olarak yazar (çift kayıt yok).
-     *  Kartta görünen miktar = kalan stok ise: KART_AKTARIM = kalan − diğer hareketler neti. */
-    window.iplikKartAcilisStokunuYaz = async function iplikKartAcilisStokunuYaz(kart) {
-        if (!kart || kart.id == null || typeof sb === 'undefined' || !sb?.from) return 0;
-        const lots = typeof iplikKartLotlariAl === 'function' ? iplikKartLotlariAl(kart) : [];
-        const all = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.iplik_stok)) ? dataCache.iplik_stok : [];
-        const user = String((typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || kart.updated_by || '—');
-        const stokKod = String(kart.stok_kodu || '').trim();
-        let n = 0;
-        for (const lot of (lots || [])) {
-            const lotKg = parseFloat(lot.miktar_kg) || 0;
-            if (!(lotKg > 0) && lotKg !== 0) continue;
-            const lotNo = String(lot.lot_no || '').trim() || 'LOTSUZ';
-            const tag = `${kart.id}:${lotNo}`;
-            const tagLow = tag.toLowerCase();
-            const existing = all.find(r => {
-                const m = String(r.notlar || '').match(/\[KART_AKTARIM:([^\]]+)\]/);
-                return m && String(m[1]).toLowerCase() === tagLow;
-            });
-            // Diğer hareketlerin neti (açılış aktarımı hariç) — kart miktarı kalan stok kabul edilir
-            let otherNet = 0;
-            all.forEach(r => {
-                if (!iplikDepoHareketiMi(r)) return;
-                if (String(r.stok_kodu || '').trim().toUpperCase() !== stokKod.toUpperCase()) return;
-                if (String(r.lot_no || 'LOTSUZ').trim().toUpperCase() !== lotNo.toUpperCase()) return;
-                if (existing && String(r.id) === String(existing.id)) return;
-                const m = String(r.notlar || '').match(/\[KART_AKTARIM:([^\]]+)\]/);
-                if (m && String(m[1]).toLowerCase() === tagLow) return;
-                otherNet += parseFloat(r.miktar_kg) || 0;
-            });
-            const kg = Math.round((lotKg - otherNet) * 1000) / 1000;
-            if (!(kg > 0) && !existing) continue;
-            const payload = {
-                stok_kodu: stokKod,
-                iplik_no: String(kart.iplik_no || '').trim(),
-                lot_no: lotNo,
-                marka: String(lot.marka || kart.marka || 'GENEL').trim() || 'GENEL',
-                cins: String(lot.cins || kart.cins || '').trim(),
-                miktar_kg: kg > 0 ? kg : 0,
-                cuval_sayisi: parseInt(lot.cuval_sayisi, 10) || 0,
-                cuval_rengi: String(lot.cuval_rengi || kart.cuval_rengi || '').trim(),
-                renk: lot.renk || kart.renk || '',
-                tedarikci: lot.tedarikci || kart.tedarikci || '',
-                depo_konum: lot.depo_konum || kart.depo_konum || '',
-                araci_firma: lot.tedarikci || kart.tedarikci || '',
-                kaynak_birim: 'DEPO_HAREKET_IPLIK',
-                islem_turu: 'GİRİŞ',
-                updated_by: user,
-                notlar: `[KART_AKTARIM:${tag}]\nStok kartı açılış stoğu`
-            };
-            if (existing && existing.id) {
-                const curKg = parseFloat(existing.miktar_kg) || 0;
-                const curAd = parseInt(existing.cuval_sayisi, 10) || 0;
-                if (Math.abs(curKg - payload.miktar_kg) < 1e-9 && curAd === (payload.cuval_sayisi || 0)) continue;
-                const { error } = await sb.from('iplik_stok').update({
-                    miktar_kg: payload.miktar_kg,
-                    cuval_sayisi: payload.cuval_sayisi,
-                    marka: payload.marka,
-                    updated_by: user
-                }).eq('id', existing.id);
-                if (error) throw error;
-                const ix = all.findIndex(x => String(x.id) === String(existing.id));
-                if (ix >= 0) {
-                    all[ix] = { ...all[ix], miktar_kg: payload.miktar_kg, cuval_sayisi: payload.cuval_sayisi, marka: payload.marka, updated_by: user };
-                }
-                n++;
-                continue;
-            }
-            if (!(payload.miktar_kg > 0)) continue;
-            const { data, error } = await sb.from('iplik_stok').insert(payload).select('id').limit(1);
-            if (error) throw error;
-            const row = { ...payload, id: data?.[0]?.id, created_at: new Date().toISOString() };
-            if (typeof dataCache !== 'undefined' && Array.isArray(dataCache.iplik_stok)) {
-                dataCache.iplik_stok = [row].concat(dataCache.iplik_stok);
-            }
-            n++;
-        }
-        return n;
-    };
-
-    /** Çıkış sonrası karttaki açılış lot kg’lerini güncel kalan bakiyeye çek. */
-    window.iplikKartAcilisStokunuDus = async function iplikKartAcilisStokunuDus(stokKodu) {
-        const kod = String(stokKodu || '').trim();
-        if (!kod || typeof sb === 'undefined' || !sb?.from) return false;
-        const kart = typeof iplikKartKayitBulByKod === 'function' ? iplikKartKayitBulByKod(kod) : null;
-        if (!kart || kart.id == null) return false;
-        const canli = typeof iplikKartLotlariCanliAl === 'function' ? iplikKartLotlariCanliAl(kart) : iplikKartLotlariAl(kart);
-        const notlar = typeof iplikNotlarOlustur === 'function'
-            ? iplikNotlarOlustur(kart.notlar, canli)
-            : kart.notlar;
-        const L0 = canli[0] || {};
-        const patch = {
-            notlar,
-            lot_no: L0.lot_no || kart.lot_no || '',
-            marka: String(L0.marka || kart.marka || '').trim(),
-            renk: String(L0.renk || kart.renk || '').trim(),
-            miktar_kg: 0,
-            updated_by: String((typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || kart.updated_by || '—')
-        };
-        const { error } = await sb.from('iplik_stok').update(patch).eq('id', kart.id);
-        if (error) {
-            console.warn('iplikKartAcilisStokunuDus', error.message || error);
-            return false;
-        }
-        const all = dataCache.iplik_stok || [];
-        const ix = all.findIndex(x => String(x.id) === String(kart.id));
-        if (ix >= 0) {
-            all[ix] = { ...all[ix], ...patch };
-            delete all[ix]._search_idx;
-        }
-        return true;
-    };
-
     /** Kumaş kartındaki miktar_mt alanını depo net bakiyesine çek. */
     window.kumasKartAcilisStokunuDus = async function kumasKartAcilisStokunuDus(stokKodu) {
         const kod = String(stokKodu || '').trim();
@@ -6676,7 +6747,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     /**
      * Depo stok hesabı: karttaki açılış lot kg + gerçek giriş/çıkış.
-     * Kart lotu, yalnızca [KART_AKTARIM] ile kalıcı depoya yazıldıysa tekrar eklenmez.
+     * Kart lotu = AÇILIŞ; kart formu kalanı gösterir, kayıtta açılışa çevirir (iplikKartLotlariAcilisaCevir).
+     * [KART_AKTARIM] etiketli satır varsa kart lotu tekrar eklenmez (eski yazıcılar canlıda hiç yazamadı, 0 satır; D-06'da silindi).
      * Aynı lota sonradan yapılan GİRİŞ (iade, yeni parti, sayım fazlası) kart stoğunun
      * yerine geçmez, üstüne eklenir — yerine geçseydi lot bakiyesi girişten sonra düşerdi.
      */
@@ -7115,8 +7187,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             toolsHtml: `
                 <button type="button" class="ms-btn ms-btn-giris" onclick="iplikStokHizliIslem('GİRİŞ')">Stok girişi</button>
                 <button type="button" class="ms-btn ms-btn-sevk" onclick="iplikStokHizliIslem('ÇIKIŞ')">Sevkiyat</button>
-                <button type="button" class="ms-btn ms-btn-ghost" onclick="iplikStokHareketlereGit()">Hareketler</button>
-                <button type="button" class="ms-btn ms-btn-ghost" onclick="iplikKartlardanDepoStogaAktar()" title="Stok kartlarındaki lot kg’lerini kalıcı depo girişi olarak kaydet">Kartlardan aktar</button>`,
+                <button type="button" class="ms-btn ms-btn-ghost" onclick="iplikStokHareketlereGit()">Hareketler</button>`,
             filtreBar,
             dynamicId: 'iplik-stok-dynamic',
             dynamicHtml: iplikStokListeDynamicHtml(grps, ozet, opts)
@@ -7177,69 +7248,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (typeof setAppMode === 'function') setAppMode('DEPO_HAREKET_LISTE');
     }
     window.iplikStokHareketlereGit = iplikStokHareketlereGit;
-
-    /** Kart lot kg’lerini DEPO_HAREKET_IPLIK giriş kaydı olarak yazar (kalıcı). */
-    window.iplikKartlardanDepoStogaAktar = async function iplikKartlardanDepoStogaAktar() {
-        try {
-            const all = (typeof dataCache !== 'undefined' ? (dataCache.iplik_stok || []) : []);
-            const real = all.filter(iplikDepoHareketiMi);
-            const realKeys = new Set(real.map(r => iplikDepoLotAnahtar(r.stok_kodu, r.lot_no, r.marka)));
-            const aktarilmis = new Set();
-            all.forEach(r => {
-                const m = String(r.notlar || '').match(/\[KART_AKTARIM:([^\]]+)\]/);
-                if (m) aktarilmis.add(String(m[1]).toLowerCase());
-            });
-            const syn = iplikKartlardanSentetikHareketler().filter(s => {
-                const key = iplikDepoLotAnahtar(s.stok_kodu, s.lot_no, s.marka);
-                const tag = `${s._kart_id || ''}:${s.lot_no}`.toLowerCase();
-                return !realKeys.has(key) && !aktarilmis.has(tag);
-            });
-            if (!syn.length) {
-                if (typeof erpToast === 'function') erpToast('Aktarılacak yeni kart lot stoğu yok (zaten depoda veya 0 kg).', 'info', 3500);
-                return;
-            }
-            const totKg = syn.reduce((a, s) => a + (parseFloat(s.miktar_kg) || 0), 0);
-            if (!confirm(`${syn.length} lot · ${totKg.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} kg\n\nStok kartlarından İplik deposuna kalıcı giriş olarak aktarılsın mı?`)) return;
-            if (typeof sb === 'undefined' || !sb?.from) {
-                if (typeof erpToast === 'function') erpToast('Veritabanı bağlantısı yok.', 'error');
-                return;
-            }
-            const user = String((typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || 'Sistem');
-            const rows = syn.map(s => ({
-                stok_kodu: s.stok_kodu,
-                iplik_no: s.iplik_no,
-                lot_no: s.lot_no,
-                marka: s.marka,
-                cins: s.cins,
-                miktar_kg: s.miktar_kg,
-                renk: s.renk || '',
-                tedarikci: s.tedarikci || '',
-                depo_konum: s.depo_konum || '',
-                araci_firma: s.tedarikci || '',
-                kaynak_birim: 'DEPO_HAREKET_IPLIK',
-                islem_turu: 'GİRİŞ',
-                updated_by: user,
-                notlar: `[KART_AKTARIM:${s._kart_id || ''}:${s.lot_no}]\nStok kartından aktarılan açılış stoğu`
-            }));
-            const chunk = 40;
-            let ok = 0;
-            for (let i = 0; i < rows.length; i += chunk) {
-                const part = rows.slice(i, i + chunk);
-                const { data, error } = await sb.from('iplik_stok').insert(part).select('id');
-                if (error) throw error;
-                ok += (data || part).length;
-                if (typeof dataCache !== 'undefined' && Array.isArray(dataCache.iplik_stok) && Array.isArray(data)) {
-                    dataCache.iplik_stok = data.concat(dataCache.iplik_stok);
-                }
-            }
-            if (typeof erpToast === 'function') erpToast(`${ok} lot depoya aktarıldı.`, 'success', 3500);
-            if (typeof loadData === 'function') loadData();
-            else if (typeof iplikStokListeGovdeGuncelle === 'function') iplikStokListeGovdeGuncelle();
-        } catch (e) {
-            console.error(e);
-            if (typeof erpToast === 'function') erpToast('Aktarım hatası: ' + (e.message || e), 'error', 6000);
-        }
-    };
 
     function kumasBoyaNotRenkParcala(txt) {
         const s = String(txt || '').trim();
@@ -7642,7 +7650,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const seen = new Set();
         const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
         liste.forEach(sip => {
-            if (!sip || String(sip.durum || '').toUpperCase() === 'TAMAMLANDI') return;
+            if (!sip || (typeof siparisKapaliMi === 'function' ? siparisKapaliMi(sip) : String(sip.durum || '').toUpperCase() === 'TAMAMLANDI')) return;
             const kalemler = typeof siparisListeKalemleriArr === 'function'
                 ? siparisListeKalemleriArr(sip)
                 : (typeof uaSiparisKalemleriGetir === 'function' ? uaSiparisKalemleriGetir(sip) : []);
@@ -9286,6 +9294,15 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         return !s || blob.includes(s);
     }
 
+    /* Kumaş stoğu metreyle tutulur (sayım da metre sayar, kg'a dokunmaz). Eskiden "kg > 0 VEYA mt > 0"
+       idi: metresi sayımla 0'a inen üründe girişten kalan kg artığı (SM-0039-1: 0 mt · 11 kg, 07.10.2026)
+       ürünü stokta gösteriyordu. Metre hareketi olan üründe metreye, hiç olmayanda kg'a bakılır. */
+    function kumasGrupStoktaMi(g) {
+        const mtHareketi = (parseFloat(g.giris_mt) || 0) !== 0 || (parseFloat(g.cikis_mt) || 0) !== 0 || (parseFloat(g.net_mt) || 0) !== 0;
+        return mtHareketi ? (parseFloat(g.net_mt) || 0) > 0 : (parseFloat(g.net_kg) || 0) > 0;
+    }
+    window.kumasGrupStoktaMi = kumasGrupStoktaMi;
+
     function kumasStokListeFiltreliGruplar(hamGrps, s, filtre, ekFiltre) {
         let grps = (hamGrps || []).filter(g => kumasStokListeMetinEslesir(g, s));
         if (ekFiltre && typeof window.stokGrupFiltreEslesir === 'function') {
@@ -9293,12 +9310,12 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         }
         const sayac = {
             hepsi: grps.length,
-            pozitif: grps.filter(g => (parseFloat(g.net_kg) || 0) > 0 || (parseFloat(g.net_mt) || 0) > 0).length,
-            kritik: grps.filter(g => (parseFloat(g.net_kg) || 0) <= 0 && (parseFloat(g.net_mt) || 0) <= 0).length
+            pozitif: grps.filter(kumasGrupStoktaMi).length,
+            kritik: grps.filter(g => !kumasGrupStoktaMi(g)).length
         };
         const f = filtre || 'POZITIF';
-        if (f === 'POZITIF') grps = grps.filter(g => (parseFloat(g.net_kg) || 0) > 0 || (parseFloat(g.net_mt) || 0) > 0);
-        else if (f === 'KRITIK') grps = grps.filter(g => (parseFloat(g.net_kg) || 0) <= 0 && (parseFloat(g.net_mt) || 0) <= 0);
+        if (f === 'POZITIF') grps = grps.filter(kumasGrupStoktaMi);
+        else if (f === 'KRITIK') grps = grps.filter(g => !kumasGrupStoktaMi(g));
         const topNet = grps.reduce((a, g) => a + (parseFloat(g.net_kg) || 0), 0);
         const topNetMt = grps.reduce((a, g) => a + (parseFloat(g.net_mt) || 0), 0);
         return { grps, sayac, topNet, topNetMt, filtre: f };
@@ -9649,7 +9666,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         const topMt = satirlar.reduce((s, r) => s + (Number(r.stok_mt) || 0), 0);
         const topKg = satirlar.reduce((s, r) => s + (Number(r.stok_kg) || 0), 0);
         const tarih = new Date();
-        const dosya = `Kumas_Stok_Formu_${tarih.toISOString().slice(0, 10)}.xlsx`;
+        const dosya = `Kumas_Stok_Formu_${erpYerelGun(tarih)}.xlsx`;
         const sayiKeys = new Set(['ham_en', 'ham_boy', 'ham_gramaj', 'ham_gsm', 'mamul_en', 'mamul_boy', 'mamul_gramaj', 'mamul_gsm', 'cekme', 'stok_mt', 'stok_kg', 'top_sayisi']);
         const tarihKeys = new Set(['son_hareket', 'son_giris', 'son_cikis']);
 
@@ -9838,10 +9855,15 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 atki_sayisi: String(raw[i]?.atki_sayisi || '').trim()
             });
         }
-        return {
+        const out = {
             renk_etiket: String(v?.renk_etiket || '').trim(),
             atki
         };
+        /* 09.10.2026: varyant fotoğrafı korunur — önceden burada düşüyordu, kart formunda
+           varyanta eklenen fotoğraf hiç kaydedilmiyordu (canlıda 337 varyantın hiçbirinde yoktu). */
+        const foto = String(v?.fotograf || '').trim();
+        if (foto) out.fotograf = foto;
+        return out;
     }
 
     function mamulVaryantListesiNormalize(varyantlar) {
@@ -9854,169 +9876,11 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.mamulVaryantListesiNormalize = mamulVaryantListesiNormalize;
 
-    async function mamulVaryantKayitlariSenkronize(anaPayload, ekMeta) {
-        const anaKod = mamulAnaKodNormalize(anaPayload?.desen_kodu || '');
-        if (!anaKod || mamulVaryantNoBul(anaPayload?.desen_kodu || '') > 0) {
-            return { ok: true, created: 0, updated: 0, skipped: true };
-        }
-        const varyantlar = mamulVaryantListesiNormalize(ekMeta?.varyantlar);
-        const hamAna = mamulAnaKodHamBul(anaPayload?.desen_kodu || anaKod);
-
-        let aileKayitlari = [];
-        try {
-            const orParts = [`desen_kodu.eq.${anaKod}`, `desen_kodu.like.${anaKod}-%`];
-            if (hamAna && hamAna !== anaKod) {
-                orParts.push(`desen_kodu.eq.${hamAna}`, `desen_kodu.like.${hamAna}-%`);
-            }
-            const res = await sb.from('kumas_kutuphanesi').select('id,desen_kodu').or(orParts.join(','));
-            if (res.error) return { ok: false, error: res.error, created: 0, updated: 0 };
-            aileKayitlari = res.data || [];
-        } catch (e) {
-            aileKayitlari = (dataCache.kumas_kutuphanesi || []).filter(x => {
-                const k = String(x.desen_kodu || '').trim().toUpperCase();
-                return k === anaKod || k.startsWith(anaKod + '-') || (hamAna && (k === hamAna || k.startsWith(hamAna + '-')));
-            });
-        }
-
-        const aileKayitBul = (varKod, vNo) => {
-            const hedef = String(varKod || '').trim().toUpperCase();
-            let hit = aileKayitlari.find(x => String(x.desen_kodu || '').trim().toUpperCase() === hedef);
-            if (hit) return hit;
-            return aileKayitlari.find(x => {
-                const k = String(x.desen_kodu || '').trim().toUpperCase();
-                if (mamulAnaKodBul(k) !== anaKod) return false;
-                return mamulVaryantNoBul(k) === vNo;
-            }) || null;
-        };
-
-        let created = 0;
-        let updated = 0;
-        const kullanilanIdler = new Set();
-        const doluVaryantNolar = [];
-        const yazmaIsleri = [];
-        const silmeIsleri = [];
-
-        for (let vNo = 1; vNo <= varyantlar.length; vNo++) {
-            const v = varyantlar[vNo - 1];
-            const varKod = mamulVaryantKodFormatla(anaKod, vNo);
-            const existing = aileKayitBul(varKod, vNo);
-            const dolu = mamulVaryantDoluMu(v);
-
-            if (!dolu) {
-                if (existing?.id) silmeIsleri.push(existing.id);
-                continue;
-            }
-
-            doluVaryantNolar.push(vNo);
-
-            const varMeta = mamulVaryantMetaOlustur(v, vNo, anaKod);
-            const renk = mamulVaryantRenkEtiket(v);
-            const atkiStr = mamulAtkiRenkleriSerilestir(v.atki);
-            const row = {
-                desen_kodu: varKod,
-                urun_adi: anaPayload.urun_adi || anaPayload.desen_adi || anaPayload.kumas_cinsi || '',
-                firma: anaPayload.firma || '',
-                kumas_cinsi: anaPayload.kumas_cinsi || '',
-                desen_adi: anaPayload.desen_adi || '',
-                renk: renk,
-                atki_renkleri: atkiStr,
-                kalite: anaPayload.kalite || 'AKTİF',
-                ana_grup: 'MAMUL',
-                tarak_no: '',
-                tarak_eni: '',
-                atki_sikligi: '',
-                cozgu_no: '',
-                cozgu_cinsi: '',
-                ham_en: '',
-                ham_boy: '',
-                ham_gsm: '',
-                mamul_en: '',
-                mamul_boy: '',
-                mamul_gsm: '',
-                notlar: typeof kumasNotlarOlustur === 'function'
-                    ? kumasNotlarOlustur('', varMeta)
-                    : ''
-            };
-            if (v?.fotograf) row.fotograf = v.fotograf;
-
-            if (existing?.id) {
-                kullanilanIdler.add(existing.id);
-                yazmaIsleri.push(
-                    sb.from('kumas_kutuphanesi').update(row).eq('id', existing.id)
-                        .then(res => ({ tip: 'upd', error: res.error }))
-                );
-                updated++;
-            } else {
-                yazmaIsleri.push(
-                    sb.from('kumas_kutuphanesi').insert([row])
-                        .then(res => ({ tip: 'ins', error: res.error }))
-                );
-                created++;
-            }
-        }
-
-        for (const rec of aileKayitlari) {
-            const k = String(rec.desen_kodu || '').trim().toUpperCase();
-            if (k === anaKod || k === hamAna) continue;
-            if (kullanilanIdler.has(rec.id)) continue;
-            const vNo = mamulVaryantNoBul(k);
-            if (vNo < 1) continue;
-            if (mamulAnaKodBul(k) !== anaKod) continue;
-            const beklenen = mamulVaryantKodFormatla(anaKod, vNo);
-            const dolu = doluVaryantNolar.includes(vNo);
-            if (!dolu || k !== beklenen) silmeIsleri.push(rec.id);
-        }
-
-        if (yazmaIsleri.length) {
-            const results = await Promise.all(yazmaIsleri);
-            const fail = results.find(r => r?.error);
-            if (fail?.error) return { ok: false, error: fail.error, created, updated };
-        }
-        if (silmeIsleri.length) {
-            await Promise.all(silmeIsleri.map(id => sb.from('kumas_kutuphanesi').delete().eq('id', id)));
-        }
-
-        return { ok: true, created, updated, anaKod };
-    }
-    window.mamulVaryantKayitlariSenkronize = mamulVaryantKayitlariSenkronize;
-    window.mamulVaryantKayitlariOlustur = mamulVaryantKayitlariSenkronize;
-
     function mamulKumasMetaCacheSil(rec) {
         if (rec && Object.prototype.hasOwnProperty.call(rec, '_kumas_meta_cache')) {
             delete rec._kumas_meta_cache;
         }
     }
-
-    function mamulVaryantCacheGuncelle(anaKayit, varyantlar, anaKod) {
-        const ana = String(anaKod || '').trim().toUpperCase();
-        const lib = dataCache.kumas_kutuphanesi;
-        if (!Array.isArray(lib) || !ana) return;
-        if (anaKayit) {
-            mamulKumasMetaCacheSil(anaKayit);
-            const ix = lib.findIndex(x => String(x.id) === String(anaKayit.id));
-            if (ix >= 0) lib[ix].notlar = anaKayit.notlar;
-        }
-        (Array.isArray(varyantlar) ? varyantlar : []).forEach((v, i) => {
-            const vNo = i + 1;
-            if (!mamulVaryantDoluMu(v)) return;
-            const varKod = mamulVaryantKodFormatla(ana, vNo);
-            const renk = mamulVaryantRenkEtiket(v);
-            const childMeta = mamulVaryantMetaOlustur(v, vNo, ana);
-            const childNot = typeof kumasNotlarOlustur === 'function'
-                ? kumasNotlarOlustur('', childMeta)
-                : '';
-            const child = lib.find(x => {
-                const k = String(x.desen_kodu || '').trim().toUpperCase();
-                return k === varKod || (mamulAnaKodBul(k) === ana && mamulVaryantNoBul(k) === vNo);
-            });
-            if (!child) return;
-            child.renk = renk;
-            child.notlar = childNot;
-            mamulKumasMetaCacheSil(child);
-        });
-        if (typeof stockCards !== 'undefined') stockCards = lib;
-    }
-    window.mamulVaryantCacheGuncelle = mamulVaryantCacheGuncelle;
 
     /** Detay modalındaki renk chip'inden renk adını kaydet */
     window.mamulVaryantRenkAdiKaydet = async function (anaKod, varyantNo, renkAdi) {
@@ -10050,27 +9914,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
             const updAna = await sb.from('kumas_kutuphanesi').update({ notlar: newNotlar }).eq('id', anaKayit.id);
             if (updAna.error) throw updAna.error;
-
-            const varKod = mamulVaryantKodFormatla(ana, vNo);
-            const child = (dataCache.kumas_kutuphanesi || []).find(x => {
-                const k = String(x.desen_kodu || '').trim().toUpperCase();
-                return k === varKod || (mamulAnaKodBul(k) === ana && mamulVaryantNoBul(k) === vNo);
-            });
-            if (child?.id) {
-                const childMeta = mamulVaryantMetaOlustur(varyantlar[vNo - 1], vNo, ana);
-                const childNot = typeof kumasNotlarOlustur === 'function'
-                    ? kumasNotlarOlustur('', childMeta)
-                    : '';
-                /* G-06: ana kayıttaki gibi hata yakalanır — kaydedilmeyen renk ekranda kaydedilmiş görünmesin */
-                const updChild = await sb.from('kumas_kutuphanesi').update({
-                    renk: renk || null,
-                    notlar: childNot
-                }).eq('id', child.id);
-                if (updChild.error) throw updChild.error;
-                child.renk = renk;
-                child.notlar = childNot;
-                mamulKumasMetaCacheSil(child);
-            }
+            /* Varyant ayrı kart satırı değildir (D-07): renk adı yalnız ana kartın meta'sında */
 
             anaKayit.notlar = newNotlar;
             mamulKumasMetaCacheSil(anaKayit);
@@ -10079,8 +9923,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 dataCache.kumas_kutuphanesi[libIdx].notlar = newNotlar;
                 mamulKumasMetaCacheSil(dataCache.kumas_kutuphanesi[libIdx]);
             }
-
-            mamulVaryantCacheGuncelle(anaKayit, varyantlar, ana);
 
             if (typeof currentData !== 'undefined' && Array.isArray(currentData) && typeof selectedIndex === 'number' && currentData[selectedIndex]) {
                 const cur = currentData[selectedIndex];
@@ -10099,12 +9941,6 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             if (typeof erpToast === 'function') erpToast('Renk adı kaydedilemedi: ' + (e.message || e), 'error', 5000);
         }
     };
-
-    function kumasVaryantListeDomDoluMu() {
-        const root = document.getElementById('kumas-varyant-list');
-        if (!root) return false;
-        return Array.from(root.querySelectorAll('input, textarea, select')).some(el => String(el.value ?? '').trim() !== '');
-    }
 
     function kumasVaryantKaydetOnKontrol() {
         /* Ham kart tek başına kaydedilebilir; boyalı varyant zorunlu değil */
@@ -10271,204 +10107,5 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         return stokEntries;
     }
     window.kumasKartStokEntriesFromSnap = kumasKartStokEntriesFromSnap;
-
-    function kumasVaryantMetaOlustur(v, vNo, anaKod) {
-        const cell = kumasVaryantAtkiDensify(v);
-        return {
-            kumas_varyant: true,
-            varyant_no: vNo,
-            ana_kod: anaKod,
-            renk: cell.renk,
-            renk_kodu: cell.renk_kodu,
-            boya_not: cell.boya_not
-        };
-    }
-
-    /** Ailenin (ana + boyalı varyantlar) DB hâlini cache'e yazar — kart tekrar açılınca görünsün */
-    async function kumasVaryantCacheTazele(anaKod) {
-        const ana = kumasAnaKodBul(anaKod);
-        if (!ana || typeof sb === 'undefined' || !sb) return;
-        const cols = (typeof ERP_SYNC_LIGHT_COLS !== 'undefined' && ERP_SYNC_LIGHT_COLS?.kumas_kutuphanesi)
-            || 'id,created_at,stok_kodu,desen_kodu,desen_adi,urun_adi,kumas_cinsi,firma,kalite,notlar,atki_renkleri,terbiye,boya_not';
-        try {
-            const legacy = kumasStokKodLegacyCompact(ana);
-            const orQ = [
-                `desen_kodu.eq.${ana}`,
-                `desen_kodu.like.${ana}-%`,
-                `stok_kodu.eq.${ana}`,
-                `stok_kodu.like.${ana}-%`
-            ];
-            if (legacy && legacy !== ana) orQ.push(`desen_kodu.eq.${legacy}`, `desen_kodu.like.${legacy}-%`);
-            const { data, error } = await sb.from('kumas_kutuphanesi').select(cols).or(orQ.join(','));
-            if (error || !Array.isArray(data)) return;
-            const list = dataCache.kumas_kutuphanesi || [];
-            const byId = new Map(list.map(x => [String(x.id), x]));
-            data.forEach(rec => {
-                const key = String(rec.id);
-                const onceki = byId.get(key);
-                const birlesik = onceki ? { ...onceki, ...rec } : rec;
-                delete birlesik._kumas_meta_cache;
-                delete birlesik._kumas_meta_src;
-                byId.set(key, birlesik);
-            });
-            dataCache.kumas_kutuphanesi = Array.from(byId.values());
-            if (typeof stockCards !== 'undefined') stockCards = dataCache.kumas_kutuphanesi;
-        } catch (e) {
-            console.warn('kumasVaryantCacheTazele', e?.message || e);
-        }
-    }
-    window.kumasVaryantCacheTazele = kumasVaryantCacheTazele;
-
-    async function kumasVaryantKayitlariSenkronize(anaPayload, ekMeta) {
-        const anaKod = kumasAnaKodBul(anaPayload?.desen_kodu || anaPayload?.stok_kodu || '');
-        if (!anaKod || kumasVaryantNoBul(anaPayload?.desen_kodu || '') > 0) {
-            return { ok: true, created: 0, updated: 0, skipped: true };
-        }
-        let varyantlar = kumasVaryantListesiNormalize(ekMeta?.kumas_varyantlar || ekMeta?.varyantlar);
-        /* Form eksik yüklendiyse kayıtlı varyantlar boş sayılmasın */
-        if (typeof kumasVaryantAileVerisiOku === 'function') {
-            let dbList = [];
-            try { dbList = kumasVaryantAileVerisiOku(anaKod) || []; } catch (e) { dbList = []; }
-            if (dbList.length) {
-                const birlesik = [];
-                const uzunluk = Math.max(varyantlar.length, dbList.length);
-                for (let n = 0; n < uzunluk; n++) {
-                    const formCell = varyantlar[n];
-                    const dbCell = dbList[n];
-                    birlesik.push(kumasVaryantFormDoluMu(formCell)
-                        ? formCell
-                        : (kumasVaryantFormDoluMu(dbCell) ? dbCell : (formCell || kumasVaryantBosHucre())));
-                }
-                varyantlar = birlesik;
-            }
-        }
-        const doluVaryantNolar = [];
-        for (let vNo = 1; vNo <= varyantlar.length; vNo++) {
-            if (kumasVaryantFormDoluMu(varyantlar[vNo - 1])) doluVaryantNolar.push(vNo);
-        }
-
-        /* Boyalı varyant yoksa ekstra DB turu yok — stok yazımı ana kayıt yolunda yapılır */
-        if (!doluVaryantNolar.length) {
-            return { ok: true, created: 0, updated: 0, skipped: true, anaKod };
-        }
-
-        let aileKayitlari = kumasAileKayitlariTopla(anaKod);
-        try {
-            if (typeof sb !== 'undefined' && sb) {
-                const legacy = typeof kumasStokKodLegacyCompact === 'function'
-                    ? kumasStokKodLegacyCompact(anaKod)
-                    : '';
-                const orQ = [
-                    `desen_kodu.eq.${anaKod}`,
-                    `desen_kodu.like.${anaKod}-%`,
-                    `stok_kodu.eq.${anaKod}`,
-                    `stok_kodu.like.${anaKod}-%`
-                ];
-                if (legacy && legacy !== anaKod) {
-                    orQ.push(`desen_kodu.eq.${legacy}`, `desen_kodu.like.${legacy}-%`);
-                }
-                const res = await sb.from('kumas_kutuphanesi').select('id,desen_kodu,stok_kodu,notlar,boya_not').or(orQ.join(','));
-                if (!res.error && Array.isArray(res.data)) aileKayitlari = res.data;
-            }
-        } catch (e) {}
-
-        const aileKayitBul = (varKod, vNo) => {
-            const hedef = String(varKod || '').trim().toUpperCase();
-            let hit = aileKayitlari.find(x => String(x.desen_kodu || x.stok_kodu || '').trim().toUpperCase() === hedef);
-            if (hit) return hit;
-            return aileKayitlari.find(x => {
-                const k = String(x.desen_kodu || x.stok_kodu || '').trim().toUpperCase();
-                return kumasAnaKodBul(k) === anaKod && kumasVaryantNoBul(k) === vNo;
-            }) || null;
-        };
-
-        const anaKodCanon = (typeof kumasStokKodCanon === 'function' ? kumasStokKodCanon(anaKod) : anaKod) || anaKod;
-        const user = String(anaPayload?.updated_by || (typeof erpCurrentUser !== 'undefined' && (erpCurrentUser?.display_name || erpCurrentUser?.username)) || '—');
-
-        let created = 0;
-        let updated = 0;
-        let skipped = 0;
-        const yazmaIsleri = [];
-
-        const hucreAyniMi = (a, b) => {
-            const x = kumasVaryantAtkiDensify(a);
-            const y = kumasVaryantAtkiDensify(b);
-            return x.renk === y.renk && x.renk_kodu === y.renk_kodu && x.boya_not === y.boya_not;
-        };
-
-        for (const vNo of doluVaryantNolar) {
-            const v = varyantlar[vNo - 1];
-            const varKod = kumasVaryantStokKodu(anaKod, vNo);
-            const existing = aileKayitBul(varKod, vNo);
-            const cell = kumasVaryantAtkiDensify(v);
-            const varMeta = kumasVaryantMetaOlustur(cell, vNo, anaKod);
-            const notlar = typeof kumasNotlarOlustur === 'function'
-                ? kumasNotlarOlustur('', varMeta)
-                : '';
-
-            if (existing?.id) {
-                const oldCell = typeof kumasVaryantKayittanHucre === 'function'
-                    ? kumasVaryantKayittanHucre(existing)
-                    : null;
-                if (oldCell && hucreAyniMi(oldCell, cell)) {
-                    skipped++;
-                    continue; /* Değişmemiş — ağ isteği yok */
-                }
-                /* İnce güncelleme — tüm ana kart alanlarını tekrar yazma */
-                yazmaIsleri.push(
-                    sb.from('kumas_kutuphanesi').update({
-                        notlar,
-                        boya_not: cell.boya_not || '',
-                        updated_by: user
-                    }).eq('id', existing.id)
-                        .then(res => ({ tip: 'upd', error: res.error }))
-                );
-                updated++;
-            } else {
-                const row = {
-                    desen_kodu: varKod,
-                    stok_kodu: varKod,
-                    desen_adi: anaPayload?.desen_adi || '',
-                    urun_adi: anaPayload?.urun_adi || '',
-                    firma: anaPayload?.firma || '',
-                    kumas_cinsi: anaPayload?.kumas_cinsi || '',
-                    ana_grup: anaPayload?.ana_grup || '',
-                    kalite: anaPayload?.kalite || 'AKTİF',
-                    atki_renkleri: anaPayload?.atki_renkleri || '',
-                    terbiye: '',
-                    boya_not: cell.boya_not || '',
-                    notlar,
-                    updated_by: user,
-                    kaynak_birim: 'KUMAS_KART_GIRIS'
-                };
-                yazmaIsleri.push(
-                    sb.from('kumas_kutuphanesi').insert([row])
-                        .then(res => ({ tip: 'ins', error: res.error }))
-                );
-                created++;
-            }
-        }
-
-        if (yazmaIsleri.length) {
-            /* Parça parça — 16 paralel istek yerine en fazla 4 */
-            for (let i = 0; i < yazmaIsleri.length; i += 4) {
-                const chunk = yazmaIsleri.slice(i, i + 4);
-                const results = await Promise.all(chunk);
-                const fail = results.find(r => r?.error);
-                if (fail?.error) return { ok: false, error: fail.error, created, updated, skipped };
-            }
-        }
-
-        /* Cache tazeleme arka planda — kaydı bekletmesin */
-        Promise.resolve().then(() => kumasVaryantCacheTazele(anaKod)).catch(() => {});
-        return { ok: true, created, updated, skipped, anaKod };
-    }
-    window.kumasVaryantKayitlariSenkronize = kumasVaryantKayitlariSenkronize;
-
-    /** Eski birleştirme mantığı kapatıldı — boyalı -N kayıtlar ana karta taşınmaz */
-    async function kumasVaryantYanlisCocukKayitlariTemizle() {
-        return { ok: true, skipped: true, silinen: 0, birlestirilen: 0 };
-    }
-    window.kumasVaryantYanlisCocukKayitlariTemizle = kumasVaryantYanlisCocukKayitlariTemizle;
 
 })();

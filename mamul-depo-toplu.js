@@ -95,7 +95,7 @@ function mamulTopluSiparisKaynakRows() {
     const seen = new Set();
     const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
     liste.forEach(sip => {
-        if (!sip || String(sip.durum || '').toUpperCase() === 'TAMAMLANDI') return;
+        if (!sip || (typeof siparisKapaliMi === 'function' ? siparisKapaliMi(sip) : String(sip.durum || '').toUpperCase() === 'TAMAMLANDI')) return;
         const kalemler = typeof siparisListeKalemleriArr === 'function'
             ? siparisListeKalemleriArr(sip)
             : (typeof uaSiparisKalemleriGetir === 'function' ? uaSiparisKalemleriGetir(sip) : []);
