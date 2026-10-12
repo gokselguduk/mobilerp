@@ -6285,7 +6285,12 @@ function loadData(opts) {
     if (table === 'siparisler' && appMode === 'SIPARIS_KAPANAN' && !siparisKapananAramaAktif) {
         listeHtml += siparisKapananDahaFazlaHtml(siparisKapananGosterilen, siparisKapananToplam);
     }
-    list.innerHTML = listeHtml;
+    /* Arama kutusu yazılırken SİLİNİP YENİDEN OLUŞTURULMAZ (12.10.2026): telefon klavyesi kelimeyi izlerken kutu
+       elinden alınıyor, yazarken takılma / harf kaçırma / imleç zıplaması oluyordu. Masaüstündeki 30.09 düzeltmesi
+       (07-render siparisListeAramaKutusuKoruyarakYaz, erp-core'dan) bu çiziciye hiç gelmemişti. */
+    const siparisYerinde = table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')
+        && typeof siparisListeAramaKutusuKoruyarakYaz === 'function' && siparisListeAramaKutusuKoruyarakYaz(list, listeHtml);
+    if (!siparisYerinde) list.innerHTML = listeHtml;
     if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL' && typeof mamulTopluTemizlemePanelInit === 'function') mamulTopluTemizlemePanelInit();
     if (appMode === 'KART_LISTE' && archiveTab === 'MAMUL' && window._mamulKartFiltreFocus?.id) {
         const el = document.getElementById(window._mamulKartFiltreFocus.id);
@@ -6303,7 +6308,8 @@ function loadData(opts) {
        hiç yazılmadığı için mobilde odak hiç geri gelmiyordu, her harften sonra alan yeniden seçilmek
        zorunda kalınıyordu. */
     if (window._siparisAramaFocus && table === 'siparisler' && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) {
-        const el = document.getElementById('f-siparis-q');
+        /* kutu yerinde kaldıysa odak/imleç zaten doğru — yeniden odaklamak klavyeyi bozar */
+        const el = siparisYerinde ? null : document.getElementById('f-siparis-q');
         if (el) {
             el.focus();
             const p = window._siparisAramaFocus.pos;
@@ -10515,4 +10521,61 @@ window.mobilKarsilamaKapat = mobilKarsilamaKapat;
     });
     window.addEventListener('online', () => { if (mobilKarsilamaAcik()) mobilKarsilamaCiz(); });
     window.addEventListener('offline', () => { if (mobilKarsilamaAcik()) mobilKarsilamaCiz(); });
+})();
+
+/* ── Yazılan arama kutusu yeniden çizimde yerinde kalır (12.10.2026) ────────────────────────────────────
+   Telefonda arama kutularına yazarken takılma: ekranlar süzgeç değişince kendi bölümlerini innerHTML ile
+   baştan yazıyor, yazılan kutu da siliniyor; klavye kelimeyi izlerken kutu elinden alınıyor (harf kaçırma,
+   imleç zıplaması, klavyenin kapanması). Taramada 6 ekranda kutu kayboluyordu (mamül depo, sevkiyat, dokuma
+   depo, dokuma takip, muhasebe fişi, fason). Kural: odaktaki bir ARAMA kutusunu içeren öğeye innerHTML
+   yazılırken yeni içerik aynı kimlikli kutuyu da içeriyorsa kutu ve üstündeki yol yerinde kalır, yalnız
+   çevresi yenilenir (sipariş listesindeki 07-render siparisListeAramaKutusuKoruyarakYaz'ın genel hâli).
+   Uymazsa (yeni içerikte kutu yok, yapı farklı) eskisi gibi baştan yazılır. Yalnız mobil; masaüstüne dokunmaz. */
+(function mobilAramaKutusuKoruyucu() {
+    const tanim = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    if (!tanim || !tanim.set || !tanim.get) return;
+    const aramaKutusuMu = (el) => !!el && !!el.id
+        && ((el.tagName === 'INPUT' && /^(text|search)$/i.test(el.type || 'text')) || el.tagName === 'TEXTAREA')
+        && (/ara|arama|search|filtre|(^|[-_])q$/i.test(el.id) || /ara|search/i.test(el.getAttribute('placeholder') || ''));
+    function yerindeYaz(kap, html, aktif) {
+        const sablon = document.createElement('template');
+        tanim.set.call(sablon, html);
+        const kok = sablon.content;
+        const yeni = kok.querySelector('#' + (window.CSS && CSS.escape ? CSS.escape(aktif.id) : aktif.id));
+        if (!yeni || yeni.tagName !== aktif.tagName) return false;
+        const eskiYol = [], yeniYol = [];
+        for (let n = aktif; n && n !== kap; n = n.parentNode) eskiYol.push(n);
+        for (let n = yeni; n && n !== kok; n = n.parentNode) yeniYol.push(n);
+        if (eskiYol.length !== yeniYol.length) return false;
+        for (let i = 0; i < eskiYol.length; i++) if (eskiYol[i].tagName !== yeniYol[i].tagName) return false;
+        /* yukarıdan aşağı: her katta yol düğümü kalır, kardeşleri yenileriyle değişir */
+        let eskiKap = kap, yeniKap = kok;
+        for (let i = eskiYol.length - 1; i >= 0; i--) {
+            const p = eskiYol[i], q = yeniYol[i];
+            [...eskiKap.childNodes].forEach(n => { if (n !== p) n.remove(); });
+            let once = true;
+            [...yeniKap.childNodes].forEach(n => {
+                if (n === q) { once = false; return; }
+                if (once) eskiKap.insertBefore(n, p); else eskiKap.appendChild(n);
+            });
+            if (i > 0) {   /* yol üstündeki kapsayıcının özellikleri yenisine eşitlenir; kutunun kendisi aynen kalır */
+                [...p.attributes].forEach(a => { if (!q.hasAttribute(a.name)) p.removeAttribute(a.name); });
+                [...q.attributes].forEach(a => { if (p.getAttribute(a.name) !== a.value) p.setAttribute(a.name, a.value); });
+            }
+            eskiKap = p; yeniKap = q;
+        }
+        return true;
+    }
+    Object.defineProperty(Element.prototype, 'innerHTML', {
+        configurable: true,
+        enumerable: tanim.enumerable,
+        get: tanim.get,
+        set(html) {
+            const aktif = document.activeElement;
+            if (aktif && aktif !== this && aramaKutusuMu(aktif) && this.contains(aktif)) {
+                try { if (yerindeYaz(this, String(html), aktif)) return; } catch (e) {}
+            }
+            tanim.set.call(this, html);
+        }
+    });
 })();

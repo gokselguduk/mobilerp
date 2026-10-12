@@ -43261,7 +43261,7 @@ function fasonTakipListeYenile() {
         <div class="panel-box" style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
             ${sekme('SIPARIS', '📋 Siparişler')}${sekme('FIRMA', '🏭 Firmalar & cari')}${sekme('DEFTER', '🕘 İşlem defteri')}
             <span style="flex:1"></span>
-            <input class="pro-input" placeholder="Ara: sipariş, müşteri, ürün, kumaş…" value="${pdfEsc(f.arama || '')}" oninput="fasonTakipFiltreGuncelle('arama', this.value)" style="min-width:180px;flex:1;max-width:280px;padding:6px 10px">
+            <input id="fason-takip-ara" class="pro-input" placeholder="Ara: sipariş, müşteri, ürün, kumaş…" value="${pdfEsc(f.arama || '')}" oninput="fasonTakipFiltreGuncelle('arama', this.value)" style="min-width:180px;flex:1;max-width:280px;padding:6px 10px">
             <select class="pro-input" onchange="fasonTakipFiltreGuncelle('firma', this.value)" style="width:auto;min-width:150px;padding:6px 10px">
                 <option value="HEPSI">Tüm fason firmalar</option>${firmaSet.map(x => `<option value="${pdfEsc(x)}" ${f.firma === x ? 'selected' : ''}>${pdfEsc(x)}</option>`).join('')}
             </select>
