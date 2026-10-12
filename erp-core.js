@@ -3033,81 +3033,66 @@ function dokumaDepoSiparisIdBul(row) {
     return sip?.id ?? null;
 }
 
-async function dtDokumaDepoKdSevkMiktarDus(row, miktar) {
-    // Depo sevk: yalnızca girisler (depo kalan) güncellenir.
-    // toplam_metre/kg/adet = Dokuma Takip brüt üretim — sevk ile düşürülmez (sipariş detay).
-    const refs = Array.isArray(row?.kalem_refs) && row.kalem_refs.length
-        ? row.kalem_refs
-        : [{ siparis_id: row.siparis_id || row.siparis_ids?.[0], kalem_idx: row.kalem_idx }].filter(r => r.siparis_id != null);
-    if (!refs.length) return false;
-
-    let kalanMt = parseFloat(miktar.mt) || 0;
-    let kalanKg = parseFloat(miktar.kg) || 0;
-    let kalanAd = parseInt(miktar.adet, 10) || 0;
-    if (kalanMt <= 0 && kalanKg <= 0 && kalanAd <= 0) return false;
-
-    for (const ref of refs) {
-        if (kalanMt <= 0 && kalanKg <= 0 && kalanAd <= 0) break;
-        const sipId = ref.siparis_id;
-        let kalemIdx = ref.kalem_idx;
-        const sip = (dataCache.siparisler || []).find(s => String(s.id) === String(sipId));
-        let kalemler = [];
-        try { kalemler = typeof sip?.cins === 'string' ? JSON.parse(sip.cins) : (sip?.cins || []); } catch (e) {}
-        if (kalemIdx == null && row.kalem) {
-            kalemIdx = kalemler.findIndex(k => dtDokumaStokBirlestirmeAnahtari(sip, k) === row._birlestirKey);
-        }
-        if (!Number.isFinite(kalemIdx) || kalemIdx < 0) continue;
-
-        const kd = await dtGetKd(sipId);
-        const u = kd?.urunler?.[kalemIdx];
-        if (!u) continue;
-
-        const yeniGirisler = [];
-        let dusMt = 0;
-        let dusKg = 0;
-        let dusAd = 0;
-        for (const g of (u.girisler || [])) {
-            if (!dtDokumaDepoTarihBugunVeSonrasi(dtDokumaDepoGirisTarihDegeri(g))) {
-                yeniGirisler.push(g);
-                continue;
-            }
-            if (kalanMt <= 0 && kalanKg <= 0 && kalanAd <= 0) {
-                yeniGirisler.push(g);
-                continue;
-            }
-            let gm = parseFloat(g.metre || 0) || 0;
-            let gk = parseFloat(g.kg || 0) || 0;
-            let ga = parseInt(g.adet || 0, 10) || 0;
-            const dm = Math.min(gm, kalanMt);
-            const dk = Math.min(gk, kalanKg);
-            const da = Math.min(ga, kalanAd);
-            gm -= dm;
-            gk -= dk;
-            ga -= da;
-            dusMt += dm;
-            dusKg += dk;
-            dusAd += da;
-            kalanMt -= dm;
-            kalanKg -= dk;
-            kalanAd -= da;
-            if (gm > 0 || gk > 0 || ga > 0) {
-                yeniGirisler.push({ ...g, metre: gm || null, kg: gk || null, adet: ga || null });
-            }
-        }
-        u.girisler = yeniGirisler;
-        await dtSetKd(sipId, kd);
-        _kdCache[`KD_DOKUMA_${sipId}`] = kd;
+/**
+ * Dokuma Depo sevk defteri yazıcısı (12.10.2026; okuyucu 04 dokumaDepoSevkDefteriOku). Sevk dokuma girişlerini
+ * (KD_DOKUMA girisler) artık KÜÇÜLTMEZ — eskiden küçültüyordu, sevk edilen mal raporlarda ve Tezgah Planlama'nın
+ * "dokunan"ında da düşüyordu. Kalem başına kumas_stok ÇIKIŞ satırı yazılır: [DD_V2] + siparis_id + kalem_idx
+ * (sipariş satırı → Simteks kumaş bakiyesine karışmaz). Kaynak: müşteriye DEPO_HAREKET_KUMAS (yükleme sayılır,
+ * eskisi gibi), iç sevkte DOKUMA_DEPO_SEVK (müşteri yüklemesi sayılmaz). Birleşik depo satırında miktar kalemlere
+ * kalanlarıyla sırayla dağıtılır; tek insert (hepsi ya da hiçbiri). Dönen: { satirlar, ids } ya da { hata }.
+ * Dokuma Paneli (tablet) aynı satırı yazar (ddSevkYaz).
+ */
+async function dokumaDepoSevkDefterYaz(rowId, row, miktar, ctx) {
+    const kalanlar = Object.entries(row?.kalem_kalan || {});
+    if (!kalanlar.length) return { hata: 'Depo satırının kalemi bulunamadı — Dokuma Depo ekranını yenileyin.' };
+    const { hedef, hedefLabel, user, ts, musteriAd, terbiyeBag, siparisId } = ctx || {};
+    let kMt = parseFloat(miktar.mt) || 0;
+    let kKg = parseFloat(miktar.kg) || 0;
+    let kAd = parseInt(miktar.adet, 10) || 0;
+    const lotNo = String(row.lot_no || '').trim();
+    const sipMap = new Map((dataCache.siparisler || []).map(s => [String(s.id), s]));
+    const satirlar = [];
+    kalanlar.forEach(([anahtar, k], i) => {
+        if (kMt <= 0 && kKg <= 0 && kAd <= 0) return;
+        const son = i === kalanlar.length - 1;   // son kalem kalanı alır (toplam, çağıranda depo kalanıyla sınırlı)
+        const mt = son ? kMt : Math.min(kMt, k.mt || 0);
+        const kg = son ? kKg : Math.min(kKg, k.kg || 0);
+        const ad = son ? kAd : Math.min(kAd, k.ad || 0);
+        kMt -= mt; kKg -= kg; kAd -= ad;
+        if (mt <= 0 && kg <= 0 && ad <= 0) return;
+        const [sid, ki] = anahtar.split('|');
+        const sno = String(sipMap.get(sid)?.sno || '').trim() || lotNo.split(',')[0].trim();
+        const lotTag = sno ? `[LOT_NO:${sno}]` : '';
+        const terbiyeTag = terbiyeBag && typeof terbiyeSevkNotEtiketi === 'function' ? terbiyeSevkNotEtiketi(terbiyeBag, '[SEVK_YER:BOYAHANE]') : '';
+        const hedefSip = hedef === 'KONFEKSIYON' && siparisId ? ` [SEVK_HEDEF_SIPARIS:${siparisId}]` : '';
+        satirlar.push({
+            stok_kodu: String(row.stok_kodu || sno || '').trim(),
+            kumas_cinsi: row.kumas_cinsi || '',
+            lot_no: sno,
+            siparis_sno: sno,
+            kumas_rengi: row.renk || '',
+            firma: hedef === 'MUSTERI' ? String(musteriAd || '').toUpperCase() : (row.firma || ''),
+            siparis_id: /^\d+$/.test(sid) ? Number(sid) : sid,
+            kalem_idx: parseInt(ki, 10),
+            miktar_mt: mt > 0 ? -mt : 0,
+            miktar_kg: kg > 0 ? -kg : 0,
+            cuval_sayisi: ad > 0 ? ad : 0,
+            islem_turu: 'ÇIKIŞ',
+            kaynak_birim: hedef === 'MUSTERI' ? 'DEPO_HAREKET_KUMAS' : 'DOKUMA_DEPO_SEVK',
+            updated_by: user,
+            notlar: `[DOKUMA_DEPO_SEVK]${DOKUMA_DEPO_SEVK_ETIKET}[SEVK_YER:${hedef}]${lotTag}${terbiyeTag} KD:${rowId} · ${ts} · ${user}${hedefSip}`,
+            islem_gecmisi: `✨ ${ts} — Dokuma Depo → ${hedefLabel} · ${sno} kalem ${parseInt(ki, 10) + 1} · ${mt.toFixed(2)} mt / ${kg.toFixed(2)} kg / ${ad} adet · ${user}`
+        });
+    });
+    if (!satirlar.length) return { hata: 'Sevk miktarı depo kalanından düşülemedi.' };
+    const { data, error } = await sb.from('kumas_stok').insert(satirlar).select('id');
+    if (error) return { hata: error.message || String(error) };
+    const ids = (data || []).map(r => r.id);
+    if (Array.isArray(dataCache.kumas_stok)) {
+        const simdi = new Date().toISOString();
+        satirlar.forEach((p, i) => dataCache.kumas_stok.unshift({ ...p, id: ids[i] || ('tmp-sevk-' + Date.now() + '-' + i), created_at: simdi }));
     }
-    const istenenMt = parseFloat(miktar.mt) || 0;
-    const istenenKg = parseFloat(miktar.kg) || 0;
-    const istenenAd = parseInt(miktar.adet, 10) || 0;
-    const dusulenMt = istenenMt - Math.max(0, kalanMt);
-    const dusulenKg = istenenKg - Math.max(0, kalanKg);
-    const dusulenAd = istenenAd - Math.max(0, kalanAd);
-    return (istenenMt <= 0 || dusulenMt >= istenenMt - 0.001)
-        && (istenenKg <= 0 || dusulenKg >= istenenKg - 0.001)
-        && (istenenAd <= 0 || dusulenAd >= istenenAd - 0.001)
-        && (dusulenMt > 0 || dusulenKg > 0 || dusulenAd > 0);
+    return { satirlar, ids };
 }
 
 function dokumaDepoKdSatirMi(row) {
@@ -3174,6 +3159,7 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
     const { hedef, siparisId, kg, mt, adet, user, ts, hedefLabel, kalanKg, kalanMt, kalanAd, skipReload, silentToast, terbiyeBag } = opts;
     const stokKodu = String(row.stok_kodu || row.lot_no || '').trim();
     const lotNo = String(row.lot_no || '').trim();
+    const lotTag = lotNo ? `[LOT_NO:${lotNo}]` : '';
     const kapandi = Math.max(0, kalanKg - kg) <= 0 && Math.max(0, kalanMt - mt) <= 0 && Math.max(0, kalanAd - adet) <= 0;
     const musteriAd = dokumaDepoSevkMusteriAdiCoz(row, { hedef, siparisId });
     if (hedef === 'MUSTERI' && !musteriAd) {
@@ -3181,47 +3167,15 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
         return false;
     }
 
-    const dusOk = await dtDokumaDepoKdSevkMiktarDus(row, { mt, kg, adet });
-    if (!dusOk) {
-        if (!silentToast) erpToast('Dokuma Takip kaydı güncellenemedi.', 'error');
+    /* Sevk defteri: kalem başına ÇIKIŞ satırı (geçmiş de budur); dokuma girişleri değişmez */
+    const defter = await dokumaDepoSevkDefterYaz(rowId, row, { mt, kg, adet }, { hedef, hedefLabel, user, ts, musteriAd, terbiyeBag, siparisId });
+    if (defter.hata) {
+        if (!silentToast) erpToast('Sevk yazılamadı: ' + defter.hata, 'error');
         return false;
     }
-
-    // Sevk geçmişi için kalıcı ÇIKIŞ kaydı (KD satırları da geçmişte görünsün)
-    const sevkNotExtra = hedef === 'KONFEKSIYON' && siparisId ? ` [SEVK_HEDEF_SIPARIS:${siparisId}]` : '';
-    const lotTag = lotNo ? `[LOT_NO:${lotNo}]` : '';
-    const histNot = `[DOKUMA_DEPO_SEVK][SEVK_YER:${hedef}]${lotTag}${terbiyeBag && typeof terbiyeSevkNotEtiketi === 'function' ? terbiyeSevkNotEtiketi(terbiyeBag, '[SEVK_YER:BOYAHANE]') : ''} KD:${rowId} · ${ts} · ${user}${sevkNotExtra}`;
-    const histPayload = {
-        stok_kodu: stokKodu,
-        kumas_cinsi: row.kumas_cinsi || '',
-        lot_no: lotNo,
-        marka: row.marka || '',
-        renk: row.renk || '',
-        firma: hedef === 'MUSTERI' ? musteriAd.toUpperCase() : (row.firma || ''),
-        miktar_kg: kg > 0 ? -kg : 0,
-        miktar_mt: mt > 0 ? -mt : 0,
-        cuval_sayisi: adet > 0 ? adet : 0,
-        islem_turu: 'ÇIKIŞ',
-        kaynak_birim: 'DEPO_HAREKET_KUMAS',
-        updated_by: user,
-        notlar: histNot,
-        islem_gecmisi: `✨ ${ts} — Dokuma Depo → ${hedefLabel} · KD:${rowId} · ${kg.toFixed(2)} kg / ${mt.toFixed(2)} mt / ${adet} adet`
-    };
-    const histRes = await sbInsertRetryDropMissing('kumas_stok', [histPayload]);
-    let histId = null;
-    if (histRes.error) {
-        console.warn('dokumaDepoSevkEtKd geçmiş kaydı', histRes.error, histRes.dropped);
-        erpToast('Sevk yapıldı ama geçmiş kaydı yazılamadı: ' + histRes.error.message, 'warn');
-    } else if (Array.isArray(dataCache.kumas_stok)) {
-        const cacheRow = { ...histPayload };
-        (histRes.dropped || []).forEach(c => { try { delete cacheRow[c]; } catch (e) {} });
-        histId = 'tmp-sevk-' + Date.now();
-        dataCache.kumas_stok.unshift({
-            ...cacheRow,
-            id: histId,
-            created_at: new Date().toISOString()
-        });
-    }
+    /* Muhasebe fişi tek hareket ister: kalemlerin toplamı */
+    const histPayload = { ...defter.satirlar[0], miktar_mt: mt > 0 ? -mt : 0, miktar_kg: kg > 0 ? -kg : 0, cuval_sayisi: adet > 0 ? adet : 0 };
+    const histId = defter.ids[0] || null;
 
     if (hedef === 'KONFEKSIYON') {
         const kalemMeta = konfPipelineKalemNotMeta(siparisId, row);
@@ -3265,7 +3219,9 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
             notlar: JSON.stringify(notPayload)
         }]);
         if (akisErr) {
-            if (!silentToast) erpToast(`Konfeksiyon kaydı oluşturulamadı: ${akisErr.message}`, 'error');
+            const { error: geriErr } = await sb.from('kumas_stok').delete().in('id', defter.ids);
+            if (!geriErr && Array.isArray(dataCache.kumas_stok)) dataCache.kumas_stok = dataCache.kumas_stok.filter(r => !defter.ids.includes(r.id));
+            if (!silentToast) erpToast(`Konfeksiyon kaydı oluşturulamadı: ${akisErr.message}${geriErr ? ' — DİKKAT: depodan düşüldü, geri alınamadı (' + geriErr.message + ')' : ' — sevk geri alındı'}`, 'error');
             return false;
         }
         try {
@@ -3274,7 +3230,7 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
         } catch (e) { console.warn('konfPipelineSiparisDurumSenkron', e); }
     } else if (hedef === 'BOYAHANE') {
         /* Çıkış yukarıda yazıldı; boya işi seçildiyse gönderimi olarak bağla (müşteriye teslimde bir şey yazılmaz) */
-        if (terbiyeBag && !histRes.error && typeof terbiyeSevkBagla === 'function') {
+        if (terbiyeBag && typeof terbiyeSevkBagla === 'function') {
             await terbiyeSevkBagla(terbiyeBag, 'KUMAS', { kumas_kodu: stokKodu, kumas_ad: row.kumas_cinsi || '', lot_no: lotNo, mt, kg, top: adet, tarih: fasonBugun() }, 'kumas_stok');
         }
     } else if (hedef === 'GENEL_DEPO') {
@@ -3293,22 +3249,6 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
         };
         const gdRes = await sbInsertRetryDropMissing('kumas_stok', [genelPayload]);
         if (gdRes.error) erpToast(`Genel Depo kaydı oluşturulamadı: ${gdRes.error.message}`, 'warn');
-    } else if (hedef === 'MUSTERI') {
-        const msPayload = {
-            stok_kodu: stokKodu,
-            kumas_cinsi: row.kumas_cinsi || '',
-            lot_no: lotNo,
-            renk: row.renk || '',
-            firma: row.firma || '',
-            miktar_kg: kg,
-            miktar_mt: mt,
-            cuval_sayisi: adet,
-            islem_turu: 'GİRİŞ',
-            kaynak_birim: 'DOKUMA_DEPO_SEVK',
-            notlar: `[SEVK_YER:MUSTERI]${lotTag} KD:${rowId} · ${ts}`
-        };
-        const msRes = await sbInsertRetryDropMissing('kumas_stok', [msPayload]);
-        if (msRes.error) erpToast(`Müşteri sevk kaydı oluşturulamadı: ${msRes.error.message}`, 'warn');
     }
 
     if (!skipReload) _dokumaDepoKdSatirlariCache = [];
@@ -3319,15 +3259,8 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
         if (fis?.fis_no) mfNo = fis.fis_no;
         try {
             if (typeof sevkiyatKumasCikisSiparisYuklemeIsle === 'function') {
-                const ki = row.kalem_idx ?? row.not_json?.kalem_idx
-                    ?? (Array.isArray(row.kalem_refs) && row.kalem_refs[0] ? row.kalem_refs[0].kalem_idx : null);
-                await sevkiyatKumasCikisSiparisYuklemeIsle([{
-                    ...histPayload,
-                    siparis_id: siparisId || dokumaDepoSiparisIdBul(row),
-                    kalem_idx: ki,
-                    lot_no: lotNo,
-                    islem_turu: 'ÇIKIŞ'
-                }], { kaynak: 'DOKUMA_DEPO_MUSTERI' });
+                /* Defter satırları kalem kalem (siparis_id + kalem_idx taşır) */
+                await sevkiyatKumasCikisSiparisYuklemeIsle(defter.satirlar.map(p => ({ ...p, islem_turu: 'ÇIKIŞ' })), { kaynak: 'DOKUMA_DEPO_MUSTERI' });
             }
         } catch (e) { console.warn('dokuma KD müşteri→sipariş yükleme', e); }
     }
@@ -5020,7 +4953,9 @@ function getDetailedChangeLog() {
     const satirlar = degisen.map(d =>
         `  • ${d.label}: "${d.oldVal}" ➔ "${d.newVal}"`
     ).join("\n");
-    return `\n═══════════════════════════════\n🔄 ${tarih} — [Güncelleme]\n${satirlar}`;
+    /* Değiştiren kişi yazılır (09.10.2026; önceden "[Güncelleme]" yazıyordu, kim değiştirdi görünmüyordu) */
+    const kisi = String(erpCurrentUser?.display_name || erpCurrentUser?.username || '').trim() || 'Güncelleme';
+    return `\n═══════════════════════════════\n🔄 ${tarih} — [${kisi}]\n${satirlar}`;
 }
 
 // --- DİAGNOSTİCS ---
@@ -9880,15 +9815,17 @@ async function planlamaIhtiyacSevkKaydet(siparisId, kalemIdx, el) {
         delete _planlamaIhtiyacSevkTaslak[tKey];
         return;
     }
-    /* Veri bekçisi (26-veri-bekcisi.js): sipariş / kalite aşımı — sorulur, engellemez */
+    /* Veri bekçisi (26-veri-bekcisi.js): sipariş / kalite aşımı, ikiz giriş — sorulur, engellemez */
+    let ikizOnaylandi = false;
     if (eklenen > 0 && typeof erpSevkGirisUyarilari === 'function') {
         const veriUyari = await erpSevkGirisUyarilari([{ sid, ki, adet: eklenen }]);
         if (veriUyari.length && !(await erpAskConfirm(`⚠ KONTROL EDİN:\n• ${veriUyari.join('\n• ')}\n\n+${eklenen} yine de eklensin mi?`))) return;
+        ikizOnaylandi = !!veriUyari.ikizKalemler?.has(`${sid}|${ki}`);
     }
     try {
         if (el) el.disabled = true;
         const isaret = eklenen > 0 ? `+${eklenen}` : String(eklenen);
-        const yazilan = await planlamaIhtiyacSevkToplamYazGuvenli(sid, ki, hedef, `Sipariş ihtiyaç ${isaret}`, { onceki, delta: eklenen });
+        const yazilan = await planlamaIhtiyacSevkToplamYazGuvenli(sid, ki, hedef, `Sipariş ihtiyaç ${isaret}${ikizOnaylandi ? ' · ikiz uyarısı onaylandı' : ''}`, { onceki, delta: eklenen });
         sevkiyatYuklemeCacheYaz(sid, ki, yazilan);
         delete _planlamaIhtiyacSevkTaslak[tKey];
         if (el) el.value = '';
@@ -18330,11 +18267,40 @@ function dtKdDokumaVeriSkoru(v) {
     return s;
 }
 
+/* Dokuma Depo sevk defteri (12.10.2026): sevk artık dokuma girişlerini (KD_DOKUMA girisler) küçültmez —
+   eskiden küçültüyordu, sevk edilen mal raporlarda ve Tezgah Planlama'nın "dokunan"ında da düşüyordu.
+   Her sevk kalem başına kumas_stok ÇIKIŞ satırı yazar (02 dokumaDepoSevkDefterYaz): notlarda [DD_V2],
+   siparis_id + kalem_idx (sipariş satırı → Simteks kumaş bakiyesine karışmaz). Depoda kalan =
+   31.07 sonrası girişler − bu satırlar. V2 öncesi 18 sevk girişleri zaten küçültmüştü; etiketsiz
+   oldukları için ikinci kez düşülmez. Dokuma Paneli (tablet) aynı kuralı taşır (ddDefterOku). */
+const DOKUMA_DEPO_SEVK_ETIKET = '[DD_V2]';
+async function dokumaDepoSevkDefteriOku() {
+    const m = new Map();
+    const { data, error } = await sbTumSatirlar(() => sb.from('kumas_stok')
+        .select('id,siparis_id,kalem_idx,miktar_mt,miktar_kg,cuval_sayisi')
+        .like('notlar', '%' + DOKUMA_DEPO_SEVK_ETIKET + '%')
+        .order('id', { ascending: true }));
+    if (error) throw error;
+    (data || []).forEach(r => {
+        const ki = parseInt(r.kalem_idx, 10);
+        if (r.siparis_id == null || !Number.isFinite(ki)) return;
+        const k = `${r.siparis_id}|${ki}`;
+        const t = m.get(k) || { mt: 0, kg: 0, ad: 0 };
+        t.mt += Math.abs(parseFloat(r.miktar_mt) || 0);
+        t.kg += Math.abs(parseFloat(r.miktar_kg) || 0);
+        t.ad += Math.abs(parseInt(r.cuval_sayisi, 10) || 0);
+        m.set(k, t);
+    });
+    return m;
+}
+
 async function dtDokumaDepoKdTopluYukle() {
     const siparisler = dataCache.siparisler || [];
     const sipMap = new Map(siparisler.map(s => [String(s.id), s]));
     const kdBySiparis = new Map();
     let topluTam = false;
+    /* Sevk defteri dokuma kayıtlarıyla aynı anda okunur; okunamazsa depo GÖSTERİLMEZ (fazla görünüp ikinci kez sevk edilmesin) */
+    const defterSoz = dokumaDepoSevkDefteriOku().then(m => ({ m }), e => ({ e }));
 
     try {
         /* Sayfalı: sunucu tek istekte 1000 satır verir (01.10.2026: 174 KD_DOKUMA satırı, büyüyor) */
@@ -18407,6 +18373,9 @@ async function dtDokumaDepoKdTopluYukle() {
     if (typeof sbKdGetMany === 'function' && typeof kumasPlaniKalemKumasi === 'function' && kdBySiparis.size) {
         try { await sbKdGetMany([...kdBySiparis.keys()], 'KD_URUN_AGACI'); } catch (e) { console.warn('dokuma depo ürün ağacı', e); }
     }
+    const defterSonuc = await defterSoz;
+    if (defterSonuc.e) throw new Error('Sevk kayıtları okunamadı: ' + (defterSonuc.e.message || defterSonuc.e));
+    const sevkDefteri = defterSonuc.m;
     const birlestirMap = new Map();
     kdBySiparis.forEach((kd, sid) => {
         const sip = sipMap.get(sid) || { id: sid, firma: '', sno: '' };
@@ -18442,6 +18411,16 @@ async function dtDokumaDepoKdTopluYukle() {
                     if (gd && (!sonTarih || gd > sonTarih)) sonTarih = gd;
                 });
             }
+            /* Sevk defteri: bu kalemden sevk edilen düşülür (girişler olduğu gibi kalır) */
+            const sv = sevkDefteri.get(`${sid}|${idx}`);
+            if (sv) {
+                mt = Math.max(0, mt - sv.mt); kg = Math.max(0, kg - sv.kg); ad = Math.max(0, ad - sv.ad);
+                if (mt < 0.001) mt = 0;
+                if (kg < 0.001) kg = 0;
+            }
+            /* Tarih süzgeci kalem başına (eskiden birleşik satırda): son girişi 31.07'den eski kalem depoda sayılmaz —
+               Dokuma Paneli de böyle sayar, iki ekran kalem kalem aynı sonucu verir */
+            if (!sonTarih || sonTarih.getTime() < dtDokumaDepoListeBaslangic().getTime()) return;
             if (mt <= 0 && kg <= 0 && ad <= 0) return;
             const kalem = kalemler[idx] || {};
             /* Birleştirme anahtarı kalemden kalır (eski depo satırları kopmasın); görünen ad, renk (HAM)
@@ -18470,6 +18449,7 @@ async function dtDokumaDepoKdTopluYukle() {
                     kalem,
                     kalem_idx: idx,
                     kalem_refs: [{ siparis_id: sid, kalem_idx: idx }],
+                    kalem_kalan: {},
                     created_at: null
                 });
             }
@@ -18477,6 +18457,8 @@ async function dtDokumaDepoKdTopluYukle() {
             row.miktar_mt += mt;
             row.miktar_kg += kg;
             row.cuval_sayisi += ad;
+            /* Birleşik satırda (aynı ürün+renk, birden çok kalem) sevk kalemlere bu kalanlarla dağıtılır */
+            row.kalem_kalan[`${sid}|${idx}`] = { mt, kg, ad };
             if (!row.kalem_refs.some(x => String(x.siparis_id) === sid)) {
                 row.kalem_refs.push({ siparis_id: sid, kalem_idx: idx });
             }
@@ -18591,6 +18573,7 @@ async function renderDokumaDepoIcerik(opts) {
         }
     } catch (e) {
         console.warn('renderDokumaDepoIcerik', e);
+        if (typeof erpToast === 'function') erpToast('Dokuma Depo okunamadı: ' + (e.message || e), 'error');
         rows = [];
     }
 
@@ -19499,6 +19482,26 @@ async function dtKaydetKalemler(indices, opts = {}) {
     let birSeyGirildi = false;
     const yeniGirisler = [];
 
+    /* İkiz top uyarısı (D-09, 26-veri-bekcisi): aynı kaleme aynı metre/kg/adet son 15 dk'da (Dokuma Panel,
+       Tezgah Planlama, başka bilgisayar) girildiyse sorulur. Kutular boşalmadan ve KD değişmeden ÖNCE —
+       vazgeçilirse girilen değerler yerinde kalır. Değerler aşağıdaki döngüyle aynı birim kuralıyla okunur. */
+    let ikizIz = {};
+    if (typeof erpDokumaIkizOnay === 'function') {
+        const deger = (id) => document.getElementById(id)?.value || 0;
+        const adaylar = idxList.map((i) => {
+            const kb = typeof kumasPlaniKalemKumasi === 'function' ? kumasPlaniKalemKumasi(siparis, i) : null;
+            const tip = dtKalemIkinciBirimTip(kb ? kb.kalem : (kalemler[i] || {}));
+            return { i, metre: parseFloat(deger('dt-input-metre-' + i)) || 0,
+                kg: tip === 'KG' ? (parseFloat(deger('dt-input-kg-' + i)) || 0) : 0,
+                adet: tip === 'ADET' ? (parseInt(deger('dt-input-adet-' + i)) || 0) : 0 };
+        });
+        ikizIz = await erpDokumaIkizOnay(dtSeciliSiparisId, adaylar);
+        if (ikizIz === null) {
+            if (!opts.sessiz) erpToast('Kayıt yapılmadı — aynı kaleme aynı top az önce girilmiş.', 'info', 3500);
+            return false;
+        }
+    }
+
     for (const i of idxList) {
         /* Kumaş planı: kumaşın ilk kalemi kumaşın kendisidir (yalnız metre, giriş kumaş işaretli) */
         const kb = typeof kumasPlaniKalemKumasi === 'function' ? kumasPlaniKalemKumasi(siparis, i) : null;
@@ -19534,6 +19537,7 @@ async function dtKaydetKalemler(indices, opts = {}) {
             tarih,
             tarih_iso: tarihIso,
             gid: 'dt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+            ...(ikizIz && ikizIz[i] ? { ikiz_onaylandi: ikizIz[i] } : {}),
             ...dtTezgahGirisAlanlari(i),
             ...(kayitUser ? { user: kayitUser, kullanici: kayitUser } : {})
         });
@@ -21139,10 +21143,18 @@ async function tpDokumaGirisiYaz(is, metre, kg, adet) {
         ...(kullanici && kullanici !== '—' ? { user: kullanici, kullanici } : {})
     };
     let sonHata = null;
+    let ikizSoruldu = false;
     for (let deneme = 0; deneme < 3; deneme++) {
         let taze;
         try { taze = await tpKdDokumaOku(sid); } catch (e) { sonHata = e; continue; }
         const kd = taze.kd || {};
+        /* İkiz top uyarısı (D-09, 26-veri-bekcisi): ilk taze okumada bir kez — aynı kaleme aynı top son 15 dk'da */
+        if (!ikizSoruldu && typeof erpDokumaIkizOnay === 'function') {
+            ikizSoruldu = true;
+            const iz = await erpDokumaIkizOnay(sid, [{ i: kalemIdx, metre, kg, adet }], kd);
+            if (iz === null) { const e = new Error('İkiz top uyarısı — kayıt yapılmadı.'); e.ikizIptal = true; throw e; }
+            if (iz[kalemIdx]) giris.ikiz_onaylandi = iz[kalemIdx];
+        }
         if (!kd.urunler) kd.urunler = {};
         if (!kd.urunler[kalemIdx]) kd.urunler[kalemIdx] = { toplam_metre: 0, toplam_kg: 0, toplam_adet: 0, girisler: [] };
         const u = kd.urunler[kalemIdx];
@@ -21205,7 +21217,8 @@ async function tpDokumaGirKaydet(isId) {
             || (tpNum(g.hedef_adet) > 0 && tpNum(g.dokunan_adet) > tpNum(g.hedef_adet));
         erpToast(`${tpIsGosterimBilgisi(i).siparis_sno} · +${tpFmt(metre)} m kaydedildi${fazla ? ' — hedef aşıldı, fazlalık işlendi' : ''}.`, 'success');
     } catch (e) {
-        erpToast('Dokuma girişi kaydedilemedi: ' + (e.message || e), 'error');
+        if (e && e.ikizIptal) erpToast('Kayıt yapılmadı — aynı kaleme aynı top az önce girilmiş.', 'info', 3500);
+        else erpToast('Dokuma girişi kaydedilemedi: ' + (e.message || e), 'error');
         if (btn) { btn.disabled = false; btn.textContent = 'Kaydet'; }
     }
 }
@@ -28279,6 +28292,15 @@ async function konfKaydet(tip) {
         });
         if (!(await konfSiparisAsimOnay(asimSatir))) { erpToast('Kayıt iptal edildi — hiçbir şey yazılmadı.', 'info', 3000); return; }
     }
+    /* İkiz kalite uyarısı (D-09, 26-veri-bekcisi): aynı kaleme aynı kalite adedi son 15 dk'da
+       (ana program ya da Konfeksiyon Panel) girildiyse yazmadan önce sorulur; onaylanırsa günlük satırı iz taşır. */
+    let kaliteIkizIz = {};
+    if (tip === 'kk' && typeof erpKaliteIkizOnay === 'function') {
+        kaliteIkizIz = await erpKaliteIkizOnay(konfeksiyonSiparisId, Object.keys(konfDraft.kalem || {}).map((idx) => ({
+            kalemIdx: parseInt(idx, 10), adet: parseInt((konfDraft.kalem[idx] || {}).kk_gecen || 0, 10) || 0
+        })));
+        if (kaliteIkizIz === null) { erpToast('Kayıt yapılmadı — aynı kaleme aynı kalite adedi az önce girilmiş.', 'info', 3500); return; }
+    }
 
     const kalemAlanMap = {
         kesim: ['kesilen','fire_kesim'],
@@ -28459,6 +28481,7 @@ async function konfKaydet(tip) {
                     kalem_renk: kalemRenk,
                     kalem_ebat: kalemEbat,
                     konf_panel: true,
+                    ...(tip === 'kk' && kaliteIkizIz && kaliteIkizIz[idx] ? { ikiz_onaylandi: kaliteIkizIz[idx] } : {}),
                     deltas,
                     detay: {
                         tip: String(tip || ''),
@@ -38104,7 +38127,11 @@ function erpShowLoginScreen() {
         document.body.appendChild(overlay);
     }
 
-    overlay.innerHTML = `
+    /* Mobil ERP kendi giriş görünümünü verebilir (12.10.2026, Dokuma/Konfeksiyon panelindeki giriş ekranı gibi;
+       assets/mobil/mobil-app.js erpGirisEkraniHtml). Alan kimlikleri aynı kalmalı: erp-login-user / -pass /
+       -error / -btn / erp-show-pass — giriş mantığı değişmez. Masaüstünde tanımlı değil → aşağıdaki görünüm. */
+    const ozelGorunum = typeof window.erpGirisEkraniHtml === 'function' ? window.erpGirisEkraniHtml() : '';
+    overlay.innerHTML = ozelGorunum || `
     <div style="width:100%;max-width:400px">
         <div style="text-align:center;margin-bottom:32px">
             <div style="width:60px;height:60px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:18px;display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;box-shadow:0 8px 28px rgba(109,113,255,0.4)">🧵</div>
@@ -38146,7 +38173,11 @@ function erpShowLoginScreen() {
         </div>
     </div>`;
 
-    setTimeout(() => document.getElementById('erp-login-user')?.focus(), 80);
+    /* Mobilde karşılama ekranı açıkken klavye arkada açılmasın (erpGirisOdakAlsinMi mobil kabukta) */
+    setTimeout(() => {
+        if (typeof window.erpGirisOdakAlsinMi === 'function' && !window.erpGirisOdakAlsinMi()) return;
+        document.getElementById('erp-login-user')?.focus();
+    }, 80);
 }
 
 // ── Login işlemi ──
@@ -38260,6 +38291,14 @@ async function erpLogout() {
     } else if (!confirm('Oturumunuzu kapatmak istiyor musunuz?')) return;
     try { erpLiveSyncStop(); } catch (e) {}
     try { erpYetkiSenkDurdur(); } catch (e) {}
+    /* Sunucudaki oturum da kapansın (09.10.2026): anahtar geçersizleşir, çıkış saati giriş-çıkış
+       defterine yazılır. Ağ yoksa en çok 2,5 sn beklenir, çıkış yine yapılır. */
+    try {
+        const tk = typeof erpGetToken === 'function' ? erpGetToken() : '';
+        if (tk && typeof sb !== 'undefined' && sb) {
+            await Promise.race([sb.rpc('erp_logout', { p_token: tk }).then(() => {}, () => {}), new Promise(r => setTimeout(r, 2500))]);
+        }
+    } catch (e) {}
     erpSetToken(null);
     localStorage.removeItem('erp_user_cache');
     erpCurrentUser = null;
@@ -45140,20 +45179,29 @@ function erpZilAc(ev) {
 }
 /* ════ AKTİF KULLANICILAR (01.10.2026) ═════════════════════════════════
    Her cihaz dakikada bir "nabız" gönderir (erp_session_nabiz): oturum, cihaz
-   (masaüstü / mobil / panel) ve açık ekran. Sunucu aynı oturuma en çok ~50 sn'de
-   bir yazar. Yönetici ana sayfasında erp_session_aktifler ile kim çevrimiçi,
-   hangi cihazda, hangi ekranda, son görülme ve bugün kaç kayıt girdiği görünür.
-   Kurulum: supabase/migrations/erp_aktif_kullanicilar.sql (yoksa sessizce bekler).
-   Konfeksiyon / Dokuma Panel kendi nabzını gönderir (panellerin kendi dosyası).
+   (masaüstü / mobil / panel), açık ekran ve son fare / klavye / dokunmanın kaç sn önce
+   olduğu. Sunucu aynı oturuma en çok ~50 sn'de bir yazar. Yönetici ana sayfasında
+   erp_session_aktifler ile kim çevrimiçi, hangi cihazda, hangi ekranda, aktif mi boşta mı,
+   bugün kaçta girip çıktığı, kaç kayıt / değişiklik yaptığı görünür.
+   4. sürüm (09.10.2026): günlük giriş-çıkış defteri (erp_oturum_gunluk: kişi × gün × cihaz tek
+   satır, aralıklar aktif / boşta). Satıra tıklayınca kişinin günü: zaman çizelgesi, cihazlar,
+   ekranlarda geçen süre, işlemler (yeni kayıt + değişiklik / silme), gün gün geriye.
+   Kurulum: supabase/migrations/erp_aktif_kullanicilar.sql (adım adım: supabase/aktif-gunluk-adim/);
+   SQL eskiyse eski biçimle sessizce devam eder.
+   Konfeksiyon / Dokuma Panel kendi nabzını gönderir (panellerin kendi dosyası; hareket bildirmez).
    ════════════════════════════════════════════════════════════════════════ */
 
 const ERP_AKTIF_CEVRIMICI_SN = 150;   // son nabız bu kadar saniye içindeyse çevrimiçi
+const ERP_AKTIF_BOSTA_SN = 300;       // bu kadar sn fare / klavye / dokunma yoksa "boşta" (SQL'deki c_bosta ile aynı)
 const ERP_PLATFORM_AD = {
     MASAUSTU: ['🖥', 'Masaüstü'], MOBIL: ['📱', 'Mobil'], TARAYICI: ['🌐', 'Tarayıcı'],
     KONFEKSIYON_PANEL: ['✂️', 'Konfeksiyon Panel'], DOKUMA_PANEL: ['🧵', 'Dokuma Panel']
 };
-let _erpAktif = { kurulumYok: false, kurulumYokZaman: 0, sonNabiz: 0, sonEkran: '', nabizZamanlayici: null,
+let _erpAktif = { kurulumYok: false, kurulumYokZaman: 0, nabizYok: false, nabizYokZaman: 0, paramDusmeZaman: 0,
+    sonNabiz: 0, sonEkran: '', nabizZamanlayici: null,
     veri: null, hata: null, yukleniyor: null, panelZamanlayici: null,
+    /* Son kullanıcı hareketi: yalnız ZAMANI tutulur (ne yapıldığı değil) */
+    sonHareket: Date.now(), hareketParamYok: false, hareketDinleniyor: false, izlenenBosta: null,
     /* Anlık çevrimiçi (Realtime presence): cihaz kanalda YALNIZ rastgele kimlikle görünür —
        isim dolaşmaz; kimliğin kime ait olduğunu yalnız yönetici RPC'si eşler. */
     kanalId: '', kanal: null, kanalDurum: '', kanalParamYok: false,
@@ -45178,7 +45226,10 @@ function erpKanalId() {
 }
 async function erpNabizGonder(ekranDegisti) {
     if (!erpCurrentUser || typeof sb === 'undefined' || !sb) return;
-    if (_erpAktif.kurulumYok && Date.now() - _erpAktif.kurulumYokZaman < 30 * 60000) return;
+    /* Nabız bulunamadıysa 10 dk bekler. Yönetici panelinin "kurulum gerekli" durumu bundan ETKİLENMEZ
+       (yalnız liste RPC'si belirler) — SQL kurulurken sunucunun fonksiyon listesini tazelemesi birkaç sn
+       sürer, o aradaki tek hata paneli düşürüyordu (09.10.2026). */
+    if (_erpAktif.nabizYok && Date.now() - _erpAktif.nabizYokZaman < 10 * 60000) return;
     const token = typeof erpGetToken === 'function' ? erpGetToken() : '';
     if (!token) return;
     const ekran = String(typeof appMode === 'string' ? appMode : '');
@@ -45186,18 +45237,30 @@ async function erpNabizGonder(ekranDegisti) {
     if (ekran === _erpAktif.sonEkran && gecen < (ekranDegisti ? 8000 : 55000)) return;
     _erpAktif.sonNabiz = Date.now();
     _erpAktif.sonEkran = ekran;
+    /* Düşürülen parametreler 10 dk sonra yeniden denenir: SQL sonradan güncellenince program yenilemeden düzelir */
+    if (_erpAktif.paramDusmeZaman && Date.now() - _erpAktif.paramDusmeZaman > 10 * 60000) {
+        _erpAktif.hareketParamYok = false; _erpAktif.kanalParamYok = false; _erpAktif.paramDusmeZaman = 0;
+    }
     const govde = { p_token: token, p_platform: erpNabizPlatform(), p_ekran: ekran };
     if (!_erpAktif.kanalParamYok) govde.p_kanal = erpKanalId();
+    if (!_erpAktif.hareketParamYok) govde.p_hareket = Math.max(0, Math.round((Date.now() - _erpAktif.sonHareket) / 1000));
     try {
         let { error } = await sb.rpc('erp_session_nabiz', govde);
-        /* SQL'in ilk sürümü (kanal parametresiz) kuruluysa eski biçimle devam */
+        /* SQL eski sürümse önce hareket (4. sürüm), sonra kanal (2. sürüm) parametresi düşer */
+        if (error && erpRpcYokMu(error) && 'p_hareket' in govde) {
+            _erpAktif.hareketParamYok = true;
+            _erpAktif.paramDusmeZaman = Date.now();
+            delete govde.p_hareket;
+            ({ error } = await sb.rpc('erp_session_nabiz', govde));
+        }
         if (error && erpRpcYokMu(error) && govde.p_kanal) {
             _erpAktif.kanalParamYok = true;
+            _erpAktif.paramDusmeZaman = Date.now();
             delete govde.p_kanal;
             ({ error } = await sb.rpc('erp_session_nabiz', govde));
         }
-        if (error && erpRpcYokMu(error)) { _erpAktif.kurulumYok = true; _erpAktif.kurulumYokZaman = Date.now(); }
-        else if (!error) _erpAktif.kurulumYok = false;
+        if (error && erpRpcYokMu(error)) { _erpAktif.nabizYok = true; _erpAktif.nabizYokZaman = Date.now(); }
+        else if (!error) _erpAktif.nabizYok = false;
     } catch (e) {}
 }
 /* ── Canlı kanal (anlık çevrimiçi / çevrimdışı) ── */
@@ -45217,7 +45280,24 @@ function erpCevrimiciKatil() {
 function erpCevrimiciTrack() {
     const ch = _erpAktif.kanal;
     if (!ch || _erpAktif.kanalDurum !== 'SUBSCRIBED') return;
-    try { ch.track({ p: erpNabizPlatform(), e: String(typeof appMode === 'string' ? appMode : ''), t: Date.now() }); } catch (e) {}
+    const b = erpBostaMi() ? 1 : 0;
+    _erpAktif.izlenenBosta = b;
+    try { ch.track({ p: erpNabizPlatform(), e: String(typeof appMode === 'string' ? appMode : ''), b, t: Date.now() }); } catch (e) {}
+}
+/* ── Kullanıcı hareketi (fare / klavye / dokunma): olay başına tek atama, yük yok ──
+   Boştan dönünce kanal ve nabız hemen güncellenir; aktif → boşta geçişi dakikalık zamanlayıcıda. */
+function erpBostaMi() { return Date.now() - _erpAktif.sonHareket > ERP_AKTIF_BOSTA_SN * 1000; }
+function erpHareketDinle() {
+    if (_erpAktif.hareketDinleniyor) return;
+    _erpAktif.hareketDinleniyor = true;
+    const f = () => {
+        const bostaydi = erpBostaMi();
+        _erpAktif.sonHareket = Date.now();
+        if (bostaydi && erpCurrentUser) { erpCevrimiciTrack(); erpNabizGonder(true); }
+    };
+    ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((t) => {
+        try { window.addEventListener(t, f, { passive: true, capture: true }); } catch (e) {}
+    });
 }
 /* Kanaldaki değişiklik — yalnız yönetici işler; diğerleri kanaldaki kimliklerle ilgilenmez */
 function erpCevrimiciSync(ch) {
@@ -45249,7 +45329,13 @@ function erpNabizEkranDegisti() {
 }
 function erpNabizBaslat() {
     if (_erpAktif.nabizZamanlayici) return;
-    _erpAktif.nabizZamanlayici = setInterval(() => { erpNabizGonder(false); erpCevrimiciKatil(); }, 60000);
+    erpHareketDinle();
+    _erpAktif.nabizZamanlayici = setInterval(() => {
+        erpNabizGonder(false);
+        erpCevrimiciKatil();
+        /* Aktif → boşta geçişi kanalda da görünsün (yalnız durum değişince) */
+        if (_erpAktif.izlenenBosta !== null && (erpBostaMi() ? 1 : 0) !== _erpAktif.izlenenBosta) erpCevrimiciTrack();
+    }, 60000);
     /* Giriş tamamlanınca hemen: ilk nabız + kanala katılım (3 sn'de bir bakar, girişten sonra durur) */
     _erpAktif.girisBekle = setInterval(() => {
         if (!erpCurrentUser) return;
@@ -45270,8 +45356,11 @@ async function erpAktifYukle() {
         try {
             const { data, error } = await sb.rpc('erp_session_aktifler', { p_token: token });
             if (error) {
-                if (erpRpcYokMu(error)) { _erpAktif.kurulumYok = true; _erpAktif.kurulumYokZaman = Date.now(); _erpAktif.hata = null; }
-                else _erpAktif.hata = error.message || String(error);
+                /* Yalnız fonksiyonun KENDİSİ yoksa (PGRST202) "kurulum gerekli"; içindeki bir hata ("... does not
+                   exist" dahil) olduğu gibi gösterilir — sebep ekranda görünsün. Önceki liste varsa silinmez. */
+                const metin = [error.code, error.message, error.hint].filter(Boolean).join(' · ') || String(error);
+                if (String(error.code || '') === 'PGRST202') { _erpAktif.kurulumYok = true; _erpAktif.kurulumYokZaman = Date.now(); _erpAktif.hata = null; }
+                else { _erpAktif.kurulumYok = false; _erpAktif.hata = metin; }
                 return;
             }
             let d = data;
@@ -45304,49 +45393,119 @@ function erpGoreceliZaman(ts, simdiMs) {
     const fark = Math.max(0, (simdiMs - t) / 1000);
     if (fark < 60) return 'şimdi';
     if (fark < 3600) return `${Math.floor(fark / 60)} dk önce`;
-    const d = new Date(t), b = new Date(simdiMs);
-    const saat = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    const gunFark = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
-    if (gunFark === 0) return `bugün ${saat}`;
-    if (gunFark === 1) return `dün ${saat}`;
-    return `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })} ${saat}`;
+    return erpSaatMetni(ts, simdiMs);
 }
 /* Kayıttaki adı kişiyle eşlemek için: İ/I birleşik — Türkçe klavyesiz yazılan ad
-   ("kadir" / "KADIR" / "kadır") aynı kişiye sayılır. Sayım ve kayıt listesi aynısını kullanır. */
+   ("kadir" / "KADIR" / "kadır") aynı kişiye sayılır; sondaki açıklama da atılır
+   ("GÖKSEL GÜDÜK (denetim D-03)" → GÖKSEL GÜDÜK). Sayım ve kayıt listesi aynısını kullanır. */
 function erpAktifAdNorm(s) {
-    return String(s || '').toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').replace(/\s+/g, ' ').trim();
+    const t = String(s || '').toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').replace(/\s+/g, ' ').trim();
+    return t.replace(/\s*\([^()]*\)$/, '').trim() || t;
 }
-/* Bugünkü kayıt sayısı: kayıtlardaki ad (görünen ad ya da kullanıcı adı) kişiyle eşlenir */
+/* Addaki açıklama ("(denetim D-03)") listede kaybolmasın */
+const erpAktifAdEki = (s) => (/\S\s*(\([^()]*\))\s*$/.exec(String(s || '')) || [])[1] || '';
+/* Kişi olmayan kayıt adları: devir satırı (04 konfKyDevirGerekirse) eski sayaçtan aktarımdır;
+   "[Güncelleme]" = 09.10.2026'dan önce kart / sipariş düzenlemesinde kişi adı yazılmıyordu (02 getDetailedChangeLog) */
+const ERP_AKTIF_SISTEM_ADLARI = new Map([['DEVIR', 'otomatik devir'], ['GÜNCELLEME', 'adı yazılmamış düzenleme']]);
+const erpZamanMs = (ts) => { const t = ts ? new Date(ts).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+/* Bugünkü işlemler: yeni kayıt + değişiklik / silme, ilk / son saat; kayıttaki ad (görünen ad ya da
+   kullanıcı adı) kişiyle eşlenir. SQL 3. sürümde yalnız yeni kayıt sayısı gelir (zaman yok). */
 function erpAktifKayitSayilari(veri) {
     const norm = erpAktifAdNorm;
-    const toplam = new Map();
-    [veri.sayilar || {}, veri.numune_sayilar || {}].forEach(o => Object.entries(o).forEach(([ad, n]) => {
-        const k = norm(ad);
-        toplam.set(k, (toplam.get(k) || 0) + (Number(n) || 0));
+    const topla = (nesneler) => {
+        const m = new Map();
+        nesneler.forEach(o => Object.entries(o || {}).forEach(([ad, n]) => { const k = norm(ad); m.set(k, (m.get(k) || 0) + (Number(n) || 0)); }));
+        return m;
+    };
+    const zaman = new Map();   // ad → [ilk, son] ms
+    [veri.kayit_zaman, veri.numune_zaman, veri.degisiklik_zaman].forEach(o => Object.entries(o || {}).forEach(([ad, z]) => {
+        const k = norm(ad), i = erpZamanMs(z?.[0]), s = erpZamanMs(z?.[1]);
+        const e = zaman.get(k) || [0, 0];
+        if (i && (!e[0] || i < e[0])) e[0] = i;
+        if (s > e[1]) e[1] = s;
+        zaman.set(k, e);
     }));
+    const yeni = topla([veri.sayilar, veri.numune_sayilar]);
+    const degisen = topla([veri.degisiklik]);
     const eslesen = new Set();
     const kisiSayi = new Map();
     (veri.kisiler || []).forEach(p => {
         const anahtarlar = [...new Set([norm(p.username), norm(p.display_name)])].filter(Boolean);
-        let n = 0;
-        anahtarlar.forEach(a => { if (toplam.has(a)) { n += toplam.get(a); eslesen.add(a); } });
-        kisiSayi.set(p.username, n);
+        const s = { yeni: 0, degisen: 0, n: 0, ilk: 0, son: 0 };
+        anahtarlar.forEach(a => {
+            if (yeni.has(a)) { s.yeni += yeni.get(a); eslesen.add(a); }
+            if (degisen.has(a)) { s.degisen += degisen.get(a); eslesen.add(a); }
+            const z = zaman.get(a);
+            if (z) { if (z[0] && (!s.ilk || z[0] < s.ilk)) s.ilk = z[0]; if (z[1] > s.son) s.son = z[1]; }
+        });
+        s.n = s.yeni + s.degisen;
+        kisiSayi.set(p.username, s);
     });
-    const eslesmeyen = [...toplam.entries()].filter(([a]) => !eslesen.has(a)).sort((x, y) => y[1] - x[1]);
+    const tum = new Map(yeni);
+    degisen.forEach((n, a) => tum.set(a, (tum.get(a) || 0) + n));
+    const eslesmeyen = [...tum.entries()].filter(([a]) => !eslesen.has(a)).sort((x, y) => y[1] - x[1]);
     return { kisiSayi, eslesmeyen };
 }
-/* Giriş saati: bugün "08:12", dün "dün 08:12", daha eski "28.09 08:12" */
+/* Tarih + saat, karışmasın diye ay adıyla: "bugün 08:12", "dün 08:12", "7 Ekim 08:12",
+   başka yıl "7 Ekim 2025 08:12" ("07/10" 10 Temmuz diye de okunabiliyordu) */
 function erpSaatMetni(ts, simdiMs) {
     const t = new Date(ts).getTime();
-    if (!Number.isFinite(t)) return '';
-    const d = new Date(t), b = new Date(simdiMs);
+    if (!ts || !Number.isFinite(t)) return '';
+    const d = new Date(t), b = new Date(simdiMs || Date.now());
     const saat = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
     const gunFark = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
-    if (gunFark === 0) return saat;
+    if (gunFark === 0) return `bugün ${saat}`;
     if (gunFark === 1) return `dün ${saat}`;
-    return `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })} ${saat}`;
+    const gun = d.toLocaleDateString('tr-TR', d.getFullYear() === b.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' });
+    return `${gun} ${saat}`;
 }
-const erpZamanMs = (ts) => { const t = ts ? new Date(ts).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+const erpSaatKisa = (ms) => { const d = new Date(ms); return ms && Number.isFinite(d.getTime()) ? d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'; };
+/* Süre: "7 sa 40 dk" / "25 dk" / "1 dk'dan az" */
+function erpSureMetni(sn) {
+    const dk = Math.floor(Math.max(0, Number(sn) || 0) / 60);
+    if (dk < 1) return '1 dk\'dan az';
+    const sa = Math.floor(dk / 60), kalan = dk % 60;
+    return sa ? `${sa} sa${kalan ? ` ${kalan} dk` : ''}` : `${dk} dk`;
+}
+/* Aralıkların birleşimi (ms): iki cihaz aynı anda açıksa süre iki kez sayılmaz */
+function erpAralikToplam(liste) {
+    const a = liste.filter(x => x[1] > x[0]).sort((x, y) => x[0] - y[0]);
+    let top = 0, bas = 0, son = 0;
+    a.forEach(([b, s]) => {
+        if (!son || b > son) { top += son - bas; bas = b; son = s; }
+        else if (s > son) son = s;
+    });
+    return top + (son - bas);
+}
+/* Gün defteri satırları (cihaz başına) → kişinin günü: giriş (ilk hareket, yoksa program açılışı),
+   son görülme, çıkış ("Çıkış" düğmesi), açık / aktif süre (aralık birleşimi) */
+function erpAktifGunOzet(satirlar) {
+    const ar = [], aktifAr = [];
+    let ilk = 0, son = 0, ilkAktif = 0, sonAktif = 0, aktifBilinir = false, sonSatir = null;
+    (Array.isArray(satirlar) ? satirlar : []).forEach(g => {
+        const i = erpZamanMs(g.ilk), s = erpZamanMs(g.son);
+        if (i && (!ilk || i < ilk)) ilk = i;
+        if (s && s >= son) { son = s; sonSatir = g; }
+        if (g.aktif_sn != null) aktifBilinir = true;
+        const liste = Array.isArray(g.araliklar) ? g.araliklar : [];
+        if (!liste.length && i && s) ar.push([i, s]);
+        liste.forEach(x => {
+            const b = Number(x?.[0]) * 1000, e = Number(x?.[1]) * 1000;
+            if (!(b > 0) || !(e >= b)) return;
+            ar.push([b, e]);
+            if (x[2] === 1) {
+                aktifAr.push([b, e]);
+                if (!ilkAktif || b < ilkAktif) ilkAktif = b;
+                if (e > sonAktif) sonAktif = e;
+            }
+        });
+    });
+    return {
+        var: !!ilk, ilk, son, ilkAktif, sonAktif, giris: ilkAktif || ilk,
+        cikis: sonSatir ? erpZamanMs(sonSatir.cikis) : 0, sonPlatform: sonSatir?.platform || '',
+        acikSn: erpAralikToplam(ar) / 1000, aktifSn: aktifBilinir ? erpAralikToplam(aktifAr) / 1000 : null
+    };
+}
 /* Kişi başına çevrimiçi durumu — ana sayfa paneli ve Kullanıcı Yönetimi aynı hesabı kullanır */
 function erpAktifHesapla() {
     const v = _erpAktif.veri;
@@ -45363,49 +45522,111 @@ function erpAktifHesapla() {
         if (c.kanal && _erpAktif.gorulenKanallar.has(c.kanal)) return false;
         return !!c.son_gorulme && new Date(c.son_gorulme).getTime() >= sinir;
     };
+    const { kisiSayi, eslesmeyen } = erpAktifKayitSayilari(v);
     const kisiler = (v.kisiler || []).map(p => {
         (p.cihazlar || []).forEach(c => { if (c.kanal) bilinenKanal.add(c.kanal); });
         const cihazlar = (p.cihazlar || []).filter(cihazAcikMi).map(c => {
             const canli = c.kanal && kanal ? kanal.get(c.kanal) : null;
-            return canli ? { ...c, ekran: canli.e || c.ekran, platform: canli.p || c.platform } : c;
+            const d = canli ? { ...c, ekran: canli.e || c.ekran, platform: canli.p || c.platform } : { ...c };
+            /* Boşta mı: canlı kanaldaki bayrak (anlık), yoksa son hareket (dakikalık); bildirmeyen cihazda bilinmez */
+            const hareket = erpZamanMs(c.son_hareket);
+            if (canli && (canli.b === 0 || canli.b === 1)) d.bosta = canli.b === 1;
+            else d.bosta = hareket ? simdi - hareket > ERP_AKTIF_BOSTA_SN * 1000 : null;
+            d.bostaSn = d.bosta && hareket ? Math.max(0, (simdi - hareket) / 1000) : null;
+            return d;
         });
-        return { ...p, cihazlar, cevrimici: cihazlar.length > 0 };
-    }).sort((a, b) => (b.cevrimici - a.cevrimici)
-        || (Math.max(erpZamanMs(b.son_gorulme), erpZamanMs(b.son_giris)) - Math.max(erpZamanMs(a.son_gorulme), erpZamanMs(a.son_giris)))
+        const cevrimici = cihazlar.length > 0;
+        const bilinen = cihazlar.filter(c => c.bosta !== null);
+        return { ...p, cihazlar, cevrimici,
+            /* true aktif / false boşta / null bilinmiyor (cihaz hareket bildirmiyor) */
+            aktif: cevrimici && bilinen.length ? bilinen.some(c => !c.bosta) : null,
+            gun: erpAktifGunOzet(p.bugun),
+            islem: kisiSayi.get(p.username) || { yeni: 0, degisen: 0, n: 0, ilk: 0, son: 0 } };
+    });
+    const sonIz = (p) => Math.max(erpZamanMs(p.son_gorulme), erpZamanMs(p.son_giris), p.islem.son, p.gun.son);
+    kisiler.sort((a, b) => (b.cevrimici - a.cevrimici)
+        || ((b.aktif === true) - (a.aktif === true))
+        || (sonIz(b) - sonIz(a))
         || String(a.display_name).localeCompare(String(b.display_name), 'tr'));
-    return { v, simdi, kanal, kisiler, bilinenKanal };
+    return { v, simdi, kanal, kisiler, bilinenKanal, eslesmeyen };
 }
 /* Platform kodu boşsa: güncellenmemiş program yalnız oturum kontrolüyle görünür (cihaz bilinmez) */
 const erpPlatformAd = (p) => ERP_PLATFORM_AD[p] || ['•', p || 'Program'];
-/* Çevrimdışı kişinin alt satırı: son görülme + son giriş; girişten sonra hiç sinyal yoksa program eski */
+/* Çevrimdışı kişinin üst satırı: bugün çalıştıysa çıkış saati, çalışmadıysa son görülme.
+   Program sinyal göndermiyor: girişten sonra nabız yok ya da kayıt girdiği hâlde görülmedi. */
 function erpAktifCevrimdisiMetin(p, simdi) {
-    const gor = erpZamanMs(p.son_gorulme), gir = erpZamanMs(p.son_giris);
+    const g = p.gun || {};
     const parca = [];
-    if (gor) parca.push(`son görülme ${erpGoreceliZaman(p.son_gorulme, simdi)}${p.son_platform ? ' · ' + erpPlatformAd(p.son_platform)[0] : ''}`);
-    if (gir) parca.push(`giriş ${erpSaatMetni(p.son_giris, simdi)}`);
-    if (gir && gor < gir - 5000) parca.push('program güncel değil');
+    if (g.var) {
+        parca.push(`${g.cikis ? 'çıkış yaptı' : 'program kapandı'} ${erpSaatKisa(g.cikis || g.son)}${g.sonPlatform ? ' · ' + erpPlatformAd(g.sonPlatform)[0] : ''}`);
+    } else if (p.son_gorulme) {
+        parca.push(`son görülme ${erpGoreceliZaman(p.son_gorulme, simdi)}${p.son_platform ? ' · ' + erpPlatformAd(p.son_platform)[0] : ''}${p.son_ekran ? ' · ' + erpEkranAdi(p.son_ekran) : ''}`);
+    }
+    const gor = Math.max(erpZamanMs(p.son_gorulme), g.son || 0), gir = erpZamanMs(p.son_giris);
+    if ((gir && gor < gir - 5000) || (p.islem?.son && p.islem.son > gor + 5 * 60000)) parca.push('program sinyal göndermiyor (güncel değil)');
     return parca.length ? parca.join(' · ') : 'henüz görülmedi';
 }
-function erpAktifCihazMetin(c, simdi) {
-    const giris = c.giris ? ' · giriş ' + erpSaatMetni(c.giris, simdi) : '';
-    /* Cihaz bildirmeyen = güncellenmemiş masaüstü / mobil (yalnız oturum kontrolünden görünür) */
-    if (!c.platform && !c.ekran) return `• Program (güncel değil)${giris}`;
-    const [ik, pad] = erpPlatformAd(c.platform);
-    return `${ik} ${pad} · ${erpEkranAdi(c.ekran) || '—'}${giris}`;
+/* Çevrimiçi cihaz: "🖥 Masaüstü · Dokuma depo" + durum ("aktif" / "boşta 12 dk"; bildirmeyende yok) */
+function erpAktifCihazDurum(c) {
+    if (c.bosta === true) return { metin: `boşta${c.bostaSn != null ? ' ' + erpSureMetni(c.bostaSn) : ''}`, renk: 'var(--amber-c,#f59e0b)' };
+    if (c.bosta === false) return { metin: 'aktif', renk: 'var(--emerald-c)' };
+    return null;
 }
+function erpAktifCihazMetin(c) {
+    /* Cihaz bildirmeyen = güncellenmemiş masaüstü / mobil (yalnız oturum kontrolünden görünür) */
+    if (!c.platform && !c.ekran) return '• Program (güncel değil)';
+    const [ik, pad] = erpPlatformAd(c.platform);
+    const d = erpAktifCihazDurum(c);
+    return `${ik} ${pad} · ${erpEkranAdi(c.ekran) || '—'}${d ? ' · ' + d.metin : ''}`;
+}
+function erpAktifCihazHtml(c) {
+    if (!c.platform && !c.ekran) return pdfEsc('• Program (güncel değil)');
+    const [ik, pad] = erpPlatformAd(c.platform);
+    const d = erpAktifCihazDurum(c);
+    return `${pdfEsc(`${ik} ${pad} · ${erpEkranAdi(c.ekran) || '—'}`)}${d ? ` · <span style="color:${d.renk};font-weight:600">${pdfEsc(d.metin)}</span>` : ''}`;
+}
+/* Bugünün özeti: "giriş 08:05 · açık 7 sa 40 dk · aktif 6 sa 10 dk · son işlem 17:53";
+   programdan sinyal yoksa kayıt saatleri: "bugün kayıt 09:07–17:53" */
+function erpAktifGunMetin(p) {
+    const g = p.gun || {}, s = p.islem || {};
+    const parca = [];
+    if (g.var) {
+        /* Giriş: defterdeki ilk hareket, ilk kayıt, bugünkü şifreyle girişin en erkeni (defter sonradan
+           kurulduysa ya da kişi önce panelden kayıt girdiyse de doğru); çıkış: kapanış / son kayıt en geç olanı */
+        const gir = erpZamanMs(p.son_giris);
+        const giris = Math.min(...[g.giris, s.ilk, erpBugunMu(gir) ? gir : 0].filter(Boolean));
+        parca.push(p.cevrimici ? `giriş ${erpSaatKisa(giris)}` : `bugün ${erpSaatKisa(giris)}–${erpSaatKisa(Math.max(g.cikis || g.son, s.son || 0))}`);
+        parca.push(`açık ${erpSureMetni(g.acikSn)}`);
+        if (g.aktifSn != null) parca.push(`aktif ${erpSureMetni(g.aktifSn)}`);
+        if (s.son) parca.push(`son işlem ${erpSaatKisa(s.son)}`);
+    } else {
+        /* Defter yok (panel sinyal göndermiyor ya da SQL eski): bugünkü şifreyle giriş + kayıt saatleri */
+        const gir = erpZamanMs(p.son_giris);
+        if (erpBugunMu(gir)) parca.push(`bugün şifreyle giriş ${erpSaatKisa(gir)}`);
+        if (s.son) parca.push(s.ilk && s.ilk !== s.son ? `kayıt ${erpSaatKisa(s.ilk)}–${erpSaatKisa(s.son)}` : `son işlem ${erpSaatKisa(s.son)}`);
+    }
+    return parca.join(' · ');
+}
+const erpBugunMu = (ms) => {
+    if (!ms) return false;
+    const d = new Date(ms), b = new Date();
+    return d.getFullYear() === b.getFullYear() && d.getMonth() === b.getMonth() && d.getDate() === b.getDate();
+};
 /* Kullanıcı Yönetimi listesindeki satır: nokta + kısa durum (veri yoksa boş) */
 function erpAktifKyaHtml(username) {
     const h = erpAktifHesapla();
     const un = String(username || '').toLowerCase();
     const p = h && h.kisiler.find(k => String(k.username || '').toLowerCase() === un);
     if (!p) return '';
-    const metin = p.cevrimici
-        ? 'çevrimiçi · ' + p.cihazlar.map(c => erpAktifCihazMetin(c, h.simdi)).join(' / ')
-        : erpAktifCevrimdisiMetin(p, h.simdi);
+    const gunMetin = erpAktifGunMetin(p);
+    const metin = (p.cevrimici
+        ? 'çevrimiçi · ' + p.cihazlar.map(c => erpAktifCihazMetin(c)).join(' / ')
+        : erpAktifCevrimdisiMetin(p, h.simdi)) + (gunMetin ? ' · ' + gunMetin : '');
     return `<div class="kya-row-sub" style="display:flex;align-items:center;gap:5px;min-width:0">
-        <span style="flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:${p.cevrimici ? 'var(--emerald-c)' : 'var(--text3)'}"></span>
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${p.cevrimici ? 'color:var(--emerald-c)' : ''}">${pdfEsc(metin)}</span></div>`;
+        <span style="flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:${erpAktifNoktaRenk(p)}"></span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${p.cevrimici ? 'color:var(--emerald-c)' : ''}" title="${pdfEsc(metin)}">${pdfEsc(metin)}</span></div>`;
 }
+const erpAktifNoktaRenk = (p) => (!p.cevrimici ? 'var(--text3)' : p.aktif === false ? 'var(--amber-c,#f59e0b)' : 'var(--emerald-c)');
 /* Çevrimiçi bilgisinin göründüğü ekran açık mı (yönetici: ana sayfa paneli, Kullanıcı Yönetimi) */
 function erpAktifEkranAcik() {
     if (appMode === 'DASHBOARD') return !!document.getElementById('dash-aktif-panel');
@@ -45417,47 +45638,64 @@ function erpAktifPanelHtml() {
         <div class="dash-col-head"><div class="dash-col-title">Aktif kullanıcılar</div><div class="dash-col-meta">${meta}</div></div>
         <div style="flex:1;max-height:420px;overflow:auto">${govde}</div>
     </div>`;
-    if (_erpAktif.kurulumYok) {
+    if (_erpAktif.kurulumYok && !_erpAktif.veri) {
         return bas('kurulum gerekli', `<div class="dash-empty"><strong>Aktif kullanıcı takibi kurulmamış</strong>
-            <span style="font-family:'DM Mono',monospace">supabase/migrations/erp_aktif_kullanicilar.sql</span> Supabase SQL Editor'de çalıştırılmalı.</div>`);
+            <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> (1 → 5) Supabase SQL Editor'de çalıştırılmalı.
+            Kurulduysa dakika içinde kendiliğinden düzelir.</div>`);
     }
     const h = erpAktifHesapla();
-    if (!h) return bas(_erpAktif.hata ? 'okunamadı' : 'yükleniyor…', `<div class="dash-empty">${_erpAktif.hata ? pdfEsc(_erpAktif.hata) : 'Yükleniyor…'}</div>`);
-    const { v, simdi, kanal, kisiler, bilinenKanal } = h;
-    const { kisiSayi, eslesmeyen } = erpAktifKayitSayilari(v);
+    if (!h) return bas(_erpAktif.hata ? 'okunamadı' : 'yükleniyor…', `<div class="dash-empty">${_erpAktif.hata
+        ? `<strong>Liste okunamadı</strong><span style="color:var(--rose-c,#f87171);font-family:'DM Mono',monospace;font-size:12px;user-select:text;white-space:normal;word-break:break-word">${pdfEsc(_erpAktif.hata)}</span>`
+        : 'Yükleniyor…'}</div>`);
+    const { v, simdi, kanal, kisiler, bilinenKanal, eslesmeyen } = h;
     const cevrimici = kisiler.filter(p => p.cevrimici).length;
+    const aktifSay = kisiler.filter(p => p.aktif === true).length;
+    const muted = (ic, ek = '') => `<div class="dash-muted" style="white-space:normal;${ek}">${ic}</div>`;
     const satir = (p) => {
         const ad = String(p.display_name || p.username || '?');
         const parca = ad.trim().split(/\s+/);
         const bas2 = (parca.length > 1 ? parca[0][0] + parca[1][0] : ad.slice(0, 2)).toLocaleUpperCase('tr-TR');
-        const n = kisiSayi.get(p.username) || 0;
-        const alt = p.cevrimici
-            ? p.cihazlar.map(c => `<div class="dash-muted" style="color:var(--text2) !important">${pdfEsc(erpAktifCihazMetin(c, simdi))}</div>`).join('')
-            : `<div class="dash-muted">${pdfEsc(erpAktifCevrimdisiMetin(p, simdi))}</div>`;
-        return `<div class="dash-row" style="grid-template-columns:30px 1fr auto;cursor:default">
+        const s = p.islem;
+        const ust = p.cevrimici
+            ? p.cihazlar.map(c => `<div class="dash-muted" style="color:var(--text2) !important;white-space:normal"${c.giris ? ` title="${pdfEsc('Oturum açılışı (şifreyle giriş): ' + erpSaatMetni(c.giris, simdi))}"` : ''}>${erpAktifCihazHtml(c)}</div>`).join('')
+            : muted(pdfEsc(erpAktifCevrimdisiMetin(p, simdi)));
+        const gunMetin = erpAktifGunMetin(p);
+        const kul = pdfEsc(JSON.stringify(String(p.username || '')));
+        return `<div class="dash-row" style="grid-template-columns:30px 1fr auto;cursor:pointer" role="button" tabindex="0"
+                onclick="erpAktifKayitlariAc(${kul})" onkeydown="if(event.key==='Enter')this.click()" title="Günün dökümü: giriş-çıkış, zaman çizelgesi, ekranlar, işlemler">
             <div style="position:relative;width:28px;height:28px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:10px !important;font-weight:700;color:var(--text2)">${pdfEsc(bas2)}
-                <span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;border:2px solid var(--surface);background:${p.cevrimici ? 'var(--emerald-c)' : 'var(--text3)'}"></span></div>
+                <span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;border:2px solid var(--surface);background:${erpAktifNoktaRenk(p)}"></span></div>
             <div style="min-width:0">
                 <div class="dash-code" style="font-family:'DM Sans',sans-serif">${pdfEsc(ad)}${String(p.role).toLowerCase() === 'admin' ? ' <span class="dash-muted">· yönetici</span>' : ''}</div>
-                ${alt}
+                ${ust}
+                ${gunMetin ? muted(pdfEsc(gunMetin), 'font-size:11px') : ''}
             </div>
-            ${n
-                ? `<div class="dash-badge is-ok" style="cursor:pointer" role="button" tabindex="0" onclick="erpAktifKayitlariAc(${pdfEsc(JSON.stringify(String(p.username || '')))})" onkeydown="if(event.key==='Enter')this.click()" title="Bugün girdiği kayıtların listesi (depo, kart, sipariş, kesim, tezgah, işlem defteri, numune)">${n.toLocaleString('tr-TR')} kayıt ›</div>`
-                : `<div class="dash-badge" title="Bugün girdiği kayıt yok">—</div>`}
+            ${s.n
+                ? `<div class="dash-badge is-ok" title="${pdfEsc(`Bugün ${s.yeni} yeni kayıt · ${s.degisen} değişiklik / silme`)}">${s.n.toLocaleString('tr-TR')} işlem ›</div>`
+                : `<div class="dash-badge" title="Bugün kayıt / değişiklik yok">—</div>`}
         </div>`;
     };
+    const not = (ic, renk) => `<div class="dash-muted" style="padding:8px 18px;white-space:normal${renk ? `;color:${renk} !important` : ''}">${ic}</div>`;
     const eslesmeyenHtml = (eslesmeyen.length
-        ? `<div class="dash-muted" style="padding:8px 18px;white-space:normal" title="Kayıttaki ad hiçbir kullanıcıyla eşleşmedi">Eşleşmeyen kayıt adları: ${eslesmeyen.slice(0, 6).map(([a, n]) => `${pdfEsc(a)} (${n})`).join(', ')}</div>`
+        ? not(`<span title="Kayıttaki ad hiçbir kullanıcıyla eşleşmedi">Eşleşmeyen kayıt adları:</span> ${eslesmeyen.slice(0, 6).map(([a, n]) => `${pdfEsc(ERP_AKTIF_SISTEM_ADLARI.get(a) || a)} (${n})`).join(', ')}`)
         : '')
         /* Sunucu sayımı bir kolon kaydığı için yapamadıysa sayılar "—" kalır; sebebi görünsün */
-        + (v.sayim_hata ? `<div class="dash-muted" style="padding:8px 18px;white-space:normal;color:var(--rose-c,#f87171) !important">Bugünkü kayıt sayıları okunamadı: ${pdfEsc(v.sayim_hata)}</div>` : '');
+        + (v.sayim_hata ? not(`Bugünkü kayıt sayıları okunamadı: ${pdfEsc(v.sayim_hata)}`, 'var(--rose-c,#f87171)') : '')
+        + (v.degisiklik_hata ? not(`Bugünkü değişiklik sayıları okunamadı: ${pdfEsc(v.degisiklik_hata)}`, 'var(--rose-c,#f87171)') : '');
+    /* Son tazeleme başarısızsa önceki liste kalır, sebebi yazılır */
+    const tazeHata = _erpAktif.hata || (_erpAktif.kurulumYok ? 'liste fonksiyonu bulunamadı' : '');
+    const tazeHtml = tazeHata ? not(`Liste tazelenemedi (${erpGoreceliZaman(_erpAktif.veriZaman, Date.now())} okunan bilgi gösteriliyor): ${pdfEsc(tazeHata)}`, 'var(--rose-c,#f87171)') : '';
+    /* SQL 3. sürüm: giriş-çıkış defteri ve değişiklik sayımı yok */
+    const surumHtml = tazeHtml + ((Number(v.surum) || 0) < 4
+        ? not(`Giriş-çıkış saatleri, aktif / boşta ve değişiklik sayıları için <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> (1 → 5) çalıştırılmalı.`)
+        : '');
     const eslenmeyenCihaz = kanal && !_erpAktif.kanalParamYok ? [...kanal.keys()].filter(k => k !== _erpAktif.kanalId && !bilinenKanal.has(k)).length : 0;
     const eslemeHtml = _erpAktif.kanalParamYok
-        ? `<div class="dash-muted" style="padding:8px 18px;white-space:normal">Anlık görünüm için <span style="font-family:'DM Mono',monospace">erp_aktif_kullanicilar.sql</span> yeniden çalıştırılmalı — şimdilik dakikalık nabızla gösteriliyor.</div>`
-        : (eslenmeyenCihaz ? `<div class="dash-muted" style="padding:8px 18px;white-space:normal">Yeni açılan ${eslenmeyenCihaz} cihaz eşleniyor…</div>` : '');
+        ? not(`Anlık görünüm için <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> çalıştırılmalı — şimdilik dakikalık nabızla gösteriliyor.`)
+        : (eslenmeyenCihaz ? not(`Yeni açılan ${eslenmeyenCihaz} cihaz eşleniyor…`) : '');
     const canliRozet = kanal && !_erpAktif.kanalParamYok ? ' · <span title="Açılan / kapanan program anında görünür" style="color:var(--emerald-c)">● anlık</span>' : '';
-    return bas(`${cevrimici} çevrimiçi · ${kisiler.length} kişi${canliRozet}`,
-        (kisiler.length ? kisiler.map(satir).join('') : `<div class="dash-empty">Kullanıcı yok</div>`) + eslemeHtml + eslesmeyenHtml);
+    return bas(`${cevrimici} çevrimiçi${aktifSay ? ` · ${aktifSay} aktif` : ''} · ${kisiler.length} kişi${canliRozet}`,
+        (kisiler.length ? kisiler.map(satir).join('') : `<div class="dash-empty">Kullanıcı yok</div>`) + surumHtml + eslemeHtml + eslesmeyenHtml);
 }
 function erpAktifPanelYenile() {
     const el = document.getElementById('dash-aktif-panel');
@@ -45477,9 +45715,10 @@ function erpAktifPanelBaslat() {
     if (!_erpAktif.panelZamanlayici) _erpAktif.panelZamanlayici = setInterval(tazele, 60000);
 }
 
-/* ── Kişinin bugünkü kayıtları: yönetici "N kayıt" rozetine tıklayınca (02.10.2026) ──
-   Sayımla (erp_session_aktifler) AYNI kaynaklar ve aynı ad eşlemesi → liste sayısı rozetle tutar.
-   Yalnız tıklanınca, yalnız bugünün satırları okunur (10 küçük sorgu); periyodik yük yok. */
+/* ── Kişinin günü: yönetici satıra tıklayınca (02.10, giriş-çıkış defteri 09.10.2026) ──
+   Yeni kayıtlar: sayımla (erp_session_aktifler) AYNI kaynaklar ve aynı ad eşlemesi; değişiklik / silme:
+   Günlük İşlemler'in kaynakları (18 gunlukEkKaynaklar) — SQL değişiklik sayımı da aynıları → rozet = liste.
+   Giriş-çıkış: erp_oturum_gunluk_oku. Yalnız tıklanınca / gün değişince okunur; periyodik yük yok. */
 const ERP_AKTIF_KAYIT_KAYNAKLARI = [
     { t: 'kumas_stok', ad: 'updated_by', sec: '*' },
     { t: 'iplik_stok', ad: 'updated_by', sec: '*' },
@@ -45607,63 +45846,273 @@ async function erpAktifKayitlariOku(adlar, opts = {}) {
     satirlar.sort((a, b) => erpZamanMs(b.ts) - erpZamanMs(a.ts));
     return { satirlar, hatalar: parcalar.filter(x => x.hata).map(x => `${x.k.t}: ${x.hata}`) };
 }
-async function erpAktifKayitlariAc(username) {
-    if (!(typeof erpIsAdmin === 'function' && erpIsAdmin())) return;
+/* Seçilen günün giriş-çıkış defteri (yalnız yönetici): { satirlar } | { kurulumYok } | { hata } */
+async function erpAktifDefterOku(gun) {
+    const token = typeof erpGetToken === 'function' ? erpGetToken() : '';
+    if (!token) return { hata: 'oturum yok' };
+    try {
+        const { data, error } = await sb.rpc('erp_oturum_gunluk_oku', { p_token: token, p_gun: gun });
+        if (error) return erpRpcYokMu(error) ? { kurulumYok: true } : { hata: error.message || String(error) };
+        let d = data;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) {} }
+        if (!d || d.ok === false) return { hata: 'Yalnız yönetici görebilir.' };
+        return { satirlar: Array.isArray(d.satirlar) ? d.satirlar : [] };
+    } catch (e) { return { hata: e?.message || String(e) }; }
+}
+const ERP_AKTIF_RENK = {
+    aktif: 'var(--emerald-c,#10b981)',
+    bosta: 'color-mix(in srgb, var(--text3) 45%, transparent)',
+    acik: 'color-mix(in srgb, var(--accent,#6366f1) 55%, transparent)',
+    yeni: 'var(--accent,#6366f1)', degisiklik: 'var(--amber-c,#f59e0b)', cikis: 'var(--rose-c,#f87171)'
+};
+/* Zaman çizelgesi: cihaz başına şerit (aktif / boşta / açık) + işlem şeridi (yeni kayıt / değişiklik) */
+function erpAktifCizelgeHtml(satirlar, kayitlar, o) {
+    const z = [];
+    satirlar.forEach(g => (Array.isArray(g.araliklar) ? g.araliklar : []).forEach(x => z.push(Number(x?.[0]) * 1000, Number(x?.[1]) * 1000)));
+    kayitlar.forEach(x => z.push(erpZamanMs(x.ts)));
+    const zaman = z.filter(t => t > 0);
+    if (!zaman.length) return '';
+    const basD = new Date(Math.min(...zaman)); basD.setMinutes(0, 0, 0);
+    const bitD = new Date(Math.max(...zaman, o.acikSimdi ? o.simdi : 0));
+    if (bitD.getMinutes() || bitD.getSeconds() || bitD.getMilliseconds()) bitD.setHours(bitD.getHours() + 1, 0, 0, 0);
+    const bas = basD.getTime(), bit = Math.max(bitD.getTime(), bas + 2 * 3600000);
+    const yuzde = (t) => Math.min(100, Math.max(0, (t - bas) / (bit - bas) * 100));
+    const saatSay = Math.round((bit - bas) / 3600000), adim = saatSay > 12 ? 2 : 1;
+    let eksen = '', izgara = '';
+    for (let i = 0; i <= saatSay; i += adim) {
+        const t = bas + i * 3600000;
+        eksen += `<span style="position:absolute;left:${yuzde(t)}%;transform:translateX(-50%);font-size:10px;color:var(--text3);font-family:'DM Mono',monospace">${String(new Date(t).getHours()).padStart(2, '0')}</span>`;
+        if (i && i < saatSay) izgara += `<div style="position:absolute;top:0;bottom:0;left:${yuzde(t)}%;width:1px;background:var(--border)"></div>`;
+    }
+    const serit = (etiket, ic) => `<div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:0 0 118px;font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${pdfEsc(etiket)}">${pdfEsc(etiket)}</div>
+        <div style="flex:1;position:relative;height:20px;border-radius:5px;background:var(--surface3,rgba(127,127,127,.12));overflow:hidden">${izgara}${ic}</div></div>`;
+    const cubuk = (b, e, renk, title, ek = '') => `<div title="${pdfEsc(title)}" style="position:absolute;top:3px;bottom:3px;left:${yuzde(b)}%;width:${Math.max(0.25, yuzde(e) - yuzde(b))}%;border-radius:3px;background:${renk};${ek}"></div>`;
+    const seritler = satirlar.map(g => {
+        const [ik, pad] = erpPlatformAd(g.platform);
+        const parca = (Array.isArray(g.araliklar) ? g.araliklar : []).map(x => {
+            const b = Number(x?.[0]) * 1000, e = Number(x?.[1]) * 1000;
+            if (!(b > 0) || !(e >= b)) return '';
+            const d = x[2] === 1 ? 'aktif' : x[2] === 0 ? 'bosta' : 'acik';
+            const ad = { aktif: 'aktif', bosta: 'boşta (program açık, hareket yok)', acik: 'açık (cihaz hareket bildirmiyor)' }[d];
+            /* tek nabızlık aralık da görünsün: en az 1 dk genişlik */
+            return cubuk(b, Math.max(e, b + 60000), ERP_AKTIF_RENK[d], `${erpSaatKisa(b)}–${erpSaatKisa(e)} · ${ad}`);
+        }).join('');
+        const c = erpZamanMs(g.cikis);
+        const cik = c ? `<div title="Çıkış yaptı ${erpSaatKisa(c)}" style="position:absolute;top:0;bottom:0;left:${yuzde(c)}%;width:3px;background:${ERP_AKTIF_RENK.cikis}"></div>` : '';
+        return serit(`${ik} ${pad}`, parca + cik);
+    }).join('');
+    const isaret = kayitlar.map(x => {
+        const t = erpZamanMs(x.ts);
+        return t ? `<div title="${pdfEsc(`${erpSaatKisa(t)} · ${x.tur}${x.ayrinti ? ' — ' + x.ayrinti : ''}`)}" style="position:absolute;top:3px;bottom:3px;left:${yuzde(t)}%;width:2px;background:${x.iz ? ERP_AKTIF_RENK.degisiklik : ERP_AKTIF_RENK.yeni}"></div>` : '';
+    }).join('');
+    const kare = (renk, gen = 10) => `<i style="display:inline-block;width:${gen}px;height:10px;border-radius:2px;background:${renk};vertical-align:-1px;margin-right:4px"></i>`;
+    const lejant = `<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--text3);padding-left:126px">
+        ${satirlar.length ? `<span>${kare(ERP_AKTIF_RENK.aktif)}aktif</span><span>${kare(ERP_AKTIF_RENK.bosta)}boşta (${ERP_AKTIF_BOSTA_SN / 60} dk+ hareketsiz)</span>
+        <span>${kare(ERP_AKTIF_RENK.acik)}açık (hareket bildirmeyen cihaz)</span>` : ''}
+        <span>${kare(ERP_AKTIF_RENK.yeni, 3)}yeni kayıt</span><span>${kare(ERP_AKTIF_RENK.degisiklik, 3)}değişiklik / silme</span>
+        ${satirlar.some(g => erpZamanMs(g.cikis)) ? `<span>${kare(ERP_AKTIF_RENK.cikis, 3)}çıkış</span>` : ''}</div>`;
+    return `<div style="display:flex;flex-direction:column;gap:6px">
+        <div style="position:relative;height:14px;margin:0 6px 0 126px">${eksen}</div>
+        ${seritler}
+        ${kayitlar.length ? serit('İşlemler', isaret) : ''}
+        ${lejant}</div>`;
+}
+/* Gün içindeki ekranlar: açık süre (açık renk) ve aktif süre (yeşil), çok kullanılan üstte */
+function erpAktifEkranlarHtml(satirlar) {
+    const ekr = new Map();
+    satirlar.forEach(g => Object.entries(g.ekranlar || {}).forEach(([k, v]) => {
+        const e = ekr.get(k) || [0, 0];
+        e[0] += Number(v?.[0]) || 0; e[1] += Number(v?.[1]) || 0;
+        ekr.set(k, e);
+    }));
+    const liste = [...ekr.entries()].filter(([, v]) => v[0] >= 30).sort((a, b) => b[1][0] - a[1][0]);
+    if (!liste.length) return '';
+    const enCok = liste[0][1][0] || 1;
+    return `<div style="display:flex;flex-direction:column;gap:5px">${liste.map(([k, v]) => `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <div style="flex:0 0 160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${pdfEsc(k)}">${pdfEsc(erpEkranAdi(k) || k)}</div>
+        <div style="flex:1;position:relative;height:10px;border-radius:5px;background:var(--surface3,rgba(127,127,127,.12));overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${v[0] / enCok * 100}%;background:${ERP_AKTIF_RENK.acik}"></div>
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${v[1] / enCok * 100}%;background:${ERP_AKTIF_RENK.aktif}"></div></div>
+        <div style="flex:0 0 170px;text-align:right;color:var(--text2);font-family:'DM Mono',monospace;font-size:11px">${erpSureMetni(v[0])}${v[1] ? ` · ${erpSureMetni(v[1])} aktif` : ''}</div></div>`).join('')}</div>`;
+}
+/* Kişinin günü: yönetici satıra tıklayınca. gun: 'YYYY-AA-GG' (verilmezse bugün) */
+async function erpAktifKayitlariAc(username, gun) {
+    if (!(typeof erpIsAdmin === 'function' && erpIsAdmin()) || typeof gunlukBugun !== 'function') return;
     const p = (_erpAktif.veri?.kisiler || []).find(k => k.username === username);
     if (!p) return;
     document.getElementById('erp-aktif-kayit')?.remove();
     const ad = String(p.display_name || p.username);
+    const un = String(p.username || '').toLowerCase();
+    const adlar = new Set([erpAktifAdNorm(p.username), erpAktifAdNorm(p.display_name)].filter(Boolean));
+    const bugun = gunlukBugun();
+    const st = { gun: /^\d{4}-\d{2}-\d{2}$/.test(String(gun || '')) && gun <= bugun ? gun : bugun, istek: 0, liste: [], secili: '' };
+    const dugme = 'class="kya-mini" style="padding:5px 10px"';
     const perde = document.createElement('div');
     perde.id = 'erp-aktif-kayit';
     perde.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(6,10,18,.62)';
-    perde.innerHTML = `<div class="modal-box" role="dialog" aria-label="${pdfEsc(ad)} bugünkü kayıtlar" style="width:100%;max-width:min(96vw,980px);max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
-        <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)">
-            <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:15px">${pdfEsc(ad)} · bugünkü kayıtlar</div>
-                <div id="erp-aktif-kayit-ozet" style="font-size:12px;color:var(--text3)">Yükleniyor…</div>
+    perde.innerHTML = `<div class="modal-box" role="dialog" aria-label="${pdfEsc(ad)} · günün dökümü" style="width:100%;max-width:min(96vw,1080px);max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:12px 18px;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:180px">
+                <div style="font-weight:700;font-size:15px">${pdfEsc(ad)}${String(p.role).toLowerCase() === 'admin' ? ' <span style="font-weight:500;color:var(--text3)">· yönetici</span>' : ''}</div>
+                <div data-alt style="font-size:12px;color:var(--text3)">Yükleniyor…</div>
             </div>
+            <button type="button" ${dugme} data-kay="-1" title="Önceki gün">‹</button>
+            <input type="date" class="pro-input" data-gun-sec style="width:auto;padding:5px 8px" max="${bugun}" value="${st.gun}">
+            <button type="button" ${dugme} data-kay="1" title="Sonraki gün">›</button>
+            <button type="button" ${dugme} data-bugun>Bugün</button>
+            <button type="button" ${dugme} data-gunluk title="Bu günü Günlük İşlemler ekranında bu kişiye süzülmüş aç">Günlük İşlemler ›</button>
             <button type="button" data-kapat="1" class="modal-head-btn" title="Kapat (Esc)">Kapat</button>
         </div>
-        <div id="erp-aktif-kayit-suz" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px 0"></div>
-        <div id="erp-aktif-kayit-govde" style="overflow:auto;padding:8px 18px 16px;flex:1;min-height:120px"></div>
+        <div data-govde style="overflow:auto;padding:14px 18px 18px;flex:1;min-height:160px;display:flex;flex-direction:column;gap:16px"></div>
     </div>`;
     document.body.appendChild(perde);
+    const govde = perde.querySelector('[data-govde]');
     const esc = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); ev.preventDefault(); kapat(); } };
     const kapat = () => { perde.remove(); document.removeEventListener('keydown', esc, true); };
     document.addEventListener('keydown', esc, true);
-    let secili = '';
     const suzUygula = () => {
-        perde.querySelectorAll('#erp-aktif-kayit-suz [data-tur]').forEach(b => {
-            const on = b.dataset.tur === secili;
+        perde.querySelectorAll('[data-cip]').forEach(b => {
+            const on = b.dataset.cip === st.secili;
             b.style.background = on ? 'var(--accent, #6366f1)' : 'var(--surface2, transparent)';
             b.style.color = on ? '#fff' : '';
         });
-        perde.querySelectorAll('#erp-aktif-kayit-govde tr[data-tur]').forEach(tr => { tr.style.display = !secili || tr.dataset.tur === secili ? '' : 'none'; });
+        perde.querySelectorAll('tr[data-tur]').forEach(tr => { tr.style.display = !st.secili || tr.dataset.tur === st.secili ? '' : 'none'; });
+    };
+    const bolum = (baslik, ic, ek = '') => ic ? `<section>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">${baslik}</div>
+            <div style="font-size:11px;color:var(--text3)">${ek}</div></div>${ic}</section>` : '';
+    const kutu = (baslik, deger, alt, renk) => `<div style="flex:1 1 150px;min-width:140px;border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">${baslik}</div>
+        <div style="font-size:20px;font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;${renk ? `color:${renk}` : ''}">${deger}</div>
+        <div style="font-size:11px;color:var(--text3)">${alt || '&nbsp;'}</div></div>`;
+    const th = 'padding:6px 8px;text-align:left;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em';
+    const td = 'padding:7px 8px;border-top:1px solid var(--border)';
+
+    const ciz = (defter, hatalar) => {
+        const simdi = Date.now();
+        const satirlar = (defter.satirlar || []).filter(r => String(r.username || '').toLowerCase() === un);
+        const oz = erpAktifGunOzet(satirlar);
+        const canli = st.gun === bugun ? (erpAktifHesapla()?.kisiler || []).find(k => k.username === p.username) : null;
+        const acikSimdi = !!canli?.cevrimici;
+        const kayitlar = st.liste;
+        const izSay = kayitlar.filter(x => x.iz).length, yeniSay = kayitlar.length - izSay;
+        const ts = kayitlar.map(x => erpZamanMs(x.ts)).filter(Boolean);
+        const kayitIlk = ts.length ? Math.min(...ts) : 0, kayitSon = ts.length ? Math.max(...ts) : 0;
+        /* Giriş / çıkış: defter (ilk hareket, yoksa program açılışı) ile kayıt saatlerinin en erken / en geç olanı; kaynağı yazılır */
+        const sifreGiris = st.gun === bugun && erpBugunMu(erpZamanMs(p.son_giris)) ? erpZamanMs(p.son_giris) : 0;
+        const giris = [oz.var && { t: oz.giris, k: oz.ilkAktif ? 'ilk hareket' : 'program açıldı' }, kayitIlk && { t: kayitIlk, k: 'ilk kayıt' },
+            sifreGiris && { t: sifreGiris, k: 'şifreyle giriş' }]
+            .filter(Boolean).sort((a, b) => a.t - b.t)[0] || null;
+        const cikis = acikSimdi
+            ? { simdi: true, k: canli.aktif === false ? 'program açık · boşta' : 'program açık' }
+            : ([oz.var && (oz.cikis ? { t: oz.cikis, k: 'çıkış yaptı' } : { t: oz.son, k: 'program kapandı' }), kayitSon && { t: kayitSon, k: 'son kayıt' }]
+                .filter(Boolean).sort((a, b) => b.t - a.t)[0] || null);
+        const tarih = gunlukAralik(st.gun).bas.toLocaleDateString('tr-TR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+        perde.querySelector('[data-alt]').textContent = tarih + (acikSimdi ? ' · şu an çevrimiçi' : '');
+
+        const notlar = [];
+        if (defter.kurulumYok) notlar.push('Giriş-çıkış defteri kurulmamış — supabase/aktif-gunluk-adim (1 → 5) Supabase\'de çalıştırılmalı. Şimdilik yalnız işlemler görünüyor.');
+        else if (defter.hata) notlar.push('Giriş-çıkış defteri okunamadı: ' + defter.hata);
+        /* O gün kimse için defter satırı yoksa defter henüz tutulmuyordu (SQL kurulmadan önceki gün) */
+        else if (!oz.var && kayitlar.length) notlar.push((defter.satirlar || []).length
+            ? 'Bu gün programdan sinyal gelmedi; giriş / çıkış kayıt saatlerinden. Kişinin kullandığı program ya da panel güncel değil olabilir.'
+            : 'Bu gün için giriş-çıkış defteri tutulmamış (defter SQL kurulduğu günden itibaren tutulur); giriş / çıkış kayıt saatlerinden.');
+        if (hatalar.length) notlar.push('Okunamayan kaynak: ' + hatalar.join(' · '));
+        const notHtml = notlar.map(n => `<div style="font-size:12px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);color:var(--amber-c,#f59e0b)">${pdfEsc(n)}</div>`).join('');
+
+        const ozetHtml = `<div style="display:flex;flex-wrap:wrap;gap:10px">
+            ${kutu('Giriş', giris ? erpSaatKisa(giris.t) : '—', giris ? pdfEsc(giris.k) : 'bu gün görülmedi')}
+            ${kutu('Çıkış', cikis ? (cikis.simdi ? 'açık' : erpSaatKisa(cikis.t)) : '—', cikis ? pdfEsc(cikis.k) : '', cikis?.simdi ? 'var(--emerald-c)' : '')}
+            ${kutu('Açık süre', oz.var ? erpSureMetni(oz.acikSn) : '—', oz.var ? 'program açık geçen' : '')}
+            ${kutu('Aktif süre', oz.aktifSn != null ? erpSureMetni(oz.aktifSn) : '—', oz.aktifSn != null ? 'fare / klavye / dokunma' : (oz.var ? 'cihaz hareket bildirmiyor' : ''))}
+            ${kutu('İşlem', kayitlar.length.toLocaleString('tr-TR'), `${yeniSay} yeni · ${izSay} değişiklik / silme`)}
+        </div>`;
+
+        const cihazHtml = satirlar.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr><th style="${th}">Cihaz</th><th style="${th}">Giriş</th><th style="${th}">Çıkış</th><th style="${th}">Açık</th><th style="${th}">Aktif</th><th style="${th}">Son ekran</th></tr></thead>
+            <tbody>${satirlar.map(g => {
+                const o1 = erpAktifGunOzet([g]);
+                const [ik, pad] = erpPlatformAd(g.platform);
+                const acik = acikSimdi && canli.cihazlar.some(c => c.platform === g.platform);
+                const cik = acik ? '<span style="color:var(--emerald-c)">açık</span>'
+                    : `${erpSaatKisa(o1.cikis || o1.son)} <span style="color:var(--text3)">${o1.cikis ? 'çıkış yaptı' : 'kapandı'}</span>`;
+                return `<tr><td style="${td}">${pdfEsc(`${ik} ${pad}`)}</td>
+                    <td style="${td};font-family:'DM Mono',monospace" title="${pdfEsc(`program açıldı ${erpSaatKisa(o1.ilk)}${o1.ilkAktif ? ` · ilk hareket ${erpSaatKisa(o1.ilkAktif)}` : ''}`)}">${erpSaatKisa(o1.giris)}</td>
+                    <td style="${td};font-family:'DM Mono',monospace">${cik}</td>
+                    <td style="${td}">${erpSureMetni(o1.acikSn)}</td>
+                    <td style="${td}">${o1.aktifSn != null ? erpSureMetni(o1.aktifSn) : '<span style="color:var(--text3)">bildirmiyor</span>'}</td>
+                    <td style="${td}">${pdfEsc(erpEkranAdi(g.son_ekran) || '—')}</td></tr>`;
+            }).join('')}</tbody></table>` : '';
+
+        const turSay = new Map();
+        kayitlar.forEach(x => turSay.set(x.tur, (turSay.get(x.tur) || 0) + 1));
+        const cipler = [...turSay.entries()].sort((a, b) => b[1] - a[1])
+            .map(([tur, n]) => `<button type="button" data-cip="${pdfEsc(tur)}" style="font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">${pdfEsc(tur)} <b>${n}</b></button>`).join('');
+        const saat = (t) => { const d = new Date(t); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'; };
+        const islemHtml = kayitlar.length
+            ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${cipler}</div>
+               <table style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead><tr><th style="${th};width:58px">Saat</th><th style="${th};width:190px">Tür</th><th style="${th}">Ayrıntı</th><th style="${th};width:72px"></th></tr></thead>
+                <tbody>${kayitlar.map((x, i) => {
+                    const yol = typeof gunlukAcYolu === 'function' ? gunlukAcYolu(x) : null;
+                    return `<tr data-tur="${pdfEsc(x.tur)}" style="vertical-align:top">
+                        <td style="${td};font-family:'DM Mono',monospace;color:var(--text2);white-space:nowrap">${saat(x.ts)}</td>
+                        <td style="${td};white-space:nowrap;${x.iz ? `color:${ERP_AKTIF_RENK.degisiklik}` : ''}">${pdfEsc(x.tur)}${erpAktifAdEki(x.kisi) ? ` <span style="color:var(--text3)">${pdfEsc(erpAktifAdEki(x.kisi))}</span>` : ''}</td>
+                        <td style="${td};color:var(--text2)">${pdfEsc(x.ayrinti || '—')}</td>
+                        <td style="${td};text-align:right">${yol ? `<button type="button" class="kya-mini" data-ac="${i}" title="${yol.tip === 'DEPO' ? 'Depo düzelt / sil penceresi (iz tutulur)' : 'Kaydı kendi ekranında aç'}">${yol.etiket}</button>` : ''}</td></tr>`;
+                }).join('')}</tbody></table>`
+            : '';
+
+        const cizelge = erpAktifCizelgeHtml(satirlar, kayitlar, { acikSimdi, simdi });
+        govde.innerHTML = notHtml + ozetHtml
+            + bolum('Zaman çizelgesi', cizelge, 'üzerine gelince saatler görünür')
+            + bolum('Cihazlar', cihazHtml)
+            + bolum('Ekranlar', erpAktifEkranlarHtml(satirlar), 'nerede ne kadar kaldı')
+            + bolum('İşlemler', islemHtml, 'yeni kayıt, değişiklik ve silme — düzeltme kaydın kendi ekranında')
+            + (!oz.var && !kayitlar.length && !defter.kurulumYok ? '<div class="dash-empty">Bu gün programı açmamış, kayıt da girmemiş.</div>' : '');
+        suzUygula();
+    };
+    const yukle = async (g) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(g || ''))) return;
+        st.gun = g > bugun ? bugun : g;
+        st.secili = '';
+        const istek = ++st.istek;
+        perde.querySelector('[data-gun-sec]').value = st.gun;
+        perde.querySelector('[data-kay="1"]').disabled = st.gun >= bugun;
+        perde.querySelector('[data-alt]').textContent = `${gunlukTrTarih(st.gun)} · okunuyor…`;
+        govde.innerHTML = '<div class="dash-empty">Yükleniyor…</div>';
+        const { bas, bit } = gunlukAralik(st.gun);
+        const [defter, ana, ek] = await Promise.all([
+            erpAktifDefterOku(st.gun),
+            erpAktifKayitlariOku(adlar, { bas, bit }).catch(e => ({ satirlar: [], hatalar: ['kayıtlar: ' + (e?.message || e)] })),
+            gunlukEkKaynaklar(st.gun).catch(e => ({ satirlar: [], hatalar: ['izler: ' + (e?.message || e)] }))
+        ]);
+        if (istek !== st.istek || !document.body.contains(perde)) return;
+        /* Değişiklik / silme izleri Günlük İşlemler'in kaynaklarından, bu kişiye süzülür */
+        const kendi = (ek.satirlar || []).filter(x => adlar.has(erpAktifAdNorm(x.kisi)));
+        st.liste = [...(ana.satirlar || []), ...kendi].sort((a, b) => erpZamanMs(b.ts) - erpZamanMs(a.ts));
+        ciz(defter, [...(ana.hatalar || []), ...(ek.hatalar || [])]);
     };
     perde.addEventListener('click', (ev) => {
         if (ev.target === perde || ev.target.closest('[data-kapat]')) { kapat(); return; }
-        const cip = ev.target.closest('#erp-aktif-kayit-suz [data-tur]');
-        if (cip) { secili = secili === cip.dataset.tur ? '' : cip.dataset.tur; suzUygula(); }
+        const kay = ev.target.closest('[data-kay]');
+        if (kay) {
+            const { bas } = gunlukAralik(st.gun);
+            bas.setDate(bas.getDate() + Number(kay.dataset.kay));
+            yukle(`${bas.getFullYear()}-${String(bas.getMonth() + 1).padStart(2, '0')}-${String(bas.getDate()).padStart(2, '0')}`);
+            return;
+        }
+        if (ev.target.closest('[data-bugun]')) { yukle(bugun); return; }
+        if (ev.target.closest('[data-gunluk]')) { kapat(); gunlukKisiyeAc(st.gun, ad); return; }
+        const cip = ev.target.closest('[data-cip]');
+        if (cip) { st.secili = st.secili === cip.dataset.cip ? '' : cip.dataset.cip; suzUygula(); return; }
+        const ac = ev.target.closest('[data-ac]');
+        if (ac) { const x = st.liste[Number(ac.dataset.ac)]; if (x) { kapat(); gunlukKayitAc(x); } }
     });
-    const { satirlar, hatalar } = await erpAktifKayitlariOku(new Set([erpAktifAdNorm(p.username), erpAktifAdNorm(p.display_name)].filter(Boolean)));
-    if (!document.body.contains(perde)) return;
-    const turSay = new Map();
-    satirlar.forEach(x => turSay.set(x.tur, (turSay.get(x.tur) || 0) + 1));
-    perde.querySelector('#erp-aktif-kayit-ozet').textContent = `${satirlar.length.toLocaleString('tr-TR')} kayıt · ${new Date().toLocaleDateString('tr-TR')}` + (hatalar.length ? ` · ${hatalar.length} kaynak okunamadı` : '');
-    perde.querySelector('#erp-aktif-kayit-suz').innerHTML = [...turSay.entries()].sort((a, b) => b[1] - a[1])
-        .map(([tur, n]) => `<button type="button" data-tur="${pdfEsc(tur)}" style="font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);cursor:pointer">${pdfEsc(tur)} <b>${n}</b></button>`).join('');
-    const saat = (ts) => { const d = new Date(ts); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'; };
-    perde.querySelector('#erp-aktif-kayit-govde').innerHTML = (satirlar.length
-        ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
-            <thead><tr style="text-align:left;color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.04em">
-                <th style="padding:6px 8px;width:58px">Saat</th><th style="padding:6px 8px;width:170px">Tür</th><th style="padding:6px 8px">Ayrıntı</th></tr></thead>
-            <tbody>${satirlar.map(x => `<tr data-tur="${pdfEsc(x.tur)}" style="border-top:1px solid var(--border)">
-                <td style="padding:7px 8px;font-family:'DM Mono',monospace;color:var(--text2);white-space:nowrap">${saat(x.ts)}</td>
-                <td style="padding:7px 8px;white-space:nowrap">${pdfEsc(x.tur)}</td>
-                <td style="padding:7px 8px;color:var(--text2)">${pdfEsc(x.ayrinti || '—')}</td></tr>`).join('')}</tbody></table>`
-        : `<div class="dash-empty">Bugün bu kişiye ait kayıt bulunamadı.</div>`)
-        + (hatalar.length ? `<div class="dash-muted" style="margin-top:10px;white-space:normal">Okunamayan: ${pdfEsc(hatalar.join(' · '))}</div>` : '');
-    suzUygula();
+    perde.querySelector('[data-gun-sec]').addEventListener('change', (ev) => yukle(ev.target.value));
+    await yukle(st.gun);
 }
 
 /* Program açılınca nabız ve uyarı zamanlayıcıları kurulur; girişten önce kendiliğinden bekler */
@@ -45773,7 +46222,9 @@ async function gunlukYukle(zorla) {
 function gunlukKisiAd(ham) {
     const n = erpAktifAdNorm(ham);
     const p = (_erpAktif.veri?.kisiler || []).find(k => erpAktifAdNorm(k.username) === n || erpAktifAdNorm(k.display_name) === n);
-    return p ? String(p.display_name || p.username) : String(ham || '—').trim();
+    if (!p) return String(ham || '—').trim();
+    const ek = erpAktifAdEki(ham);   // "(denetim D-03)" gibi açıklama ayrı kişi çipi olarak kalır
+    return String(p.display_name || p.username) + (ek ? ' ' + ek : '');
 }
 
 /* Satırın düzeltme yolu: { etiket, tip } ya da null (silinmiş kayıt, sayım raporu) */
@@ -45835,7 +46286,15 @@ async function gunlukDepoDuzelt(tablo, id) {
 }
 
 async function gunlukAc(i) {
-    const x = _gunluk.gorunen[i];
+    await gunlukKayitAc(_gunluk.gorunen[i]);
+}
+/* Aktif kullanıcılar penceresinden (17): seçilen gün, tek kişiye süzülmüş */
+async function gunlukKisiyeAc(gun, kisiAd) {
+    _gunluk.gun = gun; _gunluk.kisi = String(kisiAd || ''); _gunluk.tur = ''; _gunluk.ara = '';
+    await setAppMode('GUNLUK_ISLEMLER');
+}
+/* Satırı kendi ekranındaki düzeltme yolunda açar (Günlük İşlemler + kişinin günü penceresi) */
+async function gunlukKayitAc(x) {
     if (!x) return;
     const yol = gunlukAcYolu(x);
     if (!yol) return;
@@ -49331,11 +49790,136 @@ async function erpSevkGirisUyarilari(girisler) {
             if (n.sipMik > 0 && sonra > n.sipMik) out.push(`${ad}: sipariş ${erpVeriSayi(n.sipMik)}, sevk ${erpVeriSayi(n.sevk)} + ${eklenen} = ${erpVeriSayi(sonra)} → ${erpVeriSayi(sonra - n.sipMik)} fazla`);
             if (n.kk > 0 && sonra > n.kk) out.push(`${ad}: kaliteden geçen ${erpVeriSayi(n.kk)}, sevk ${erpVeriSayi(sonra)} olacak`);
         });
+        /* İkiz (D-09): aynı kaleme aynı adet son 48 saatte de girilmiş mi — veritabanından. Çağıran,
+           onaylanırsa ikizKalemler'deki kalemlerin sevk notuna "ikiz uyarısı onaylandı" düşer. */
+        const ikiz = await erpSevkIkizAra([...grup.values()]);
+        out.push(...ikiz.uyarilar);
+        out.ikizKalemler = ikiz.kalemler;
         return out;
     } catch (e) {
         console.warn('erpSevkGirisUyarilari', e);
         return [];
     }
+}
+
+/* ── 1b) İkiz giriş uyarısı (D-09, 09.10.2026) ──────────────────────
+   Kesimdeki kuralın (04 konfKyIkizAra) kalite, dokuma ve sevk karşılığı: aynı kaleme aynı miktar az
+   önce girilmişse — hangi cihazdan olursa olsun — yazmadan hemen önce VERİTABANINDAN bakılır, önceki
+   kayıt (saat, miktar, kaynak, kişi) gösterilip sorulur. Engel değil; onaylanırsa kayıt iz taşır
+   (ikiz_onaylandi). Pencereler 09.10 ölçümüyle kullanıcı kararı: kalite/dokuma 15 dk (kalite parti
+   adetleri "6 ad" gibi tekrar eder, 48 saat ayda ~47 boş uyarı verirdi; 15 dk ~10), sevk 48 saat
+   (kesimle aynı, ayda ~4). Konfeksiyon Panel ve Dokuma Panel'de aynı kural ve süreler.
+   Okunamazsa giriş durmaz (uyarısız geçer). */
+const ERP_IKIZ_KALITE_DK = 15;
+const ERP_IKIZ_DOKUMA_DK = 15;
+const ERP_IKIZ_SEVK_SAAT = 48;
+const ERP_IKIZ_KALITE_ISLEMLER = ['KALITE', 'KALİTE', 'KALITE KONTROL', 'KALİTE KONTROL'];
+
+function erpIkizNot(r) { try { return JSON.parse(r?.notlar || '{}') || {}; } catch (e) { return {}; } }
+function erpIkizSaat(ts) { const t = new Date(ts); return Number.isNaN(t.getTime()) ? '' : t.toLocaleString('tr-TR'); }
+function erpIkizKalemAd(sid, ki) {
+    const sip = (dataCache.siparisler || []).find(s => String(s.id) === String(sid));
+    const k = (sip && typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(sip) : [])[ki] || {};
+    return { sno: sip?.sno || '', ad: [k.ad || k.kod || `Kalem ${ki + 1}`, k.renk, k.ebat || k.olcu].filter(Boolean).join(' · ') };
+}
+async function erpIkizSor(baslik, bloklar, sonSoz) {
+    const mesaj = `⚠ ${baslik}\n\n${bloklar.join('\n\n')}\n\n${sonSoz}`;
+    return (typeof erpAskConfirm === 'function') ? !!(await erpAskConfirm(mesaj)) : confirm(mesaj);
+}
+
+/** Kalite: satirlar [{ kalemIdx, adet (kalite geçen) }]. Vazgeçilirse null; yoksa { kalemIdx: ikiz_onaylandi }.
+ *  Masaüstü KALITE ve panel KALİTE KONTROL satırları notlarda kalem_idx, miktarda kalite geçen taşır. */
+async function erpKaliteIkizOnay(siparisId, satirlar) {
+    const aday = (satirlar || []).map(s => ({ ki: parseInt(s.kalemIdx, 10), adet: parseInt(s.adet, 10) || 0 }))
+        .filter(s => Number.isFinite(s.ki) && s.ki >= 0 && s.adet > 0);
+    if (!aday.length || siparisId == null || typeof sb === 'undefined' || !sb) return {};
+    let data = [];
+    try {
+        const bas = new Date(Date.now() - ERP_IKIZ_KALITE_DK * 60000).toISOString();
+        const r = await sb.from('siparis_akis').select('id,created_at,islem,miktar,notlar')
+            .eq('siparis_id', siparisId).in('islem', ERP_IKIZ_KALITE_ISLEMLER).gte('created_at', bas).limit(200);
+        if (r.error) return {};
+        data = r.data || [];
+    } catch (e) { console.warn('erpKaliteIkizOnay', e); return {}; }
+    const bloklar = [], iz = {};
+    aday.forEach(({ ki, adet }) => {
+        const es = data.filter(r => parseInt(erpIkizNot(r).kalem_idx, 10) === ki && (parseInt(r.miktar, 10) || 0) === adet);
+        if (!es.length) return;
+        const { sno, ad } = erpIkizKalemAd(siparisId, ki);
+        bloklar.push(`${sno} · ${ad}\nGirmek istediğiniz: ${adet} ad kalite geçen\n` + es.map(r => {
+            const n = erpIkizNot(r);
+            const yer = /KONTROL/i.test(r.islem) ? 'Konfeksiyon Panel' : 'Ana program';
+            return `  • ${erpIkizSaat(r.created_at)} · ${r.miktar} ad · ${yer}${(n.kullanici || n.user) ? ' · ' + (n.kullanici || n.user) : ''}`;
+        }).join('\n'));
+        iz[ki] = { ts: new Date().toISOString(), ikiz_id: es.map(r => r.id) };
+    });
+    if (!bloklar.length) return {};
+    const ok = await erpIkizSor(`AYNI KALEME AYNI KALİTE ADEDİ SON ${ERP_IKIZ_KALITE_DK} DAKİKADA GİRİLMİŞ`, bloklar,
+        'Aynı partiyi ikinci kez giriyorsanız VAZGEÇ deyin — yoksa kalite iki kez sayılır.\nGerçekten ayrı bir partiyse ONAYLA ile kaydedin.');
+    return ok ? iz : null;
+}
+
+/** KD'yi önbelleğe dokunmadan taze okur (ikiz kontrolü için; okunamazsa hata fırlatır). */
+async function erpKdTazeOku(siparisId, tip) {
+    const { data, error } = await sb.from('siparis_akis').select('id,kalem_ad,notlar,created_at')
+        .eq('siparis_id', siparisId).eq('islem', tip).order('created_at', { ascending: false }).limit(20);
+    if (error) throw error;
+    return sbKdSatirlardanSec(data || [], tip) || {};
+}
+/** Dokuma: adaylar [{ i, metre, kg, adet }] (sipariş birimine göre yazılacak değerler). kd verilmezse taze okunur.
+ *  Aynı kaleme son 15 dk'da aynı metre + kg + adet girilmiş top varsa sorar. Vazgeçilirse null; yoksa { i: ikiz_onaylandi }. */
+async function erpDokumaIkizOnay(siparisId, adaylar, kd) {
+    const say = (v) => Math.round((parseFloat(v) || 0) * 1000);
+    const liste = (adaylar || []).filter(a => a && (say(a.metre) || say(a.kg) || say(a.adet)));
+    if (!liste.length || siparisId == null) return {};
+    if (!kd) {
+        try { kd = await erpKdTazeOku(siparisId, 'KD_DOKUMA'); } catch (e) { console.warn('erpDokumaIkizOnay', e); return {}; }
+    }
+    const sinir = Date.now() - ERP_IKIZ_DOKUMA_DK * 60000;
+    const bloklar = [], iz = {};
+    liste.forEach(a => {
+        const u = (kd?.urunler || {})[a.i] || (kd?.urunler || {})[String(a.i)] || {};
+        const es = (Array.isArray(u.girisler) ? u.girisler : []).filter(g => g && Date.parse(g.tarih_iso || '') >= sinir
+            && say(g.metre) === say(a.metre) && say(g.kg) === say(a.kg) && say(g.adet) === say(a.adet));
+        if (!es.length) return;
+        const { sno, ad } = erpIkizKalemAd(siparisId, a.i);
+        const miktar = (g) => [say(g.metre) ? `${erpVeriSayi(g.metre)} m` : '', say(g.kg) ? `${erpVeriSayi(g.kg)} kg` : '', say(g.adet) ? `${erpVeriSayi(g.adet)} ad` : ''].filter(Boolean).join(' · ');
+        const yer = (g) => ({ DOKUMA_PANEL: 'Dokuma Panel', TEZGAH_PLANLAMA: 'Tezgah Planlama' })[g.kaynak] || (String(g.gid || '').startsWith('dt-') ? 'Dokuma Takip' : (g.kaynak || 'kaynak yok'));
+        bloklar.push(`${sno} · ${ad}\nGirmek istediğiniz: ${miktar(a)}\n` + es.map(g =>
+            `  • ${erpIkizSaat(g.tarih_iso)} · ${miktar(g)} · ${yer(g)}${g.tezgah_no ? ' · tezgah ' + g.tezgah_no : ''}${(g.user || g.kullanici) ? ' · ' + (g.user || g.kullanici) : ''}`).join('\n'));
+        iz[a.i] = { ts: new Date().toISOString(), ikiz_gid: es.map(g => g.gid || g.tarih_iso) };
+    });
+    if (!bloklar.length) return {};
+    const ok = await erpIkizSor(`AYNI KALEME AYNI TOP SON ${ERP_IKIZ_DOKUMA_DK} DAKİKADA GİRİLMİŞ`, bloklar,
+        'Aynı topu ikinci kez giriyorsanız VAZGEÇ deyin — yoksa dokunan iki kez sayılır.\nGerçekten ayrı bir topsa ONAYLA ile kaydedin.');
+    return ok ? iz : null;
+}
+/** Sevk: son 48 saatte aynı kaleme aynı adet "+" sevk (siparis_akis SEVK; düzeltme/kesin satırları hariç).
+ *  grup: [{ sid, ki, adetler }] → { uyarilar: [metin], kalemler: Set('sid|ki') } */
+async function erpSevkIkizAra(gruplar) {
+    const out = { uyarilar: [], kalemler: new Set() };
+    const sids = [...new Set((gruplar || []).map(g => g.sid))];
+    if (!sids.length || typeof sb === 'undefined' || !sb) return out;
+    try {
+        const bas = new Date(Date.now() - ERP_IKIZ_SEVK_SAAT * 3600000).toISOString();
+        const { data, error } = await sb.from('siparis_akis').select('id,siparis_id,created_at,miktar,notlar')
+            .in('siparis_id', sids).eq('islem', 'SEVK').gte('created_at', bas).limit(1000);
+        if (error) return out;
+        gruplar.forEach(g => {
+            const es = (data || []).filter(r => {
+                const n = erpIkizNot(r);
+                return String(r.siparis_id) === g.sid && parseInt(n.kalem_idx, 10) === g.ki && !n.duzeltme && !n.kesin_toplam
+                    && g.adetler.includes(Math.abs(parseInt(r.miktar, 10) || 0));
+            });
+            if (!es.length) return;
+            const { sno, ad } = erpIkizKalemAd(g.sid, g.ki);
+            out.kalemler.add(`${g.sid}|${g.ki}`);
+            out.uyarilar.push(`${sno} · ${ad}: aynı adet son ${ERP_IKIZ_SEVK_SAAT} saatte de sevk girilmiş — `
+                + es.map(r => { const n = erpIkizNot(r); return `${erpIkizSaat(r.created_at)} ${r.miktar} ad${n.user ? ' (' + n.user + ')' : ''}`; }).join(', ')
+                + ' · aynı malı ikinci kez giriyorsanız VAZGEÇ');
+        });
+    } catch (e) { console.warn('erpSevkIkizAra', e); }
+    return out;
 }
 
 /* ── 2) Sürekli denetim ──────────────────────────────────────────── */

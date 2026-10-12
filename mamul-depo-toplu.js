@@ -1063,10 +1063,12 @@ async function mamulTopluKaydet() {
         onayMsg = `${hedefler.length} satır stoktan düşüp siparişin sevk edilenine eklenecek.\n`
             + (uyari.length ? `\n⚠ ${uyari.join('\n⚠ ')}\n` : '') + '\n' + onayMsg;
     }
-    /* Veri bekçisi (26-veri-bekcisi.js): aynı kaleme çok satır, sipariş / kalite aşımı — sorulur, engellemez */
+    /* Veri bekçisi (26-veri-bekcisi.js): aynı kaleme çok satır, sipariş / kalite aşımı, ikiz giriş — sorulur, engellemez */
+    let ikizKalemler = new Set();
     if (movementType === 'ÇIKIŞ' && typeof erpSevkGirisUyarilari === 'function') {
         const veriUyari = await erpSevkGirisUyarilari(payloads);
         if (veriUyari.length) onayMsg = `⚠ KONTROL EDİN:\n• ${veriUyari.join('\n• ')}\n\n${onayMsg}`;
+        ikizKalemler = veriUyari.ikizKalemler || ikizKalemler;
     }
     const ok = typeof erpAskConfirm === 'function' ? await erpAskConfirm(onayMsg) : confirm(onayMsg);
     if (!ok) return;
@@ -1141,7 +1143,7 @@ async function mamulTopluKaydet() {
                     siparisId: sidUse,
                     kalemIdx: ki,
                     deltaAdet: adet,
-                    note: `Mamül sevk +${adet} ad`
+                    note: `Mamül sevk +${adet} ad${ikizKalemler.has(`${sidUse}|${ki}`) ? ' · ikiz uyarısı onaylandı' : ''}`
                 });
             }
             let yukOk = 0;

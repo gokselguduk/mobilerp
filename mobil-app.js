@@ -10402,3 +10402,117 @@ try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
 
     console.info('[mobil-lite] Anasayfa yok; açılış siparişler; Chart / Excel kapalı; Realtime açık');
 })(window);
+
+/* ── Giriş + karşılama ekranı (12.10.2026, kullanıcı: "Dokuma/Konfeksiyon panelindeki gibi") ─────────────
+   Giriş: 09-auth erpShowLoginScreen bu görünümü kullanır (erpGirisEkraniHtml); alan kimlikleri ve giriş mantığı
+   ortak, yalnız görünüm mobile özel. Karşılama: uygulama açılınca ve telefon 5 dk'dan uzun arka planda kalıp
+   dönülünce gelir — logo, saat, tarih, pil (tarayıcı destekliyorsa), internet, "Merhaba"; "Devam" ile kaldığı
+   yerden. Yalnız örtü: veri yenilemez, hiçbir şey yazmaz. Renkler mobilin temasından (koyu / body.light-mode). */
+const MOBIL_KARSILAMA_ARKA_PLAN_MS = 5 * 60 * 1000;
+let _mkPil = null, _mkSaat = null, _mkGizlenme = 0;
+
+window.erpGirisEkraniHtml = function () {
+    return `<div class="mk-giris">
+        <div class="mk-giris-ust">
+            <img class="mk-logo" src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks">
+            <div class="mk-baslik">Mobil ERP</div>
+        </div>
+        <div class="mk-giris-kart">
+            <div id="erp-login-error" class="mk-hata" style="display:none"></div>
+            <label class="mk-etiket" for="erp-login-user">Kullanıcı adı</label>
+            <input id="erp-login-user" class="mk-girdi" type="text" autocomplete="username" autocapitalize="off" spellcheck="false"
+                placeholder="kullanıcı adı" onkeydown="if(event.key==='Enter')document.getElementById('erp-login-pass').focus()">
+            <div class="mk-etiket-satir">
+                <label class="mk-etiket" for="erp-login-pass">Şifre</label>
+                <label class="mk-goster"><input type="checkbox" id="erp-show-pass"
+                    onchange="document.getElementById('erp-login-pass').type=this.checked?'text':'password'"> Göster</label>
+            </div>
+            <input id="erp-login-pass" class="mk-girdi" type="password" autocomplete="current-password"
+                placeholder="••••••••" onkeydown="if(event.key==='Enter')erpDoLogin()">
+            <button type="button" id="erp-login-btn" class="mk-btn" onclick="erpDoLogin()">Giriş Yap</button>
+        </div>
+        <div class="mk-alt">Simteks Tekstil · Yetkisiz erişim yasaktır</div>
+    </div>`;
+};
+/* Karşılama açıkken giriş kutusu odak almasın (telefonda klavye arkada açılırdı) */
+window.erpGirisOdakAlsinMi = function () { return !mobilKarsilamaAcik(); };
+
+function mobilKarsilamaAcik() {
+    return !!document.getElementById('mobil-karsilama')?.classList.contains('acik');
+}
+function mobilKarsilamaPilHtml() {
+    if (!_mkPil || !(_mkPil.yuzde >= 0)) return '';
+    const y = Math.round(_mkPil.yuzde);
+    const sinif = _mkPil.sarj ? 'mk-iyi' : (y < 20 ? 'mk-kotu' : (y < 40 ? 'mk-uyari' : ''));
+    return `<span class="${sinif}">${_mkPil.sarj ? '⚡' : '🔋'} %${y}</span>${_mkPil.sarj ? ' <span class="mk-ince">şarj oluyor</span>' : ''}`;
+}
+function mobilKarsilamaCiz() {
+    const el = document.getElementById('mobil-karsilama');
+    if (!el) return;
+    const simdi = new Date();
+    el.querySelector('.mk-saat').textContent = simdi.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    el.querySelector('.mk-tarih').textContent = simdi.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    el.querySelector('.mk-pil').innerHTML = mobilKarsilamaPilHtml();
+    el.querySelector('.mk-ag').innerHTML = navigator.onLine !== false
+        ? '<span class="mk-iyi">● İnternet bağlı</span>' : '<span class="mk-kotu">● İnternet yok</span>';
+    const kul = typeof erpCurrentUser !== 'undefined' ? erpCurrentUser : null;
+    const ad = kul ? String(kul.display_name || kul.username || '').trim() : '';
+    el.querySelector('.mk-bilgi').innerHTML = kul
+        ? `<div class="mk-merhaba">Merhaba, <strong>${typeof pdfEsc === 'function' ? pdfEsc(ad) : ad.replace(/[<>&"]/g, '')}</strong></div>`
+        : '<div>Başlamak için kullanıcı adınızla giriş yapın</div>';
+    el.querySelector('.mk-btn').textContent = kul ? 'Devam' : 'Giriş yap';
+}
+function mobilKarsilamaGoster() {
+    let el = document.getElementById('mobil-karsilama');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'mobil-karsilama';
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-label', 'Karşılama');
+        el.innerHTML = `<div class="mk-ust"><span class="mk-pil"></span><span class="mk-ag"></span></div>
+            <div class="mk-orta">
+                <img class="mk-logo" src="https://simtekstekstil.com.tr/resimler/logo.png" alt="Simteks">
+                <div class="mk-baslik">Mobil ERP</div>
+                <div class="mk-saat">--:--</div>
+                <div class="mk-tarih"></div>
+                <div class="mk-bilgi"></div>
+            </div>
+            <button type="button" class="mk-btn" onclick="mobilKarsilamaKapat()">Devam</button>`;
+        document.body.appendChild(el);
+    }
+    try { document.activeElement?.blur?.(); } catch (e) {}
+    el.classList.add('acik');
+    mobilKarsilamaCiz();
+    clearInterval(_mkSaat);
+    _mkSaat = setInterval(mobilKarsilamaCiz, 15000);
+}
+function mobilKarsilamaKapat() {
+    document.getElementById('mobil-karsilama')?.classList.remove('acik');
+    clearInterval(_mkSaat);
+    _mkSaat = null;
+    /* Giriş ekranı arkada bekliyorsa kullanıcı adına geç */
+    if (document.getElementById('erp-login-overlay')) setTimeout(() => document.getElementById('erp-login-user')?.focus(), 80);
+}
+window.mobilKarsilamaKapat = mobilKarsilamaKapat;
+(function mobilKarsilamaBaslat() {
+    try {
+        if (navigator.getBattery) {
+            navigator.getBattery().then(b => {
+                const g = () => { _mkPil = { yuzde: Math.round(b.level * 100), sarj: b.charging }; if (mobilKarsilamaAcik()) mobilKarsilamaCiz(); };
+                g();
+                b.addEventListener('levelchange', g);
+                b.addEventListener('chargingchange', g);
+            }).catch(() => {});
+        }
+    } catch (e) {}
+    const ac = () => mobilKarsilamaGoster();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ac);
+    else ac();
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { _mkGizlenme = Date.now(); return; }
+        if (_mkGizlenme && Date.now() - _mkGizlenme >= MOBIL_KARSILAMA_ARKA_PLAN_MS) mobilKarsilamaGoster();
+        else if (mobilKarsilamaAcik()) mobilKarsilamaCiz();
+    });
+    window.addEventListener('online', () => { if (mobilKarsilamaAcik()) mobilKarsilamaCiz(); });
+    window.addEventListener('offline', () => { if (mobilKarsilamaAcik()) mobilKarsilamaCiz(); });
+})();
