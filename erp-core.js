@@ -3191,6 +3191,7 @@ async function dokumaDepoSevkEtKd(rowId, row, opts) {
             ts: new Date().toISOString(),
             user,
             kaynak_id: rowId,
+            defter_ids: defter.ids,   /* sevk defteri satırları — yanlış sevki geri alma (04 konfKesimOnuSevkGeriAl) bunlarla siler */
             stok_kodu: stokKodu,
             lot_no: row.lot_no || '',
             kumas_cinsi: row.kumas_cinsi || '',
@@ -5517,6 +5518,8 @@ async function erpAdminKaydet(un) {
     const aktif = document.getElementById('kya-aktif')?.checked !== false;
     const ad = (document.getElementById('kya-ad')?.value || '').trim();
     const modlar = rol === 'admin' ? [] : [...kok.querySelectorAll('input.kya-chk:checked')].map(c => c.value);
+    const oncekiU = erpAdminKullaniciBul(un);
+    const onceki = oncekiU ? { rol: oncekiU.role, aktif: oncekiU.active !== false, ad: oncekiU.display_name || '', yetkiler: oncekiU.allowed_modes || [] } : null;
 
     erpAdminDurumYaz('kya-durum', 'Kaydediliyor…');
     const { data, error } = await erpAdminKayitRpc({
@@ -5564,6 +5567,17 @@ async function erpAdminKaydet(un) {
     try { setTimeout(() => { try { erpYetkiBumpYayinla(un); } catch (e) {} }, 800); } catch (e) {}
 
     erpAdminDurumYaz('kya-durum', 'Kaydedildi — açık oturumda menü anında güncellenir.');
+    {
+        /* Kim neyi değiştirdi (11 erpIslemIzYaz) — yalnız değişen alanlar */
+        const sonra = { rol, aktif, ad, yetkiler: modlar };
+        const ne = !onceki ? ['kaydedildi'] : [
+            onceki.rol !== rol && `rol ${onceki.rol} → ${rol}`,
+            onceki.aktif !== aktif && (aktif ? 'aktif yapıldı' : 'pasif yapıldı'),
+            String(onceki.ad || '') !== String(ad || '') && `ad "${onceki.ad}" → "${ad}"`,
+            JSON.stringify([...onceki.yetkiler].sort()) !== JSON.stringify([...modlar].sort()) && `yetkiler değişti (${modlar.length})`
+        ].filter(Boolean);
+        if (ne.length && typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'erp_users', kayit_id: un, islem: 'DEGISTIR', kaynak: 'KULLANICI_YONETIMI', etiket: `${un} · ${ne.join(' · ')}`, eski: onceki, yeni: sonra });
+    }
     const u = erpAdminKullaniciBul(un);
     if (u) { u.allowed_modes = modlar; u.active = aktif; u.display_name = ad; u.role = rol; }
     erpAdminListeCiz();
@@ -5587,6 +5601,7 @@ async function erpAdminSifre(un) {
         return;
     }
     erpAdminDurumYaz('kya-durum', 'Şifre güncellendi.');
+    if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'erp_users', kayit_id: un, islem: 'DEGISTIR', kaynak: 'KULLANICI_YONETIMI', etiket: `${un} · şifre değiştirildi` });
     setTimeout(() => erpAdminDurumYaz('kya-durum', ''), 3000);
 }
 
@@ -5616,6 +5631,7 @@ async function erpAdminSil(un) {
     }
 
     erpAdminDurum.secili = '';
+    if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'erp_users', kayit_id: un, islem: 'KALDIR', kaynak: 'KULLANICI_YONETIMI', etiket: `${un} · kullanıcı silindi` });
     await renderKullaniciYonetimi();
     try { erpToast('Kullanıcı silindi.'); } catch (e) {}
 }
@@ -5652,6 +5668,7 @@ async function erpAdminOlustur() {
 
     erpAdminDurum.yeniMod = false;
     erpAdminDurum.secili = un;
+    if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'erp_users', kayit_id: un, islem: 'EKLE', kaynak: 'KULLANICI_YONETIMI', etiket: `${un} · kullanıcı oluşturuldu · ${rol === 'admin' ? 'yönetici' : modlar.length + ' yetki'}` });
     await renderKullaniciYonetimi();
     try { erpToast('Kullanıcı oluşturuldu.'); } catch (e) {}
 }
@@ -6825,6 +6842,19 @@ function erpLiveApplyPayload(table, payload) {
             /* Genel yenileme pencere açıkken ertelenir — açık pencere bu siparişse yerinde tazelenir. */
             const satir = payload?.new || payload?.old || {};
             if (satir.siparis_id != null && satir.siparis_id !== '') erpSiparisPenceresiCanliYenile(satir.siparis_id);
+            /* Dokumadan Konfeksiyon'a sevk (ana program / Dokuma Panel) — Kesim ekranındaki "Kesim önünde bekleyen"
+               90 sn'lik önbelleği beklemesin: yalnız o siparişin sevk satırları yeniden okunur (~0,4 sn; günde birkaç
+               sevk). Önbellek hiç yüklenmediyse (Konfeksiyon ekranı açılmadıysa) istek atılmaz. */
+            if (String(satir.islem || '') === 'KUMAS_GELIS' && String(satir.notlar || '').includes(KESIM_ONU_PIPELINE)
+                && satir.siparis_id != null && satir.siparis_id !== '' && _konfGlobalKumasGelisAt) {
+                konfGlobalKumasGelisSiparisTazele(satir.siparis_id).then(() => erpLiveScheduleUi('realtime')).catch(() => {});
+            }
+            /* Geri alınan sevk (silme olayında yalnız id gelir): önbellekteki sevk satırıysa düşür — istek atılmaz */
+            if (String(payload?.eventType || payload?.event || '').toUpperCase() === 'DELETE' && payload?.old?.id != null && _konfGlobalKumasGelisAt
+                && (_konfGlobalKumasGelisCache || []).some(r => String(r.akis_id) === String(payload.old.id))) {
+                konfGlobalKumasGelisCacheMutate(_konfGlobalKumasGelisCache.filter(r => String(r.akis_id) !== String(payload.old.id)));
+                erpLiveScheduleUi('realtime');
+            }
         } catch (e) {}
         return true;
     }
@@ -11894,94 +11924,6 @@ async function konfPipelineKesimRotaHazirla(siparisId, kalemIdx, desen) {
 }
 
 
-async function konfKumasGelisKesimKaydet(akisId) {
-    if (!akisId) return;
-    const globalRow = (_konfGlobalKumasGelisCache || []).find(r => String(r.akis_id) === String(akisId));
-    const sid = konfeksiyonSiparisId || globalRow?.siparis_id;
-    if (!sid) { erpToast('Sipariş bulunamadı.', 'error'); return; }
-    if (!_konfIslemLogCache[sid]) await konfLoadIslemLog(sid);
-    const row = (_konfIslemLogCache[sid] || []).find(r => String(r.id) === String(akisId));
-    if (!row || String(row.islem || '').toUpperCase() !== 'KUMAS_GELIS') {
-        erpToast('Kayıt bulunamadı.', 'error');
-        return;
-    }
-    const j = { ...(row.not_json || {}) };
-    const kesAd = parseInt(document.getElementById(`ad-kes-${akisId}`)?.value || 0, 10) || 0;
-    if (kesAd <= 0) {
-        erpToast('Kesim adeti girin.', 'error');
-        return;
-    }
-    const user = String(erpCurrentUser?.display_name || erpCurrentUser?.username || 'Sistem').trim() || 'Sistem';
-    const gelAd = parseInt(j.adet || 0, 10) || 0;
-    j.kesilen_kg = 0;
-    j.kesilen_mt = 0;
-    j.kesilen_adet = kesAd;
-    j.kesim_ts = new Date().toISOString();
-    j.kesim_user = user;
-    j.fark_kg = 0;
-    j.fark_mt = 0;
-    j.fark_adet = gelAd - kesAd;
-    const eslesme = j.fark_adet === 0;
-    j.kesim_durum = eslesme ? 'KESIM_TAMAM' : 'KESIM_KISMEN';
-    const kalemIdx = j.kalem_idx != null ? j.kalem_idx : konfPipelineKalemIdxFromDepoRow(sid, j);
-    if (Number.isFinite(parseInt(kalemIdx, 10)) && parseInt(kalemIdx, 10) >= 0) j.kalem_idx = parseInt(kalemIdx, 10);
-    const desenOn = konfKesimDesenBul(sid, j.kalem_idx, j.stok_kodu || row.kalem_ad_db, j);
-    const rota = await konfPipelineKesimRotaHazirla(sid, j.kalem_idx, desenOn);
-    j.sonraki_rota = rota;
-    j.durum = rota === 'YIKAMA' ? 'YIKAMA_BEKLIYOR' : 'KALITE_BEKLIYOR';
-
-    const { error } = await sb.from('siparis_akis').update({ notlar: JSON.stringify(j) }).eq('id', akisId);
-    if (error) {
-        erpToast('Kayıt güncellenemedi: ' + error.message, 'error');
-        return;
-    }
-
-    try {
-        const sip = (dataCache.siparisler || []).find((s) => String(s.id) === String(sid));
-        const desen = desenOn;
-        await konfKyInsert({
-            siparis_id: sid,
-            siparis_sno: sip?.sno || '',
-            firma: sip?.firma || '',
-            kalem_idx: j.kalem_idx,
-            desen,
-            renk: j.kalem_renk || j.renk || '',
-            ebat: j.kalem_ebat || '',
-            kesilen_adet: kesAd,
-            rota,
-            durum: rota === 'YIKAMA' ? 'YIKAMA_BEKLIYOR' : 'KALITE_BEKLIYOR',
-            kaynak: 'DOKUMA_DEPO',
-            kesim_user: user,
-            kesim_ts: j.kesim_ts,
-            notlar: JSON.stringify({ kaynak_akis_id: akisId })
-        });
-        await konfLoadKesimGecmis({ force: true });
-    } catch (e) {
-        /* İkiz uyarısında kullanıcı vazgeçtiyse bu bir hata değil. */
-        if (e && e.ikizIptal) { erpToast('Kayıt yapılmadı — aynı ürüne aynı adet zaten girilmiş.', 'warn', 4000); return; }
-        console.error(e);
-        erpToast('Kesim tablosuna yazılamadı: ' + (e.message || e), 'error');
-        return;
-    }
-
-    try {
-        await konfPipelineSiparisDurumSenkron(sid);
-        await konfKesimSonrasiPipelineYenile();
-        await konfDurumTabYenile(sid);
-    } catch (e) { console.warn('konfPipelineSiparisDurumSenkron', e); }
-
-    await konfLoadIslemLog(sid);
-    erpToast(eslesme
-        ? (rota === 'YIKAMA' ? 'Kesim tamam — yıkamaya hazır listesine aktarıldı.' : 'Kesim tamam — kalite listesine aktarıldı.')
-        : 'Kesim kaydedildi — sonraki aşamaya yönlendirildi.', eslesme ? 'success' : 'warn');
-    if (appMode === 'KONFEKSIYON_KESIM' || appMode === 'KONFEKSIYON_YIKAMA' || appMode === 'KONFEKSIYON_KALITE') {
-        renderKonfeksiyon();
-    } else {
-        const cont = document.getElementById('konf-content');
-        if (cont) cont.innerHTML = renderKonfIcerik();
-    }
-}
-
 let _konfGlobalKumasGelisCache = [];
 let _konfGlobalKumasGelisAt = 0;
 const KONF_GLOBAL_KUMAS_GELIS_TTL_MS = 90000;
@@ -12051,7 +11993,7 @@ function konfPipeOzetGet(siparisId, kalemIdx) {
     return _konfPipeOzetByKey.get(`${String(siparisId)}|${Number(kalemIdx)}`) || null;
 }
 /** Bitmiş işlem panelleri: filtre + açık/kapalı */
-let konfPipelineBitmisFiltre = { kesim: '', kesim_dokuma: '', yikama: '', kalite: '', sevk: '', kalite_aktif: '' };
+let konfPipelineBitmisFiltre = { kesim: '', yikama: '', kalite: '', sevk: '', kalite_aktif: '' };
 /* Kesim/yıkama sayıları hatalı olduğunda havuz hesabı da hatalı çıkıyor ve
    bazı siparişler kalite havuzunda hiç görünmüyor. Bu anahtar açıkken
    havuz/bekleyen hesabına bakılmaksızın TÜM konfeksiyon satırları listelenir. */
@@ -12061,7 +12003,7 @@ function konfKaliteTumSiparisleriGosterToggle(deger, filtreSiparisId) {
     if (typeof konfKaliteAktifHizliYenile === 'function') konfKaliteAktifHizliYenile(filtreSiparisId);
     else if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
 }
-let konfPipelineBitmisOpen = { kesim: false, kesim_dokuma: false, yikama: false, kalite: false, sevk: false };
+let konfPipelineBitmisOpen = { kesim: false, yikama: false, kalite: false, sevk: false };
 
 function konfPipelineBitmisBlob(r) {
     return [
@@ -12099,13 +12041,6 @@ function konfPipelineBitmisFiltreSet(key, value) {
 
 function konfPipelineBitmisToggle(key, open) {
     konfPipelineBitmisOpen[String(key || '')] = !!open;
-}
-
-function konfPipelineKesimAktifMi(r) {
-    /* Manuel yıkama satırı kumaş gelişi değildir; kesilen 0 diye kesim bekleyen sayılmaz. */
-    return !r.gecici_kesim_onu_sifir
-        && !r.not_json?.manuel_yikama
-        && (['KESIM_BEKLIYOR', 'KESIM_KISMEN'].includes(String(r.durum || '')) || !r.kesilen_adet);
 }
 
 function konfPipelineSatirEbat(r) {
@@ -12595,19 +12530,6 @@ async function konfKesimKaydiSil(kesimId) {
 }
 window.konfKesimKaydiSil = konfKesimKaydiSil;
 
-function konfKesimDesenBul(siparisId, kalemIdx, kalemAd, j) {
-    const idx = parseInt(kalemIdx, 10);
-    if (Number.isFinite(idx) && idx >= 0) {
-        const kalemler = (typeof konfGetSiparisKalemlerById === 'function') ? (konfGetSiparisKalemlerById(siparisId) || []) : [];
-        const k = kalemler[idx];
-        if (k) {
-            const ad = String(k.ad || k.cins || k.kod || '').trim();
-            if (ad) return ad;
-        }
-    }
-    return String(kalemAd || j?.stok_kodu || j?.kumas_cinsi || '').trim() || '—';
-}
-
 const KONF_KY_TAM_YENILE_MS = 10 * 60000;
 let _konfKyTamYuklemeAt = 0;
 let _konfKySonGuncelleme = '';   /* önbellekteki en yeni updated_at (ISO) */
@@ -13045,6 +12967,7 @@ async function erpGeciciDokumaDepoSifirla() {
         _dokumaDepoKdSatirlariCache = [];
         if (typeof renderDokumaDepo === 'function') await renderDokumaDepo();
         erpToast(`Dokuma Depo sıfırlandı (${n} sipariş KD). Sipariş dokuma toplamları aynı.`, 'success', 4500);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'dokuma_depo', kayit_id: 'TOPLU', islem: 'SIFIRLA', kaynak: 'GECICI_SIFIRLA', etiket: `Dokuma Depo geçici sıfırlama · ${n} sipariş` });
     } catch (e) {
         console.error(e);
         alert('Sıfırlama hatası: ' + (e.message || e));
@@ -13076,6 +12999,7 @@ async function erpGeciciYikamaOnuSifirla() {
         await konfLoadKesimGecmis({ force: true });
         if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
         erpToast(`Yıkama önü sıfırlandı (${n} kayıt).`, 'success', 4000);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'konf_kesim_yikama', kayit_id: 'TOPLU', islem: 'SIFIRLA', kaynak: 'GECICI_SIFIRLA', etiket: `Yıkama önü geçici sıfırlama · ${n} kayıt` });
     } catch (e) {
         console.error(e);
         alert('Sıfırlama hatası: ' + (e.message || e));
@@ -13108,6 +13032,7 @@ async function erpGeciciYikamadakiSifirla() {
         await konfLoadKesimGecmis({ force: true });
         if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
         erpToast(`Yıkamadaki mal sıfırlandı (${n} kayıt).`, 'success', 4000);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'konf_kesim_yikama', kayit_id: 'TOPLU', islem: 'SIFIRLA', kaynak: 'GECICI_SIFIRLA', etiket: `Yıkamadaki mal geçici sıfırlama · ${n} kayıt` });
     } catch (e) {
         console.error(e);
         alert('Sıfırlama hatası: ' + (e.message || e));
@@ -13134,6 +13059,7 @@ async function erpGeciciKaliteOnuSifirla() {
         }
         await konfPipelineYenile();
         erpToast(`Kalite önü sıfırlandı (${n} kayıt).`, 'success', 4000);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'konf_kesim_yikama', kayit_id: 'TOPLU', islem: 'SIFIRLA', kaynak: 'GECICI_SIFIRLA', etiket: `Kalite önü geçici sıfırlama · ${n} kayıt` });
     } catch (e) {
         console.error(e);
         alert('Sıfırlama hatası: ' + (e.message || e));
@@ -13833,15 +13759,261 @@ async function konfManuelKesimKaydetTek(siparisId, kalemIdx, kesAd, ekstraNot) {
     return { kalemIdx, kesAd, rota, urunAd, akisId: null, kesimId };
 }
 
+/* ── Kesim önünde bekleyen (12.10.2026) ───────────────────────────────────────
+   Dokuma Depo'dan Konfeksiyon'a sevk edilen mal (ana program Dokuma Depo ya da Dokuma Panel tableti → KUMAS_GELIS,
+   pipeline DOKUMA_DEPO_SEVK) kesilene kadar burada bekler. Kalem başına HESAPTIR, hiçbir kayıt değişmez
+   (aşama verisi bağımsız — sevk satırı kesimle güncellenmez, kesim satırı sevke bakmaz):
+     gelen   = kalemin sevk satırları (geçici sıfırlananlar hariç)
+     kesilen = kalemin İLK sevkinden sonra girilen kesimler (konf_kesim_yikama; Devir ve kesimsiz yıkama hariç).
+               Kesim nereden girilirse girilsin düşer (ana program, Konfeksiyon Panel). İlk sevkten ÖNCEKİ kesim
+               sayılmaz — sevki hiç yazılmamış eski mal yeni geleni yemesin. 12.10 öncesinde satıra yazılan
+               kesilen_adet de sayılır (ikisinin büyüğü; aynı kesim iki kez düşmez).
+     kalan   = gelen − kesilen (adet). Metreyle gelen kumaşta (kumaş planı) kesilen adet × plandaki m/adet düşülür;
+               planda metresi olmayan kalemin kesimi metreden düşülemez, satırda yazar.
+   Eskiden satır bazlıydı (ekranın altında kapalı "Dokuma sevkten kesim bekleyen", yalnız satırdaki "Kes" düşürüyordu):
+   Konfeksiyon Panel'den girilen kesim (kesimlerin çoğu) listeyi düşürmüyordu.
+   Başlangıç 12.10.2026: daha eski sevk satırları sayılmaz — o günlerin kesimi eski kayıtlarda (KD sayacı / Devir)
+   durduğu için tabloda karşılığı yok, mal kesildiği hâlde bekliyor görünürdü (SP510: 04.09'da gelen 11 ad).
+   Konfeksiyon Panel'deki kesimOnuHesapla ile AYNI kural (bekçi: uretim-zinciri-denetim).
+   Elle iki işlem (12.10.2026 akşam, kullanıcı kararı; yazıcılar bu bölümün DIŞINDA, aşağıda "Kesim önü · elle
+   işlemler" — bu bölüm yalnız hesap + çizimdir):
+     ✓ Bitti      = artan mal (500 gelen / 480 kesilen → 20) listeden düşer: kalemin açık sevk satırlarına
+                    kesim_onu_kapali {ts, user, gelen, kesilen, artan} yazılır; kapalı satır hesaba girmez
+                    (sonradan gelen yeni sevk yeniden bekler). "Kapatılanlar"dan geri açılır.
+     ↩ Geri al    = yanlış sevk: defter satırı + sevk satırı silinir, mal Dokuma Depo'ya döner (yetkili). */
+const KESIM_ONU_PIPELINE = 'DOKUMA_DEPO_SEVK';
+const KESIM_ONU_BASLANGIC = new Date(2026, 9, 12).getTime();
+
+/** Metreyle gelen kumaşın (kumaş planı) kalemleri: { km, kalemler: [{ ki, m }] } — m = 1 adet için kumaş, fire dahil. Plan yoksa null. */
+function konfKesimOnuKumasKalemleri(siparisId, kalemIdx) {
+    if (typeof kumasPlaniHesapla !== 'function') return null;
+    const sip = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
+    if (!sip) return null;
+    const km = kumasPlaniHesapla(sip).kumaslar.find(x => x.kalemler.some(r => r.ki === kalemIdx));
+    if (!km) return null;
+    return { km, kalemler: km.kalemler.map(r => ({ ki: r.ki, m: (r.metreMi || r.kgMi) ? 0 : r.m * (1 + r.fire / 100) })) };
+}
+
+function konfKesimOnuBekleyenler(filtreSiparisId) {
+    const grup = new Map();
+    (_konfGlobalKumasGelisCache || []).forEach((r) => {
+        const j = r.not_json || {};
+        if (j.pipeline !== KESIM_ONU_PIPELINE || r.gecici_kesim_onu_sifir || j.kesim_onu_kapali) return;
+        if (filtreSiparisId && String(r.siparis_id) !== String(filtreSiparisId)) return;
+        const ki = r.kalem_idx;
+        const t = Date.parse(j.ts || r.created_at || '') || 0;
+        if (ki == null || !(ki >= 0) || t < KESIM_ONU_BASLANGIC) return;
+        const anahtar = `${r.siparis_id}|${ki}`;
+        let g = grup.get(anahtar);
+        if (!g) grup.set(anahtar, g = { siparis_id: r.siparis_id, kalem_idx: ki, ornek: r, sevkler: [], gelenAd: 0, gelenMt: 0, gelenKg: 0, satirKes: 0 });
+        g.sevkler.push({ t, ad: r.adet || 0, mt: r.mt || 0, r });
+        g.gelenAd += r.adet || 0;
+        g.gelenMt += r.mt || 0;
+        g.gelenKg += r.kg || 0;
+        g.satirKes += r.kesilen_adet || 0;
+    });
+    if (!grup.size) return [];
+    const kesimler = new Map();   /* sipariş → kesim satırları (yalnız sevki olan siparişler) */
+    grup.forEach(g => kesimler.set(String(g.siparis_id), []));
+    (_konfKesimGecmisCache || []).forEach((r) => {
+        const l = kesimler.get(String(r.siparis_id));
+        if (l && r.aktif !== false && !r.kesimsiz && !konfKyDevirMi(r)) l.push(r);
+    });
+    const sonraKesilen = (g, ki) => kesimler.get(String(g.siparis_id))
+        .filter(r => Number(r.kalem_idx) === ki && (Date.parse(r.ts || '') || 0) >= g.ilk)
+        .reduce((s, r) => s + (parseInt(r.kesilen_adet, 10) || 0), 0);
+    const out = [];
+    grup.forEach((g) => {
+        g.sevkler.sort((a, b) => a.t - b.t);
+        g.ilk = g.sevkler[0].t;
+        g.metreMi = !(g.gelenAd > 0);
+        let dusen;   /* sevklerden eskiden yeniye düşülecek miktar (adet ya da metre) — bekleme süresi için */
+        if (!g.metreMi) {
+            g.kesilenAd = Math.max(g.satirKes, sonraKesilen(g, g.kalem_idx));
+            g.kalanAd = Math.max(0, g.gelenAd - g.kesilenAd);
+            if (g.kalanAd <= 0) return;
+            dusen = g.kesilenAd;
+        } else {
+            if (!(g.gelenMt > 0)) return;
+            let kumas = null;
+            try { kumas = konfKesimOnuKumasKalemleri(g.siparis_id, g.kalem_idx); } catch (e) { console.warn('kesim önü · kumaş planı', e); }
+            g.kumas = kumas ? kumas.km : null;
+            g.kesilenAd = 0;
+            g.kesilenMt = 0;
+            g.metresizAd = 0;
+            (kumas ? kumas.kalemler : [{ ki: g.kalem_idx, m: 0 }]).forEach((u) => {
+                const ad = sonraKesilen(g, u.ki);
+                g.kesilenAd += ad;
+                if (u.m > 0) g.kesilenMt += ad * u.m; else g.metresizAd += ad;
+            });
+            g.kalanMt = Math.max(0, g.gelenMt - g.kesilenMt);
+            if (g.kalanMt < 0.01) return;
+            dusen = g.kesilenMt;
+        }
+        /* Bekleme: kesimle henüz kapanmamış en eski sevkin tarihi */
+        g.bekleyenTs = g.sevkler[g.sevkler.length - 1].t;
+        for (const s of g.sevkler) {
+            const mik = g.metreMi ? s.mt : s.ad;
+            if (dusen < mik) { g.bekleyenTs = s.t; break; }
+            dusen -= mik;
+        }
+        out.push(g);
+    });
+    return out.sort((a, b) => a.bekleyenTs - b.bekleyenTs);
+}
+
+/** Satırda görünen adlar (bekleyen + kapatılan listesi aynı yerden): { sno, firma, urun, renk, ebat }. */
+function konfKesimOnuKalemAd(siparisId, kalemIdx, ornek, kumas) {
+    const sip = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
+    const k = (konfGetSiparisKalemlerById(siparisId) || [])[kalemIdx] || {};
+    const j = ornek?.not_json || {};
+    return {
+        sno: sip?.sno || ornek?.siparis_sno || '—',
+        firma: sip?.firma || ornek?.firma || j.firma || '—',
+        urun: kumas ? `${kumasPlaniKumasAdi(kumas)} · HAM` : (k.ad || k.kod || ornek?.kumas_cinsi || ornek?.stok_kodu || `Kalem ${kalemIdx + 1}`),
+        renk: kumas ? '' : (k.renk || j.kalem_renk || ornek?.renk || ''),
+        ebat: kumas ? '' : (k.ebat || k.olcu || j.kalem_ebat || '')
+    };
+}
+function konfKesimOnuSayi(n, basamak) {
+    return (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: basamak || 0 });
+}
+
+/** "✓ Bitti" ile kapatılan kalemler (son 30 gün) — sevk satırındaki kesim_onu_kapali işaretinden; en yeni üstte. */
+function konfKesimOnuKapatilanlar(filtreSiparisId) {
+    const sinir = Date.now() - 30 * 86400000;
+    const grup = new Map();
+    (_konfGlobalKumasGelisCache || []).forEach((r) => {
+        const j = r.not_json || {};
+        const kp = j.kesim_onu_kapali;
+        if (j.pipeline !== KESIM_ONU_PIPELINE || !kp || r.kalem_idx == null) return;
+        if (filtreSiparisId && String(r.siparis_id) !== String(filtreSiparisId)) return;
+        const t = Date.parse(kp.ts || '') || 0;
+        if (t < sinir) return;
+        const anahtar = `${r.siparis_id}|${r.kalem_idx}|${kp.ts}`;
+        let g = grup.get(anahtar);
+        if (!g) grup.set(anahtar, g = { siparis_id: r.siparis_id, kalem_idx: r.kalem_idx, kapali: kp, t, ornek: r, idler: [] });
+        g.idler.push(r.akis_id);
+    });
+    return [...grup.values()].sort((a, b) => b.t - a.t);
+}
+let _konfKesimOnuKapaliAcik = false;
+function konfKesimOnuKapatilanlarHtml(filtreSiparisId) {
+    const liste = konfKesimOnuKapatilanlar(filtreSiparisId);
+    if (!liste.length) return '';
+    const say = konfKesimOnuSayi;
+    const yaz = !window.ERP_MOBIL_LITE;
+    const satirlar = liste.map((g) => {
+        const kp = g.kapali;
+        let kumas = null;
+        if (!(kp.gelen_ad > 0)) { try { kumas = (konfKesimOnuKumasKalemleri(g.siparis_id, g.kalem_idx) || {}).km || null; } catch (e) {} }
+        const ad = konfKesimOnuKalemAd(g.siparis_id, g.kalem_idx, g.ornek, kumas);
+        const gelen = [kp.gelen_ad ? `${say(kp.gelen_ad)} ad` : '', kp.gelen_mt ? `${say(kp.gelen_mt, 1)} m` : ''].filter(Boolean).join(' · ');
+        const artan = kp.gelen_ad > 0 ? `${say(kp.artan_ad)} ad` : `${say(kp.artan_mt, 1)} m`;
+        return `<tr>
+            <td class="mono" style="font-size:10px;white-space:nowrap;color:var(--text2)">${pdfEsc(g.t ? new Date(g.t).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')}</td>
+            <td class="mono" style="font-weight:600;font-size:10px">${pdfEsc(ad.sno)}</td>
+            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px">${pdfEsc([ad.urun, ad.renk, ad.ebat].filter(Boolean).join(' · '))}</td>
+            <td class="mono" style="text-align:right;font-size:10px">${gelen || '—'}</td>
+            <td class="mono" style="text-align:right;font-size:10px;color:var(--emerald-c)">${kp.kesilen_ad ? `${say(kp.kesilen_ad)} ad` : '—'}</td>
+            <td class="mono" style="text-align:right;font-size:10px;font-weight:700;color:var(--amber-c)">${artan}</td>
+            <td style="font-size:10px;color:var(--text2)">${pdfEsc(kp.user || '—')}</td>
+            <td style="white-space:nowrap">${yaz ? `<button type="button" onclick="konfKesimOnuGeriAc('${pdfEsc(String(g.siparis_id))}',${g.kalem_idx},'${pdfEsc(String(kp.ts || ''))}')" class="btn-pro btn-ghost-pro" style="padding:3px 9px;font-size:10px">Geri aç</button>` : ''}</td>
+        </tr>`;
+    }).join('');
+    return `<details id="kesim-onu-kapali" style="margin:0 16px 12px" ${_konfKesimOnuKapaliAcik ? 'open' : ''} ontoggle="_konfKesimOnuKapaliAcik=this.open">
+            <summary style="font-size:10px;color:var(--text3);cursor:pointer">Kapatılanlar (son 30 gün) · ${liste.length}</summary>
+            <div style="overflow:auto;padding-top:6px">
+                <table class="dt-table" style="min-width:760px;margin:0">
+                    <thead><tr>
+                        <th style="font-size:9px">Kapatıldı</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Ürün</th>
+                        <th style="font-size:9px;text-align:right">Gelen</th><th style="font-size:9px;text-align:right">Kesilen</th><th style="font-size:9px;text-align:right">Artan</th>
+                        <th style="font-size:9px">Kapatan</th><th style="font-size:9px"></th>
+                    </tr></thead>
+                    <tbody>${satirlar}</tbody>
+                </table>
+            </div>
+        </details>`;
+}
+
+function konfKesimOnuPanelHtml(filtreSiparisId) {
+    const liste = konfKesimOnuBekleyenler(filtreSiparisId);
+    const say = konfKesimOnuSayi;
+    /* Mobil salt okunur — düğme yok; sevki geri alma yalnız depo hareketi düzeltme yetkisiyle */
+    const yaz = !window.ERP_MOBIL_LITE;
+    const geriAlYetki = yaz && typeof depoDuzeltYetkiliMi === 'function' && depoDuzeltYetkiliMi();
+    const topAd = liste.reduce((s, g) => s + (g.metreMi ? 0 : g.kalanAd), 0);
+    const topMt = liste.reduce((s, g) => s + (g.metreMi ? g.kalanMt : 0), 0);
+    const ozet = liste.length
+        ? `${liste.length} kalem${topAd ? ` · ${say(topAd)} ad` : ''}${topMt ? ` · ${say(topMt)} m` : ''}`
+        : 'bekleyen yok';
+    const bas = `<div class="panel-box" id="kesim-onu-panel" style="margin-bottom:12px;border:1px solid rgba(139,92,246,0.4);background:rgba(139,92,246,0.05)">
+        <div class="panel-head">
+            <span class="panel-head-title"><span class="panel-head-dot" style="background:#8b5cf6"></span>Kesim önünde bekleyen</span>
+            <span style="font-size:9px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace">${ozet}</span>
+        </div>`;
+    if (!liste.length) {
+        return `${bas}
+        <p style="font-size:10px;color:var(--text3);padding:8px 16px 12px;margin:0;line-height:1.45">Dokumadan Konfeksiyon'a sevk edilip henüz kesilmemiş mal yok. Dokuma Depo'dan (ana program ya da dokuma tableti) yapılan sevk burada görünür.</p>
+        ${konfKesimOnuKapatilanlarHtml(filtreSiparisId)}
+    </div>`;
+    }
+    const simdi = Date.now();
+    const satirlar = liste.map((g) => {
+        const { sno, firma, urun, renk, ebat } = konfKesimOnuKalemAd(g.siparis_id, g.kalem_idx, g.ornek, g.kumas);
+        const gun = g.bekleyenTs ?Math.max(0, Math.floor((simdi - g.bekleyenTs) / 86400000)) : null;
+        const gunRenk = gun == null ? 'var(--text3)' : (gun >= 7 ? 'var(--rose-c)' : (gun >= 3 ? 'var(--amber-c)' : 'var(--text2)'));
+        const gelen = [g.gelenAd ? `${say(g.gelenAd)} ad` : '', g.gelenMt ? `${say(g.gelenMt, 1)} m` : '', g.gelenKg ? `${say(g.gelenKg, 1)} kg` : ''].filter(Boolean).join(' · ');
+        const kesilen = !g.kesilenAd ? '—'
+            : (g.metreMi
+                ? `${say(g.kesilenAd)} ad${g.kesilenMt ? ` ≈ ${say(g.kesilenMt, 1)} m` : ''}${g.metresizAd ? ` <span title="Kumaş planında bu kalemlerin metresi yok — metreden düşülemedi" style="color:var(--amber-c)">(${say(g.metresizAd)} ad: planda metre yok)</span>` : ''}`
+                : `${say(g.kesilenAd)} ad`);
+        const kid = `ko-kes-${g.siparis_id}-${g.kalem_idx}`;
+        const kes = g.metreMi
+            ? `<span style="font-size:9px;color:var(--text3)">kesim: ürünün satırından</span>`
+            : `<span style="display:inline-flex;align-items:center;gap:4px">
+                    <input id="${pdfEsc(kid)}" type="number" min="1" step="1" class="pro-input" data-siparis-id="${pdfEsc(String(g.siparis_id))}" data-kalem-idx="${g.kalem_idx}"
+                        style="padding:4px 6px;font-size:11px;width:64px;text-align:center" placeholder="${g.kalanAd}" autocomplete="off"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();konfManuelKesimSatirKaydetByEl('${pdfEsc(kid)}');}">
+                    <button type="button" onclick="konfManuelKesimSatirKaydetByEl('${pdfEsc(kid)}')" class="btn-pro btn-primary-pro" style="padding:4px 10px;font-size:10px">Kes</button>
+                </span>`;
+        const sidArg = pdfEsc(String(g.siparis_id));
+        const dugmeler = !yaz ? '' : `<button type="button" title="Kesimi bitti — artan mal listeden düşer; Kapatılanlar'dan geri açılır" onclick="konfKesimOnuKapat('${sidArg}',${g.kalem_idx})" class="btn-pro btn-ghost-pro" style="padding:4px 8px;font-size:10px;margin-left:6px">✓ Bitti</button>`
+            + (geriAlYetki ? `<button type="button" title="Yanlış sevk — bu kalemin en son sevkini geri al (mal Dokuma Depo'ya döner)" onclick="konfKesimOnuSevkGeriAl('${sidArg}',${g.kalem_idx})" class="btn-pro btn-ghost-pro" style="padding:4px 8px;font-size:10px;margin-left:4px;color:var(--rose-c)">↩ Sevki geri al</button>` : '');
+        return `<tr>
+            <td class="mono" style="font-size:10px;white-space:nowrap;font-weight:600;color:${gunRenk}" title="${pdfEsc(g.bekleyenTs ? new Date(g.bekleyenTs).toLocaleString('tr-TR') : '')}">${gun == null ? '—' : (gun === 0 ? 'bugün' : `${gun} gün`)}</td>
+            <td class="mono" style="font-weight:600;font-size:10px">${pdfEsc(sno)}</td>
+            <td style="font-size:10px;color:var(--text2);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(firma)}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500">${pdfEsc(urun)}</td>
+            <td class="mono" style="font-size:10px;color:var(--rose-c)">${pdfEsc(renk || '—')}</td>
+            <td class="mono" style="font-size:10px;color:var(--text3)">${pdfEsc(ebat || '—')}</td>
+            <td class="mono" style="text-align:right;font-size:10px">${gelen || '—'}</td>
+            <td class="mono" style="text-align:right;font-size:10px;color:var(--emerald-c)">${kesilen}</td>
+            <td class="mono" style="text-align:right;font-size:11px;font-weight:700;color:#8b5cf6">${g.metreMi ? `${say(g.kalanMt, 1)} m` : `${say(g.kalanAd)} ad`}</td>
+            <td style="white-space:nowrap">${kes}${dugmeler}</td>
+        </tr>`;
+    }).join('');
+    return `${bas}
+        <p style="font-size:10px;color:var(--text3);padding:8px 16px 0;margin:0;line-height:1.45">Dokumadan sevk edilip henüz kesilmemiş mal. Kesim girilince — buradan, alttaki <strong>Kesim girişi</strong>nden ya da Konfeksiyon tabletinden — kendiliğinden düşer.${yaz ? ' Kesim bitti, mal arttıysa <strong>✓ Bitti</strong>.' : ''}</p>
+        <div style="overflow:auto;padding:8px 16px 14px">
+            <table class="dt-table" style="min-width:${geriAlYetki ? 1040 : 930}px;margin:0">
+                <thead><tr>
+                    <th style="font-size:9px">Bekliyor</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Müşteri</th><th style="font-size:9px">Ürün</th><th style="font-size:9px">Renk</th><th style="font-size:9px">Ebat</th>
+                    <th style="font-size:9px;text-align:right">Gelen</th><th style="font-size:9px;text-align:right">Kesilen</th><th style="font-size:9px;text-align:right">Kalan</th><th style="font-size:9px">Kesim (ad)</th>
+                </tr></thead>
+                <tbody>${satirlar}</tbody>
+            </table>
+        </div>
+        ${konfKesimOnuKapatilanlarHtml(filtreSiparisId)}
+    </div>`;
+}
+
 function renderKonfGlobalKumasGelisPanel(filtreSiparisId) {
     const girisPanel = renderKonfManuelKesimPanel();
-    let rows = _konfGlobalKumasGelisCache || [];
-    if (filtreSiparisId) rows = rows.filter(r => String(r.siparis_id) === String(filtreSiparisId));
-    const aktifRows = rows.filter(konfPipelineKesimAktifMi);
     const kesimKayitlari = (_konfKesimGecmisCache || []).filter((r) => !r.kesimsiz);
     const toplamKesilenAd = kesimKayitlari.reduce((s, r) => s + (r.miktar || 0), 0);
 
-    const bekleyenPanel = `<div class="panel-box" style="margin-bottom:12px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.04)">
+    const kesilenPanel = `<div class="panel-box" style="margin-bottom:12px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.04)">
         <div class="panel-head">
             <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Kesilen ürünler</span>
             <span style="font-size:9px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace">${kesimKayitlari.length} kayıt · ${toplamKesilenAd.toLocaleString('tr-TR')} ad toplam</span>
@@ -13853,42 +14025,201 @@ function renderKonfGlobalKumasGelisPanel(filtreSiparisId) {
         <div id="kg-liste-sonuc">${konfKesimGecmisSonucHtml()}</div>
     </div>`;
 
-    if (!aktifRows.length) {
-        return girisPanel + bekleyenPanel;
-    }
-
-    const thead = `<th style="font-size:9px">Tarih</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Müşteri</th><th style="font-size:9px">Ürün</th><th style="font-size:9px">Renk</th><th style="font-size:9px">Ebat</th><th style="font-size:9px;text-align:right">Gelen</th><th style="font-size:9px">Kesim (ad)</th>`;
-    const aktifSatirlar = aktifRows.map((r) => {
-        const gelenAd = r.adet || 0;
-        const ebat = konfPipelineSatirEbat(r) || '—';
-        return `<tr>
-            <td class="mono" style="font-size:10px;white-space:nowrap">${pdfEsc(r.created_at ? new Date(r.created_at).toLocaleDateString('tr-TR') : '—')}</td>
-            <td class="mono" style="font-weight:600;font-size:10px">${pdfEsc(r.siparis_sno)}</td>
-            <td style="font-size:10px;color:var(--text2);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(r.firma || '—')}</td>
-            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500">${pdfEsc(r.kumas_cinsi || r.stok_kodu || '—')}</td>
-            <td class="mono" style="font-size:10px;color:var(--rose-c)">${pdfEsc(r.renk || '—')}</td>
-            <td class="mono" style="font-size:10px;color:var(--text3)">${pdfEsc(ebat)}</td>
-            <td class="mono" style="text-align:right;font-size:10px;font-weight:600">${gelenAd > 0 ? `${gelenAd} ad` : '—'}</td>
-            <td style="white-space:nowrap">
-                <span style="display:inline-flex;align-items:center;gap:4px">
-                    <input id="ad-kes-${r.akis_id}" type="number" min="0" max="${gelenAd || ''}" step="1" class="pro-input" style="padding:4px 6px;font-size:11px;width:64px;text-align:center" value="${gelenAd || ''}">
-                    <button type="button" onclick="konfKumasGelisKesimKaydet('${r.akis_id}')" class="btn-pro btn-primary-pro" style="padding:4px 10px;font-size:10px">Kes</button>
-                </span>
-            </td>
-        </tr>`;
-    }).join('');
-
-    const dokumaPanel = konfPipelineBitmisPanelHtml({
-        key: 'kesim_dokuma',
-        title: `Dokuma sevkten kesim bekleyen (${aktifRows.length})`,
-        adet: aktifRows.length,
-        thead,
-        satirlar: aktifSatirlar,
-        emptyMsg: 'Bekleyen kesim yok.'
-    });
-
-    return girisPanel + bekleyenPanel + dokumaPanel;
+    return konfKesimOnuPanelHtml(filtreSiparisId) + girisPanel + kesilenPanel;
 }
+
+/* ── Kesim önü · elle işlemler (12.10.2026 akşam, kullanıcı kararı) ───────────
+   Hesap (yukarıda) hiçbir şey yazmaz; buradaki üç işlem kullanıcının düğmeyle yaptığı AÇIK işlemdir, kesim /
+   yıkama / kalite kaydına dokunmaz (aşama verisi bağımsız):
+   • konfKesimOnuKapat   "✓ Bitti": kalemin açık sevk satırlarına (KUMAS_GELIS) kesim_onu_kapali {ts, user, gelen,
+                          kesilen, artan} yazılır → satır hesaptan çıkar. Stok / depo değişmez (artan mal Konfeksiyon'da).
+   • konfKesimOnuGeriAc  işareti kaldırır (aynı kapatmanın satırları birlikte).
+   • konfKesimOnuSevkGeriAl  yanlış sevk: kalemin EN SON sevki. Yalnız depo hareketi düzeltme yetkisi; kesilmiş
+                          (kalan < sevk miktarı) ya da satırına sonraki aşama işlenmiş sevk geri alınmaz. Önce iz
+                          (depo_hareket_iz SIL: defter satırının + KUMAS_GELIS'in tam kopyası; yazılamazsa silinmez),
+                          sonra defter satırı (mal Dokuma Depo'ya döner), en son KUMAS_GELIS — liste KUMAS_GELIS'ten
+                          çizildiği için yarıda kalırsa satır durur, yeniden basılınca kalan silinir.
+   Her üçü yazmadan önce satırları veritabanından TAZE okur; kim yaptığı izde (Günlük İşlemler / Aktif kullanıcılar).
+   Konfeksiyon Panel (kesimOnuKapat / kesimOnuGeriAc) ve Dokuma Panel (ddSevkGeriAl) aynı alanları yazar. */
+let _konfKesimOnuMesgul = false;
+function konfKesimOnuKullanici() {
+    return String(erpCurrentUser?.display_name || erpCurrentUser?.username || '').trim() || '—';
+}
+function konfKesimOnuMiktarMetin(g) {
+    const say = konfKesimOnuSayi;
+    const gelen = [g.gelenAd ? `${say(g.gelenAd)} ad` : '', g.gelenMt ? `${say(g.gelenMt, 1)} m` : ''].filter(Boolean).join(' / ');
+    const kesilen = g.kesilenAd ? `${say(g.kesilenAd)} ad${g.metreMi && g.kesilenMt ? ` ≈ ${say(g.kesilenMt, 1)} m` : ''}` : 'yok';
+    return { gelen, kesilen, artan: g.metreMi ? `${say(g.kalanMt, 1)} m` : `${say(g.kalanAd)} ad` };
+}
+/** Sevkin defter (kumas_stok [DD_V2]) satırları: ana program defter_ids yazar; tablet kaynak_id = defter satırı. */
+function konfKesimOnuDefterIdleri(j) {
+    if (Array.isArray(j?.defter_ids) && j.defter_ids.length) return j.defter_ids.map(String);
+    return j?.kaynak === 'DOKUMA_PANEL' && j.kaynak_id ? [String(j.kaynak_id)] : [];
+}
+/** Sevk satırı geri alınabilir mi (notundan): sonraki aşama işlenmişse / kapatılmışsa / defter bağı yoksa neden döner, yoksa ''. */
+function konfKesimOnuGeriAlEngeli(j) {
+    if (j?.pipeline !== KESIM_ONU_PIPELINE || j.kesim_onu_kapali) return 'Bu sevk az önce değişmiş (kesimi bitti denmiş) — ekranı yenileyin.';
+    if (['kesilen_adet', 'yikama_sevk_adet', 'yikama_gelen_adet', 'kalite_gecen_adet', 'sevk_edilen_adet'].some(k => (parseInt(j[k], 10) || 0) > 0)) return 'Bu sevk satırına kesim / kalite / sevk adedi işlenmiş — geri alınamaz.';
+    if (!konfKesimOnuDefterIdleri(j).length) return 'Bu sevkin Dokuma Depo satırıyla bağı yok (eski kayıt) — buradan geri alınamaz.';
+    return '';
+}
+/** Kesimler + bu siparişin sevk satırları taze okunur, kalemin bekleyen hesabı döner (kalmadıysa null). */
+async function konfKesimOnuTazeKalem(siparisId, kalemIdx) {
+    await Promise.all([konfLoadKesimGecmis({ force: true, skipRotaDuzelt: true }), konfGlobalKumasGelisSiparisTazele(siparisId)]);
+    return konfKesimOnuBekleyenler(siparisId).find(g => g.kalem_idx === kalemIdx) || null;
+}
+/** Sevk satırlarının notlar JSON'una yama — satır satır, veritabanındaki güncel hâlin üstüne. */
+async function konfKesimOnuSatirlaraYaz(idler, degistir) {
+    const { data: taze, error } = await sb.from('siparis_akis').select('id,notlar').in('id', idler);
+    if (error) throw error;
+    let n = 0;
+    for (const row of (taze || [])) {
+        let j = {};
+        try { j = JSON.parse(row.notlar || '{}') || {}; } catch (e) { continue; }
+        if (!degistir(j)) continue;
+        const { data: yazilan, error: e2 } = await sb.from('siparis_akis').update({ notlar: JSON.stringify(j) }).eq('id', row.id).select('id');
+        if (e2) throw e2;
+        if (!(yazilan || []).length) throw new Error('sevk satırı güncellenemedi');
+        n++;
+    }
+    return n;
+}
+
+async function konfKesimOnuKapat(siparisId, kalemIdx) {
+    if (window.ERP_MOBIL_LITE || _konfKesimOnuMesgul) return;
+    _konfKesimOnuMesgul = true;
+    try {
+        const g = await konfKesimOnuTazeKalem(siparisId, kalemIdx);
+        if (!g) { erpToast('Bu kalemde bekleyen mal kalmamış.', 'info', 4000); renderKonfeksiyon(); return; }
+        const ad = konfKesimOnuKalemAd(g.siparis_id, g.kalem_idx, g.ornek, g.kumas);
+        const m = konfKesimOnuMiktarMetin(g);
+        const baslik = [ad.sno, ad.urun, ad.renk, ad.ebat].filter(Boolean).join(' · ');
+        if (!(await erpAskConfirm(`${baslik}\n\nGelen ${m.gelen} · kesilen ${m.kesilen} · artan ${m.artan}\n\nKesimi bitti sayılsın mı?`
+            + `\nSatır "Kesim önünde bekleyen" listesinden düşer; kesim ve depo kayıtları değişmez. Adınızla kaydedilir, "Kapatılanlar"dan geri açılır.`
+            + (g.kesilenAd ? '' : `\n\n⚠ Bu maldan hiç kesim girilmemiş. Sevk yanlışsa kapatmak yerine sevk geri alınmalı (mal Dokuma Depo'ya döner).`)))) return;
+        const kapali = {
+            ts: new Date().toISOString(), user: konfKesimOnuKullanici(),
+            gelen_ad: g.gelenAd, gelen_mt: Math.round(g.gelenMt * 100) / 100, kesilen_ad: g.kesilenAd || 0,
+            kesilen_mt: g.metreMi ? Math.round((g.kesilenMt || 0) * 100) / 100 : 0,
+            artan_ad: g.metreMi ? 0 : g.kalanAd, artan_mt: g.metreMi ? Math.round(g.kalanMt * 100) / 100 : 0
+        };
+        const idler = g.sevkler.map(s => s.r.akis_id);
+        const n = await konfKesimOnuSatirlaraYaz(idler, (j) => { if (j.kesim_onu_kapali) return false; j.kesim_onu_kapali = kapali; return true; });
+        if (n) await erpIslemIzYaz({ tablo: 'kesim_onu', kayit_id: `${g.siparis_id}|${g.kalem_idx}`, islem: 'DEGISTIR', kaynak: 'KESIM_ONU',
+            etiket: `${baslik} · kesimi bitti: gelen ${m.gelen}, kesilen ${m.kesilen}, artan ${m.artan}`, yeni: { ...kapali, akis_ids: idler } });
+        await konfGlobalKumasGelisSiparisTazele(siparisId);
+        renderKonfeksiyon();
+        erpToast(n ? `Kesimi bitti — ${m.artan} artan malla listeden düştü. "Kapatılanlar"dan geri açılabilir.` : 'Bu kalem az önce başka biri tarafından kapatılmış.', n ? 'success' : 'info', 6000);
+    } catch (e) {
+        console.error(e);
+        erpToast('Kapatılamadı: ' + (e.message || e) + ' — yeniden deneyin.', 'error', 8000);
+    } finally { _konfKesimOnuMesgul = false; }
+}
+window.konfKesimOnuKapat = konfKesimOnuKapat;
+
+async function konfKesimOnuGeriAc(siparisId, kalemIdx, kapaliTs) {
+    if (window.ERP_MOBIL_LITE || _konfKesimOnuMesgul) return;
+    _konfKesimOnuMesgul = true;
+    try {
+        await konfGlobalKumasGelisSiparisTazele(siparisId);
+        const g = konfKesimOnuKapatilanlar(siparisId).find(x => x.kalem_idx === kalemIdx && String(x.kapali.ts || '') === String(kapaliTs || ''));
+        if (!g) { erpToast('Bu kapatma zaten geri açılmış.', 'info', 4000); renderKonfeksiyon(); return; }
+        const ad = konfKesimOnuKalemAd(g.siparis_id, g.kalem_idx, g.ornek, null);
+        const baslik = [ad.sno, ad.urun, ad.renk, ad.ebat].filter(Boolean).join(' · ');
+        if (!(await erpAskConfirm(`${baslik}\n\nKapatan: ${g.kapali.user || '—'} · ${new Date(g.t).toLocaleString('tr-TR')}\n\nGeri açılsın mı? Mal yeniden "Kesim önünde bekleyen" listesine girer. Adınızla kaydedilir.`))) return;
+        const n = await konfKesimOnuSatirlaraYaz(g.idler, (j) => {
+            if (!j.kesim_onu_kapali || String(j.kesim_onu_kapali.ts || '') !== String(kapaliTs || '')) return false;
+            delete j.kesim_onu_kapali;
+            return true;
+        });
+        if (n) await erpIslemIzYaz({ tablo: 'kesim_onu', kayit_id: `${g.siparis_id}|${g.kalem_idx}`, islem: 'DEGISTIR', kaynak: 'KESIM_ONU',
+            etiket: `${baslik} · kesim önü geri açıldı (kapatan ${g.kapali.user || '—'})`, eski: { ...g.kapali, akis_ids: g.idler } });
+        await Promise.all([konfLoadKesimGecmis({ force: true, skipRotaDuzelt: true }), konfGlobalKumasGelisSiparisTazele(siparisId)]);
+        renderKonfeksiyon();
+        erpToast(n ? 'Geri açıldı — mal yeniden kesim önünde bekliyor.' : 'Bu kapatma zaten geri açılmış.', n ? 'success' : 'info', 5000);
+    } catch (e) {
+        console.error(e);
+        erpToast('Geri açılamadı: ' + (e.message || e) + ' — yeniden deneyin.', 'error', 8000);
+    } finally { _konfKesimOnuMesgul = false; }
+}
+window.konfKesimOnuGeriAc = konfKesimOnuGeriAc;
+
+async function konfKesimOnuSevkGeriAl(siparisId, kalemIdx) {
+    if (_konfKesimOnuMesgul) return;
+    /* Yazma kapısı: düğme gizli olsa da yetki burada yeniden sorulur */
+    if (!(typeof depoDuzeltYetkiliMi === 'function' && depoDuzeltYetkiliMi())) { erpToast('Sevki geri alma yetkiniz yok (Depo hareketi düzeltme) — yöneticinize başvurun.', 'error', 6000); return; }
+    _konfKesimOnuMesgul = true;
+    try {
+        const say = konfKesimOnuSayi;
+        const g = await konfKesimOnuTazeKalem(siparisId, kalemIdx);
+        if (!g) { erpToast('Bu kalemde bekleyen sevk kalmamış.', 'info', 4000); renderKonfeksiyon(); return; }
+        const s = g.sevkler[g.sevkler.length - 1];
+        const akisId = s.r.akis_id;
+        const sevkMik = [s.ad ? `${say(s.ad)} ad` : '', s.mt ? `${say(s.mt, 1)} m` : ''].filter(Boolean).join(' / ') || '—';
+        /* Kesilmiş sevk geri alınmaz: kalan, bu sevkin miktarını karşılamalı */
+        if (g.metreMi ? (g.kalanMt + 0.01 < s.mt) : (g.kalanAd < s.ad)) {
+            erpToast(`Bu sevkin bir kısmı kesilmiş (sevk ${sevkMik}, kalan ${konfKesimOnuMiktarMetin(g).artan}) — geri alınamaz. Kesim yanlışsa önce kesimi düzeltin.`, 'error', 9000);
+            return;
+        }
+        const ad = konfKesimOnuKalemAd(g.siparis_id, g.kalem_idx, g.ornek, g.kumas);
+        const baslik = [ad.sno, ad.urun, ad.renk, ad.ebat].filter(Boolean).join(' · ');
+        const j0 = s.r.not_json || {};
+        const engel0 = konfKesimOnuGeriAlEngeli(j0);
+        if (engel0) { erpToast(engel0, 'error', 8000); return; }
+        if (!(await erpAskConfirm(`${baslik}\n\n${new Date(s.t).toLocaleString('tr-TR')} · ${sevkMik} · sevk eden ${j0.user || '—'}${j0.kaynak === 'DOKUMA_PANEL' ? ' (dokuma tableti)' : ''}`
+            + `${g.sevkler.length > 1 ? `\n(Bu kalemde ${g.sevkler.length} sevk var — en son yapılan geri alınır.)` : ''}`
+            + `\n\nBu sevk geri alınsın mı?\nMal Dokuma Depo'ya döner, kesim önünden düşer. Silinen sevkin tam kopyası değişiklik geçmişinde kalır, adınızla kaydedilir.`))) return;
+
+        /* Veritabanındaki güncel hâl */
+        const { data: akis, error: e0 } = await sb.from('siparis_akis').select('*').eq('id', akisId).maybeSingle();
+        if (e0) throw e0;
+        if (!akis) { erpToast('Bu sevk zaten geri alınmış.', 'info', 5000); await konfGlobalKumasGelisSiparisTazele(siparisId); renderKonfeksiyon(); return; }
+        let j = {};
+        try { j = JSON.parse(akis.notlar || '{}') || {}; } catch (e) {}
+        const engel = konfKesimOnuGeriAlEngeli(j);
+        if (engel) { erpToast(engel, 'error', 8000); return; }
+        const defterIdler = konfKesimOnuDefterIdleri(j);
+        const { data: defter, error: e1 } = await sb.from('kumas_stok').select('*').in('id', defterIdler);
+        if (e1) throw e1;
+        const yabanci = (defter || []).find(d => !String(d.notlar || '').includes(DOKUMA_DEPO_SEVK_ETIKET) || String(d.siparis_id) !== String(akis.siparis_id));
+        if (yabanci) { erpToast('Sevkin depo satırı beklenen kayıt değil — geri alınmadı.', 'error', 8000); return; }
+
+        /* Önce iz: yazılamazsa hiçbir şey silinmez. Defter satırı kalmadıysa (yarıda kalmış geri alma) iz yalnız sevk satırı için. */
+        const etiket = `Dokuma Depo → Konfeksiyon sevki geri alındı · ${baslik} · ${sevkMik} · sevk eden ${j.user || '—'}`;
+        const akisKopya = { id: akis.id, created_at: akis.created_at, siparis_id: akis.siparis_id, islem: akis.islem, kalem_ad: akis.kalem_ad, miktar: akis.miktar, notlar: akis.notlar };
+        const izler = (defter || []).length ? defter.map((d, i) => ({ kayit_id: d.id, eski: i === 0 ? { ...d, _kumas_gelis: akisKopya } : d })) : [{ kayit_id: defterIdler[0], eski: { _kumas_gelis: akisKopya } }];
+        try {
+            for (const z of izler) await depoIzYaz({ tablo: 'kumas_stok', islem: 'SIL', kanal: 'Kumaş', etiket, yeni: null, neden: 'Yanlış sevk — Kesim önünden geri alındı', kaynak: 'DOKUMA_SEVK_GERI', ...z });
+        } catch (e) {
+            erpToast('Değişiklik kaydı yazılamadığı için sevk geri alınmadı: ' + (e.message || e), 'error', 10000);
+            return;
+        }
+        /* Defter satırı → mal Dokuma Depo'ya döner */
+        if ((defter || []).length) {
+            const { data: silinen, error: e2 } = await sb.from('kumas_stok').delete().in('id', defter.map(d => d.id)).select('id');
+            if (e2 || (silinen || []).length !== defter.length) {
+                try { await depoIzYaz({ tablo: 'kumas_stok', kayit_id: defter[0].id, islem: 'SIL_OLMADI', kanal: 'Kumaş', etiket, eski: null, yeni: null, neden: String(e2?.message || 'depo satırı silinemedi'), kaynak: 'DOKUMA_SEVK_GERI' }); } catch (e3) {}
+                throw e2 || new Error('depo satırı silinemedi');
+            }
+            if (Array.isArray(dataCache.kumas_stok)) dataCache.kumas_stok = dataCache.kumas_stok.filter(r => !defter.some(d => String(d.id) === String(r.id)));
+            _dokumaDepoKdSatirlariCache = [];
+        }
+        /* Sevk satırı → kesim önünden düşer */
+        const { data: silAkis, error: e4 } = await sb.from('siparis_akis').delete().eq('id', akisId).select('id');
+        if (e4 || !(silAkis || []).length) {
+            erpToast('DİKKAT: mal Dokuma Depo\'ya döndü ama Konfeksiyon kaydı silinemedi (' + (e4?.message || 'kayıt silinemedi') + ') — "↩ Sevki geri al"a yeniden basın.', 'error', 12000);
+            return;
+        }
+        konfGlobalKumasGelisCacheMutate((_konfGlobalKumasGelisCache || []).filter(r => String(r.akis_id) !== String(akisId)));
+        renderKonfeksiyon();
+        if (typeof erpSyncTablesBackground === 'function') erpSyncTablesBackground(['kumas_stok']);
+        erpToast(`Sevk geri alındı — ${sevkMik} Dokuma Depo'ya döndü. Kopyası değişiklik geçmişinde.`, 'success', 7000);
+    } catch (e) {
+        console.error(e);
+        erpToast('Sevk geri alınamadı: ' + (e.message || e), 'error', 9000);
+    } finally { _konfKesimOnuMesgul = false; }
+}
+window.konfKesimOnuSevkGeriAl = konfKesimOnuSevkGeriAl;
 
 function konfPipelineYikamaRotaMu(r) {
     if (String(r.sonraki_rota || '').toUpperCase() === 'KALITE') return false;
@@ -24509,6 +24840,12 @@ function uaCloneAgacSnapshot(obj) {
     }
 }
 
+/* Ürün ağacı değişikliği izi (11 erpIslemIzSeyrek): otomatik kayıt sık — sipariş başına 10 dk'da bir "değiştirdi" */
+function uaDegisiklikIzi(siparisId, ne) {
+    if (typeof erpIslemIzSeyrek !== 'function' || siparisId == null) return;
+    const sp = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
+    erpIslemIzSeyrek('UA|' + siparisId, { tablo: 'siparisler', kayit_id: siparisId, islem: 'DEGISTIR', kaynak: 'URUN_AGACI', etiket: `${sp?.sno || siparisId} · ${ne || 'ürün ağacı değiştirildi'}` });
+}
 async function uaSetAgac(siparisId, urunIdx, agac) {
     return uaKdWriteLock(async () => {
         /* Cache referansını mutate etme — kopya üzerinde çalış */
@@ -24534,6 +24871,7 @@ async function uaSetAgac(siparisId, urunIdx, agac) {
         const seqBeforeWrite = truth?.seq || 0;
         const res = await sbKdSet(siparisId, 'KD_URUN_AGACI', all);
         if (res && res.error) return res;
+        uaDegisiklikIzi(siparisId);
         /* sbKdSet cache'i ezebilir — yerel seçimleri geri yaz */
         if (truth && truth.seq > seqBeforeWrite) {
             uaCacheAgacYaz(siparisId, urunIdx, truth.agac, { keepSeq: true });
@@ -24668,6 +25006,7 @@ async function uaSetAgacCoklu(siparisId, entries, opts = {}) {
 
         const res = await sbKdSet(siparisId, 'KD_URUN_AGACI', all);
         if (res && res.error) throw res.error;
+        uaDegisiklikIzi(siparisId);
         /* Set cache'i ezdiyse truth'u geri bas — ilk uygula sonrası “tanımsız” kalmasın */
         list.forEach((e) => {
             const urunIdx = e?.urunIdx != null ? e.urunIdx : e?.idx;
@@ -24748,7 +25087,8 @@ async function uaSetSiparisAgac(siparisId, agac) {
     const all = await sbKdGet(siparisId, 'KD_URUN_AGACI');
     const existing = uaCloneAgacSnapshot(all['siparis']);
     all['siparis'] = uaDeepMergeUrunAgaci(existing, agac || {});
-    await sbKdSet(siparisId, 'KD_URUN_AGACI', all);
+    const res = await sbKdSet(siparisId, 'KD_URUN_AGACI', all);
+    if (!(res && res.error)) uaDegisiklikIzi(siparisId);
 }
 function uaLegacyKalemAksesuarBirlestir(allUa, kalemler) {
     const out = {};
@@ -25200,6 +25540,8 @@ async function uaSiparisKalemEkle() {
         if (idx >= 0) { dataCache.siparisler[idx].cins = cinsJson; dataCache.siparisler[idx].miktar = yeniMiktar; }
         uaKalemEkleFormAcik = false;
         erpToast(`"${ad}" sipariş kalemlerine eklendi.`, 'success', 2400);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'siparisler', kayit_id: siparis.id, islem: 'EKLE', kaynak: 'URUN_AGACI',
+            etiket: `${siparis.sno || siparis.id} · siparişe kalem eklendi: ${[ad, renk, ebat].filter(Boolean).join(' ')} · ${miktar} ${birim || ''}`.trim() });
         const cont = document.getElementById('ua-content');
         if (cont) cont.innerHTML = renderUrunAgaciIcerik();
     } catch (e) {
@@ -25235,6 +25577,8 @@ async function uaSiparisKalemSil(idx) {
         if (dcIdx >= 0) { dataCache.siparisler[dcIdx].cins = cinsJson; dataCache.siparisler[dcIdx].miktar = yeniMiktar; }
         if (uaSeciliUrunIdx === idx) uaSeciliUrunIdx = null;
         erpToast('Kalem siparişten çıkarıldı.', 'success', 2000);
+        if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'siparisler', kayit_id: siparis.id, islem: 'KALDIR', kaynak: 'URUN_AGACI',
+            etiket: `${siparis.sno || siparis.id} · kalem siparişten çıkarıldı: ${[k.ad, k.renk, k.ebat].filter(Boolean).join(' ')} (${parseFloat(k.miktar) || 0})`, eski: k });
         const cont = document.getElementById('ua-content');
         if (cont) cont.innerHTML = renderUrunAgaciIcerik();
     } catch (e) {
@@ -25757,6 +26101,8 @@ async function uaKaydet() {
     const btn = document.querySelector('button[onclick="uaKaydet()"]');
     if (btn) { const o=btn.innerHTML; btn.innerHTML='✅ KAYDEDİLDİ'; btn.classList.add('opacity-75'); setTimeout(()=>{btn.innerHTML=o;btn.classList.remove('opacity-75');},1500); }
     erpSyncTablesBackground(['siparisler']);
+    if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'siparisler', kayit_id: uaSeciliSiparisId, islem: 'DEGISTIR', kaynak: 'URUN_AGACI',
+        etiket: `${siparis?.sno || uaSeciliSiparisId} · ürün ağacı kaydedildi (tamamlandı) · üretim yeri ${siparisUretimYeri || '—'}` });
     if (typeof erpToast === 'function') {
         erpToast(`Ürün ağacı kaydedildi · ${siparis?.sno || ''} — tanımsız siparişler listeleniyor`, 'success', 3500);
     } else {
@@ -26097,6 +26443,9 @@ async function dokumaSiparisKaydet() {
             const idx = (dataCache.dokumaFasonSiparisleri || []).findIndex(s => String(s.id) === String(dokumaSiparisEditId));
             if (idx >= 0) Object.assign(dataCache.dokumaFasonSiparisleri[idx], kayit);
             erpToast('Dokuma siparişi güncellendi.', 'success');
+            /* dokuma_fason_siparisleri'nde kişi kolonu yok — kim yaptı izde */
+            if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'dokuma_fason_siparisleri', kayit_id: dokumaSiparisEditId, islem: 'DEGISTIR', kaynak: 'DOKUMA_FASON_SIPARIS',
+                etiket: `${(idx >= 0 && dataCache.dokumaFasonSiparisleri[idx].sno) || ''} · ${kayit.kumas_adi || ''} · ${kayit.metre || 0} m`.trim(), yeni: kayit });
         } else {
             kayit.durum = 'BEKLEMEDE';
             kayit.sno = 'DK' + Date.now().toString().slice(-8);
@@ -26106,6 +26455,8 @@ async function dokumaSiparisKaydet() {
             if (!dataCache.dokumaFasonSiparisleri) dataCache.dokumaFasonSiparisleri = [];
             if (newRow) dataCache.dokumaFasonSiparisleri.unshift(newRow);
             erpToast('Dokuma siparişi oluşturuldu.', 'success');
+            if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'dokuma_fason_siparisleri', kayit_id: newRow?.id ?? kayit.sno, islem: 'EKLE', kaynak: 'DOKUMA_FASON_SIPARIS',
+                etiket: `${kayit.sno} · yeni dokuma siparişi · ${kayit.kumas_adi || ''} · ${kayit.metre || 0} m` });
         }
         dokumaSiparisEditId = null;
         await setAppMode('DOKUMA_FASON_TAKIP');
@@ -40793,8 +41144,37 @@ function depoIzGerekirseYukle() {
         if (typeof appMode !== 'undefined' && appMode === 'DEPO_HAREKET_LISTE') renderDepoHareketDefteri({ bodyOnly: true });
     });
 }
+/* Genel işlem izi (12.10.2026, kullanıcı: "kim girdi / değiştirdi / ne yaptı, Aktif kullanıcılarda eksik var").
+   Kendi tablosunda kişi izi kalmayan değişiklikler (ürün ağacı, numune, dokuma fason siparişi, kullanıcı yönetimi,
+   geçici sıfırlama) aynı iz tablosuna yazılır — Aktif kullanıcılar sayımı (SQL değişiklik = depo_hareket_iz) ve
+   Günlük İşlemler (18) bunu zaten okur, SQL değişmez. islem DUZENLE / SIL zilde "düzeltildi / silindi" sayılır
+   (16) — bunlar için DEGISTIR / EKLE / KALDIR / SIFIRLA. Depo defteri yalnız kumas_stok / iplik_stok okur (tablo
+   bunlar olmamalı). İz yazılamazsa asıl işlem DÜŞMEZ, yalnız uyarı. Konfeksiyon Panel aynı biçimde yazar (panelIzYaz). */
+async function erpIslemIzYaz({ tablo, kayit_id, islem, etiket, eski = null, yeni = null, neden = '', kaynak }) {
+    try {
+        const { error } = await sb.from(DEPO_IZ_TABLO).insert([{
+            tablo, kayit_id: String(kayit_id ?? ''), islem, etiket: String(etiket || '').slice(0, 500),
+            eski, yeni, neden: neden || null, kullanici: depoIzKullanici(), kaynak
+        }]);
+        if (error) throw error;
+        return true;
+    } catch (e) {
+        console.warn('işlem izi yazılamadı', e);
+        if (typeof erpToast === 'function') erpToast('İşlem yapıldı ama kim yaptığı kaydedilemedi: ' + (e?.message || e), 'warning', 5000);
+        return false;
+    }
+}
+/* Sık kaydedilen ekranlar (ürün ağacı otomatik kaydı): aynı anahtar için en çok 10 dk'da bir iz */
+const _erpIslemIzSon = new Map();
+function erpIslemIzSeyrek(anahtar, kayit) {
+    const simdi = Date.now();
+    if (simdi - (_erpIslemIzSon.get(anahtar) || 0) < 10 * 60000) return Promise.resolve(false);
+    _erpIslemIzSon.set(anahtar, simdi);
+    return erpIslemIzYaz(kayit);
+}
+
 async function depoIzYaz(kayit) {
-    const satir = { ...kayit, kayit_id: String(kayit.kayit_id), kullanici: depoIzKullanici(), kaynak: 'DEPO_HAREKETLERI' };
+    const satir = { ...kayit, kayit_id: String(kayit.kayit_id), kullanici: depoIzKullanici(), kaynak: kayit.kaynak || 'DEPO_HAREKETLERI' };
     const { data, error } = await sb.from(DEPO_IZ_TABLO).insert([satir]).select('id,created_at').single();
     if (error) throw error;
     const tam = { ...satir, id: data?.id, created_at: data?.created_at || new Date().toISOString() };
@@ -43909,6 +44289,14 @@ async function numuneGuncelle(id, eskiUpdatedAt, alanlar) {
     const { data, error } = await q.select('id,updated_at');
     if (error) throw error;
     if (Array.isArray(data) && data.length === 0) return 'CAKISMA';
+    /* Aktif kullanıcılar / Günlük İşlemler (11 erpIslemIzYaz): son olay numunenin geçmişinden */
+    if (typeof erpIslemIzYaz === 'function') {
+        const olay = Array.isArray(alanlar?.gecmis) ? alanlar.gecmis[alanlar.gecmis.length - 1] : null;
+        const no = (_numune.liste || []).find(n => String(n.id) === String(id))?.numune_no || alanlar?.numune_no || id;
+        const degisen = Array.isArray(olay?.degisen) ? olay.degisen.map(d => (d && typeof d === 'object') ? (d.ad || d.alan) : d).filter(Boolean).slice(0, 6).join(', ') : '';
+        const ne = olay ? [erpAktifGuzelAd(olay.islem), olay.durum, degisen, olay.not].filter(Boolean).join(' · ') : 'düzenlendi';
+        erpIslemIzYaz({ tablo: 'numuneler', kayit_id: id, islem: 'DEGISTIR', kaynak: 'NUMUNE', etiket: `${no} · ${ne}` });
+    }
     return 'OK';
 }
 function numuneOlay(islem, ek) {
@@ -45367,6 +45755,7 @@ async function erpAktifYukle() {
             let d = data;
             if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) {} }
             if (!d || d.ok === false) { _erpAktif.hata = 'Yalnız yönetici görebilir.'; return; }
+            await erpAktifDokumaSayilariEkle(d);   // dokuma topları SQL sayımında yok
             _erpAktif.veri = d;
             _erpAktif.veriZaman = Date.now();
             _erpAktif.hata = null;
@@ -45793,14 +46182,94 @@ function erpAktifKayitSatir(t, r, snoHarita) {
                 return { tur: 'Terbiye', ayrinti: bir(snoHarita.get(String(r.siparis_id)), tip ? tip.ad : (o.aciklama || 'Boya işi'), o.firma,
                     o.kg ? `${o.kg} kg` : '', o.mt ? `${o.mt} m` : '', o.fis_no ? `fiş ${o.fis_no}` : '') };
             }
-            const ad = { YIKAMA_FIS: 'Yıkama fişi', STOK_SAYIM_RAPOR: 'Stok sayımı' }[s(r.islem)] || erpAktifGuzelAd(r.islem) || 'İşlem';
-            return { tur: ad, ayrinti: bir(snoHarita.get(String(r.siparis_id)), erpAktifAkisOzet(o)) };
+            const ad = {
+                YIKAMA_FIS: 'Yıkama fişi', STOK_SAYIM_RAPOR: 'Stok sayımı', DOKUMA_SIL: 'Dokuma kaydı silindi', DOKUMA_DUZENLE: 'Dokuma kaydı düzeltildi',
+                KESIM_SILINDI: 'Kesim silindi', KONF_LOG: 'Konfeksiyon işlemi', YIKAMA_GELEN: 'Yıkamadan gelen'
+            }[s(r.islem)] || erpAktifGuzelAd(r.islem) || 'İşlem';
+            /* Kayıt sonradan geri alındı / düzeltildi / revize edildi (satırın üstüne yazılır; kimin yaptığı ayrı izde) */
+            const sonra = o?.iptal ? ' (sonradan geri alındı)' : o?.revize_edildi ? ' (sonradan revize edildi)' : o?.duzeltildi ? ' (sonradan düzeltildi)' : '';
+            return { tur: ad + sonra, ayrinti: bir(snoHarita.get(String(r.siparis_id)), erpAktifAkisOzet(o)) };
         }
         case 'numuneler':
             return { tur: 'Numune', ayrinti: bir(r.numune_no, erpAktifGuzelAd(r.tur), r.urun_adi, r.musteri) };
+        case 'dokuma_top': {
+            const g = r.giris || {};
+            const sp = (typeof dataCache !== 'undefined' && Array.isArray(dataCache?.siparisler)) ? dataCache.siparisler.find(x => String(x.id) === String(r.siparis_id)) : null;
+            const kalem = sp && typeof dtGirisKalemEtiketi === 'function' ? dtGirisKalemEtiketi(sp, r.kalem_idx) : `kalem ${(Number(r.kalem_idx) || 0) + 1}`;
+            const kaynak = { DOKUMA_PANEL: 'tablet', GENEL_DURUM_EXCEL: 'Excel' }[s(g.kaynak)] || '';
+            const mik = (o) => [sayi(o?.metre, 'm'), sayi(o?.kg, 'kg'), sayi(o?.adet, 'ad')].filter(Boolean).join(' ') || '0';
+            if (r.iz) return { tur: 'Dokuma düzeltmesi', ayrinti: bir(snoHarita.get(String(r.siparis_id)), kalem, `${mik(g.eski)} → ${mik(g.yeni)}`, kaynak, g.dosya, g.neden) };
+            /* Miktarı 0: Dokuma Depo "geçici sıfırlama" düğmesi (04 erpGeciciDokumaDepoSifirla) girişleri 0'lar — dokuma toplamı değişmez */
+            const m = mik(g);
+            const miktar = m === '0' ? (r.depo_sifir ? '0 (Dokuma Depo geçici sıfırlamasında 0 yapıldı)' : '0') : m;
+            return { tur: 'Dokuma girişi', ayrinti: bir(snoHarita.get(String(r.siparis_id)), kalem, miktar, g.tezgah_no && 'tezgah ' + g.tezgah_no, kaynak) };
+        }
         default:
             return { tur: t, ayrinti: '' };
     }
+}
+/* Dokuma topları (12.10.2026, kullanıcı: tabletten / Dokuma Takip'ten girilen toplar kişinin işlemlerinde yoktu).
+   Top girişi ayrı satır DEĞİL: siparişin KD_DOKUMA kabında urunler[ki].girisler[] (Dokuma Panel tableti, Dokuma Takip,
+   Tezgah Planlama, Genel Durum Excel); Excel'in toplamı düşürdüğü düzeltme urunler[ki].duzeltmeler[]. Kayıt kaynakları
+   KD_* satırlarını almadığından görünmüyordu. Okuma: yalnız günün tarihini ("12.10.2026") içeren KD_DOKUMA satırları
+   (her girişte bu biçimde `tarih` var; updated_at hemen her satırda bugün olduğundan süzmüyor), giriş kendi zamanına göre
+   ayıklanır. Girişin düzenlenmesi / silinmesi zaten ayrı satırdır (DOKUMA_DUZENLE / DOKUMA_SIL) — gecmis[] alınmaz.
+   SQL sayımında (erp_session_aktifler) YOK: sayılar istemcide eklenir (erpAktifDokumaSayilariEkle); SQL'e eklenirse burası kaldırılır. */
+function erpAktifGirisMs(g) {
+    const iso = g?.tarih_iso ? Date.parse(g.tarih_iso) : NaN;
+    if (Number.isFinite(iso)) return iso;
+    const m = /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(String(g?.tarih || ''));
+    return m ? new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime() : 0;
+}
+async function erpAktifDokumaToplari(bas, bit) {
+    const bMs = new Date(bas).getTime();
+    const sMs = bit ? new Date(bit).getTime() : Date.now() + 5 * 60000;
+    const iki = (n) => String(n).padStart(2, '0');
+    const desen = [];
+    for (const g = new Date(bMs); g.setHours(0, 0, 0, 0) < sMs && desen.length < 62; g.setDate(g.getDate() + 1)) {
+        desen.push(`notlar.like.*${iki(g.getDate())}.${iki(g.getMonth() + 1)}.${g.getFullYear()}*`);
+    }
+    if (!desen.length) return { satirlar: [] };
+    const { data, error } = await sbTumSatirlar(() => sb.from('siparis_akis').select('id,siparis_id,notlar')
+        .eq('islem', 'KD_DOKUMA').or(desen.join(',')).order('id', { ascending: true }));
+    if (error) return { satirlar: [], hata: error.message || String(error) };
+    const satirlar = [];
+    (data || []).forEach((row) => {
+        let o = null;
+        try { o = JSON.parse(row.notlar); } catch (e) { return; }
+        Object.entries(o?.urunler || {}).forEach(([ki, u]) => {
+            const ekle = (g, iz) => {
+                if (!g || typeof g !== 'object') return;
+                const ms = erpAktifGirisMs(g);
+                const kisi = String(g.user || g.kullanici || '').trim();
+                if (!ms || ms < bMs || ms >= sMs || !kisi) return;
+                satirlar.push({ ts: new Date(ms).toISOString(), kisi, iz, r: { siparis_id: row.siparis_id, kalem_idx: Number(ki), giris: g, iz, depo_sifir: u?.depo_kalan_sifir_at || '' } });
+            };
+            (Array.isArray(u?.girisler) ? u.girisler : []).forEach(g => ekle(g, false));
+            (Array.isArray(u?.duzeltmeler) ? u.duzeltmeler : []).forEach(g => ekle(g, true));
+        });
+    });
+    return { satirlar };
+}
+/* Panel sayıları (bugün): dokuma topları yeni kayıt, Excel düzeltmesi değişiklik — en çok dakikada bir okunur */
+async function erpAktifDokumaSayilariEkle(d) {
+    try {
+        const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+        let o = _erpAktif.dokumaSayim;
+        if (!o || o.gun !== bugun.getTime() || Date.now() - o.zaman > 60000) {
+            const sonuc = await erpAktifDokumaToplari(bugun, null);
+            if (sonuc.hata) { d.dokuma_sayim_hata = sonuc.hata; return; }
+            o = _erpAktif.dokumaSayim = { gun: bugun.getTime(), zaman: Date.now(), satirlar: sonuc.satirlar };
+        }
+        const ekle = (sayAd, zamanAd, x) => {
+            const say = d[sayAd] = { ...(d[sayAd] || {}) };
+            const zam = d[zamanAd] = { ...(d[zamanAd] || {}) };
+            say[x.kisi] = (Number(say[x.kisi]) || 0) + 1;
+            const z = zam[x.kisi] || [], t = erpZamanMs(x.ts);
+            zam[x.kisi] = [(!erpZamanMs(z[0]) || t < erpZamanMs(z[0])) ? x.ts : z[0], t > erpZamanMs(z[1]) ? x.ts : z[1]];
+        };
+        o.satirlar.forEach(x => (x.iz ? ekle('degisiklik', 'degisiklik_zaman', x) : ekle('sayilar', 'kayit_zaman', x)));
+    } catch (e) { d.dokuma_sayim_hata = e?.message || String(e); }
 }
 /* adlar: kişi süzgeci (Set, erpAktifAdNorm) — null ise herkes (Günlük İşlemler).
    opts.bas / opts.bit: gün aralığı (verilmezse bugün 00:00'dan şimdiye). */
@@ -45809,6 +46278,8 @@ async function erpAktifKayitlariOku(adlar, opts = {}) {
     const iso = bas.toISOString();
     const bitIso = opts.bit ? new Date(opts.bit).toISOString() : '';
     const kisiAl = (k, r) => (k.ad ? r[k.ad] : erpAktifAkisKisi(r.notlar));
+    /* Dokuma topları KD_DOKUMA kabında (yukarıda erpAktifDokumaToplari) — diğer kaynaklarla aynı anda okunur */
+    const dokumaSoz = erpAktifDokumaToplari(bas, opts.bit || null).catch(e => ({ satirlar: [], hata: e?.message || String(e) }));
     const parcalar = await Promise.all(ERP_AKTIF_KAYIT_KAYNAKLARI.map(async (k) => {
         try {
             const { data, error } = await sbTumSatirlar(() => {
@@ -45830,6 +46301,9 @@ async function erpAktifKayitlariOku(adlar, opts = {}) {
     const snoHarita = new Map();
     const ids = new Set();
     parcalar.filter(x => x.k.t === 'siparis_akis').forEach(x => x.satirlar.forEach(r => { if (r.siparis_id != null) ids.add(String(r.siparis_id)); }));
+    const dokuma = await dokumaSoz;
+    const dokumaSatir = (dokuma.satirlar || []).filter(x => { const n = erpAktifAdNorm(x.kisi); return !!n && (!adlar || adlar.has(n)); });
+    dokumaSatir.forEach(x => { if (x.r.siparis_id != null) ids.add(String(x.r.siparis_id)); });
     const onbellek = (typeof dataCache !== 'undefined' && Array.isArray(dataCache?.siparisler)) ? dataCache.siparisler : [];
     onbellek.forEach(sp => { if (ids.has(String(sp.id))) snoHarita.set(String(sp.id), sp.sno); });
     const eksik = [...ids].filter(id => !snoHarita.has(id));
@@ -45844,8 +46318,14 @@ async function erpAktifKayitlariOku(adlar, opts = {}) {
         ts: r.created_at, kisi: String(kisiAl(x.k, r) || '').trim(), t: x.k.t, r, sno: snoHarita.get(String(r.siparis_id)) || '',
         ...erpAktifKayitSatir(x.k.t, r, snoHarita)
     })));
+    dokumaSatir.forEach(x => satirlar.push({
+        ts: x.ts, kisi: x.kisi, t: 'dokuma_top', r: x.r, iz: x.iz, sno: snoHarita.get(String(x.r.siparis_id)) || '',
+        ...erpAktifKayitSatir('dokuma_top', x.r, snoHarita)
+    }));
     satirlar.sort((a, b) => erpZamanMs(b.ts) - erpZamanMs(a.ts));
-    return { satirlar, hatalar: parcalar.filter(x => x.hata).map(x => `${x.k.t}: ${x.hata}`) };
+    const hatalar = parcalar.filter(x => x.hata).map(x => `${x.k.t}: ${x.hata}`);
+    if (dokuma.hata) hatalar.push(`dokuma topları: ${dokuma.hata}`);
+    return { satirlar, hatalar };
 }
 /* Seçilen günün giriş-çıkış defteri (yalnız yönetici): { satirlar } | { kurulumYok } | { hata } */
 async function erpAktifDefterOku(gun) {
@@ -46163,6 +46643,13 @@ function gunlukGecmisSatirlari(metin, gunTr) {
 
 const GUNLUK_PLAN_TIP = { BASLAT: 'başlat', BITIR: 'bitir', CIKAR: 'çıkar', DUZENLE: 'düzenle', TAK: 'levent tak', EKLE: 'ekle' };
 const GUNLUK_TABLO_AD = { siparisler: 'Sipariş', kumas_kutuphanesi: 'Stok kartı', kumas_stok: 'Depo hareketi', iplik_stok: 'İplik hareketi' };
+/* Genel işlem izi (11 erpIslemIzYaz, Konfeksiyon Panel panelIzYaz) — kaynağa göre tür adı; ayrıntı izin etiketinde */
+const GUNLUK_IZ_KAYNAK_TUR = {
+    URUN_AGACI: 'Ürün ağacı', NUMUNE: 'Numune değişikliği', DOKUMA_FASON_SIPARIS: 'Dokuma fason siparişi',
+    KULLANICI_YONETIMI: 'Kullanıcı yönetimi', GECICI_SIFIRLA: 'Geçici sıfırlama', D03_ONARIM: 'Denetim onarımı', D05_ONARIM: 'Denetim onarımı',
+    /* Kesim önü (04 konfKesimOnuKapat / GeriAc / SevkGeriAl; Konfeksiyon Panel kesimOnuKapat, Dokuma Panel ddSevkGeriAl / ddSevkDuzenleKaydet) */
+    KESIM_ONU: 'Kesim önü', DOKUMA_SEVK_GERI: 'Dokuma sevki geri alındı', DOKUMA_SEVK_DUZELT: 'Dokuma sevki düzeltildi'
+};
 
 /* Düzeltme / silme izleri + sipariş / kart değişiklikleri */
 async function gunlukEkKaynaklar(gun) {
@@ -46184,7 +46671,9 @@ async function gunlukEkKaynaklar(gun) {
     const out = [];
     iz.data.filter(r => r.kaynak !== 'TEST').forEach((r) => {
         const sil = String(r.islem).toUpperCase() === 'SIL';
-        const tur = sil
+        const tur = r.kaynak === 'KONF_PANEL_GIRIS' ? (sil ? 'Konfeksiyon girişi geri alındı' : 'Konfeksiyon girişi düzeltildi')
+            : GUNLUK_IZ_KAYNAK_TUR[r.kaynak] ? GUNLUK_IZ_KAYNAK_TUR[r.kaynak]
+            : sil
             ? (r.kaynak === 'KAYIT_SIL' ? `${GUNLUK_TABLO_AD[r.tablo] || 'Kayıt'} silindi` : 'Depo hareketi silindi')
             : (r.kaynak === 'KART_KOD_DUZELT' ? 'Kart kodu düzeltme' : r.kaynak === 'KART_DUZENLE' ? 'İplik kartı değişikliği' : 'Depo düzeltme');
         out.push({ ts: r.created_at, kisi: r.kullanici, tur, ayrinti: bir(r.etiket, r.neden && 'neden: ' + r.neden), t: 'depo_hareket_iz', r, iz: true });
@@ -46247,8 +46736,14 @@ function gunlukAcYolu(x) {
         case 'dokuma_levent_is': case 'dokuma_levent': case 'dokuma_duraklama': case 'dokuma_plan_iz':
             return { etiket: 'Aç', tip: 'TEZGAH' };
         case 'numuneler': return { etiket: 'Aç', tip: 'NUMUNE' };
+        /* Dokuma topu / Excel düzeltmesi (17 erpAktifDokumaToplari): siparişin Dokuma Takip ekranı */
+        case 'dokuma_top': return r.siparis_id != null ? { etiket: 'Aç', tip: 'DOKUMA' } : null;
         case 'depo_hareket_iz':
             if (r.kaynak === 'KART_DUZENLE') return { etiket: 'Aç', tip: 'KART' };
+            if (r.kaynak === 'URUN_AGACI') return { etiket: 'Aç', tip: 'SIPARIS' };
+            if (r.kaynak === 'KULLANICI_YONETIMI') return { etiket: 'Aç', tip: 'KULLANICI' };
+            if (r.kaynak === 'DOKUMA_FASON_SIPARIS') return { etiket: 'Aç', tip: 'DOKUMA_FASON' };
+            if (r.kaynak === 'KESIM_ONU' || r.kaynak === 'DOKUMA_SEVK_GERI' || r.kaynak === 'DOKUMA_SEVK_DUZELT') return { etiket: 'Aç', tip: 'KESIM_ONU' };
             return (String(r.islem).toUpperCase() !== 'SIL' && ['kumas_stok', 'iplik_stok'].includes(r.tablo)) ? { etiket: 'Düzelt', tip: 'DEPO' } : null;
         default: return null;
     }
@@ -46313,10 +46808,17 @@ async function gunlukKayitAc(x) {
                 stokKartBenzerAc(kod, grup);
                 break;
             }
-            case 'SIPARIS': await gunlukSiparisAc(x.t === 'siparisler' ? r.id : r.siparis_id); break;
+            case 'SIPARIS': await gunlukSiparisAc(x.t === 'siparisler' ? r.id : (x.t === 'depo_hareket_iz' ? r.kayit_id : r.siparis_id)); break;
+            case 'KULLANICI': await setAppMode('KULLANICI_YONETIMI'); break;
+            case 'DOKUMA_FASON': await setAppMode('DOKUMA_FASON_TAKIP'); break;
             case 'KESIM': await konfKesimSiparisAc(r.siparis_id); break;
             case 'YIKAMA': await setAppMode('KONFEKSIYON_YIKAMA'); break;
+            case 'KESIM_ONU': await setAppMode('KONFEKSIYON_KESIM'); break;
             case 'TEZGAH': await setAppMode('TEZGAH_PLANLAMA'); break;
+            case 'DOKUMA':
+                await setAppMode('DOKUMA_TAKIP');
+                if (typeof dtSelectSiparis === 'function') dtSelectSiparis(r.siparis_id);
+                break;
             case 'TERBIYE':
                 if (typeof fasonAkisYukle === 'function') await fasonAkisYukle(false);
                 await terbiyeAc(gunlukTerbiyeAnahtar(r));
@@ -50725,6 +51227,7 @@ async function kumasPlaniYaz(sid, plan) {
         };
         const r = await sbKdSet(sid, 'KD_URUN_AGACI', all);
         if (r && r.error) return r;
+        if (typeof uaDegisiklikIzi === 'function') uaDegisiklikIzi(sid, 'kumaş planı değiştirildi');
         const key = `KD_URUN_AGACI_${sid}`;
         if (!_kdCache[key]?.siparis?.kumas_plani) _kdCache[key] = all;
         return { error: null };
