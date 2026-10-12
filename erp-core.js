@@ -31683,7 +31683,8 @@ function siparisListePanelFiltreAlan(key, value) {
     // Üstteki hızlı ara ile çift arama olmasın
     const top = document.getElementById('search');
     if (top && (appMode === 'SIPARIS_LISTE' || appMode === 'SIPARIS_KAPANAN')) top.value = '';
-    debounce('siparisFilterInput', () => loadData(), 180);
+    /* Mobilde liste ağır (telefon): her harfte değil, kısa duraklamada yenilenir (12.10.2026) */
+    debounce('siparisFilterInput', () => loadData(), window.ERP_MOBIL_LITE ? 320 : 180);
 }
 
 /**

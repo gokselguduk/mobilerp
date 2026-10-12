@@ -338,6 +338,24 @@ function mobilTabloKartlastir(kok, yalnizBunlar) {
    Yalnız GÖRÜNÜM değişir (satır içi stil); veri, hesap, olay kodu değişmez.
    Denetim: scripts/mobil-duzen/ (her ekranı ölçer, çakışma/taşma sıfır olmalı). */
 const MOBIL_TEL_ESIK = 600;       // bu genişlik ve altı telefon sayılır
+/* Yazarken uyarlama ertelemesi (12.10.2026): son tuştan bu kadar ms geçmeden ağır ölçüm yapılmaz */
+const MOBIL_YAZMA_BEKLE_MS = 650;
+let _mobilSonTus = 0;
+/** Arama / süzme kutusu mu (kimliği ya da açıklama metni). Kimliksiz kutu korunamaz — yeni kutuya kimlik verin. */
+function mobilAramaKutusuMu(el) {
+    return !!el && !!el.id
+        && ((el.tagName === 'INPUT' && /^(text|search)$/i.test(el.type || 'text')) || el.tagName === 'TEXTAREA')
+        && (/ara|arama|search|filtre|(^|[-_])q$/i.test(el.id) || /ara|search/i.test(el.getAttribute('placeholder') || ''));
+}
+function mobilYaziyorMu() {
+    return mobilAramaKutusuMu(document.activeElement) && performance.now() - _mobilSonTus < MOBIL_YAZMA_BEKLE_MS;
+}
+try {
+    const tus = (e) => { if (mobilAramaKutusuMu(e.target)) _mobilSonTus = performance.now(); };
+    document.addEventListener('input', tus, true);
+    document.addEventListener('keydown', tus, true);
+    document.addEventListener('compositionupdate', tus, true);
+} catch (e) {}
 const MOBIL_MIN_YAZI = 12;        // normal yazı alt sınırı (px)
 const MOBIL_MIN_ETIKET = 11;      // BÜYÜK HARF / aralıklı etiket alt sınırı (görsel olarak daha iri)
 const MOBIL_MIN_SUTUN = 132;      // ızgara sütunu bundan darsa yeniden dizilir (px)
@@ -654,8 +672,23 @@ function mobilTabloIzleyiciKur() {
             } else hedefler.add(k.target);
         }
         clearTimeout(bekleyen);
+        /* Arama kutusuna yazılıyorsa: ağır ölçüm (telefonda 1-2 sn kilit, tuşlar kayboluyordu) yazma
+           durunca bir kez — o arada yeni sonuçlar soluk görünür. */
+        if (mobilYaziyorMu()) { yaziBitinceCalistir(); return; }
         if (performance.now() - sonCalisma > 120) calistir();
         else bekleyen = setTimeout(calistir, 90);
+    };
+    let solukHedefler = [];
+    const solukKaldir = () => { solukHedefler.forEach(el => el.classList && el.classList.remove('mobil-uyarla-bekliyor')); solukHedefler = []; };
+    const yaziBitinceCalistir = () => {
+        hedefler.forEach(el => { if (el && el.classList && el !== document.body && !solukHedefler.includes(el)) { el.classList.add('mobil-uyarla-bekliyor'); solukHedefler.push(el); } });
+        clearTimeout(bekleyen);
+        const kalan = Math.max(60, MOBIL_YAZMA_BEKLE_MS - (performance.now() - _mobilSonTus));
+        bekleyen = setTimeout(() => {
+            if (mobilYaziyorMu()) { yaziBitinceCalistir(); return; }
+            calistir();
+            solukKaldir();
+        }, kalan);
     };
     const tamPlanla = (gecikme) => { tamTarama = true; clearTimeout(bekleyen); bekleyen = setTimeout(calistir, gecikme); };
     /* Tüm sayfa TEK gözlemciyle izlenir: ana alan, sonradan eklenen ya da kapanıp yeniden
@@ -10534,9 +10567,7 @@ window.mobilKarsilamaKapat = mobilKarsilamaKapat;
 (function mobilAramaKutusuKoruyucu() {
     const tanim = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
     if (!tanim || !tanim.set || !tanim.get) return;
-    const aramaKutusuMu = (el) => !!el && !!el.id
-        && ((el.tagName === 'INPUT' && /^(text|search)$/i.test(el.type || 'text')) || el.tagName === 'TEXTAREA')
-        && (/ara|arama|search|filtre|(^|[-_])q$/i.test(el.id) || /ara|search/i.test(el.getAttribute('placeholder') || ''));
+    const aramaKutusuMu = mobilAramaKutusuMu;
     function yerindeYaz(kap, html, aktif) {
         const sablon = document.createElement('template');
         tanim.set.call(sablon, html);
