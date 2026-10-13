@@ -2685,6 +2685,7 @@ function erpModeLoadDataGuvenliMi(mode = appMode) {
     ].includes(mode);
 }
 
+/** Döner: true = açık ekran yeniden çizildi (canlı "veri güncellendi" bildirimi yalnız o zaman — çekirdek erpLiveScheduleUi). */
 async function erpRefreshCurrentScreen(opts = {}) {
     const force = !!opts.force;
     const mode = appMode;
@@ -2695,11 +2696,11 @@ async function erpRefreshCurrentScreen(opts = {}) {
     try {
         if (mode === 'DASHBOARD') {
             if (typeof setAppMode === 'function') setAppMode(window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE');
-            return;
+            return true;
         }
         if (mode === 'PLANLAMA') {
             if (typeof renderPlanlama === 'function') await renderPlanlama();
-            return;
+            return true;
         }
         if (mode === 'DOKUMA_TAKIP') {
             if (!force && erpShouldDeferUiRefresh()) {
@@ -2707,59 +2708,59 @@ async function erpRefreshCurrentScreen(opts = {}) {
                 return;
             }
             if (typeof renderDokumaTakip === 'function') await renderDokumaTakip();
-            return;
+            return true;
         }
         if (mode === 'KONFEKSIYON') {
             if (!force && erpIsUserEditingUi()) return;
             if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
-            return;
+            return true;
         }
         if (mode === 'KONFEKSIYON_KESIM') {
             if (!force && erpIsUserEditingUi()) return;
             if (typeof renderKonfeksiyonKesimEkrani === 'function') renderKonfeksiyonKesimEkrani();
-            return;
+            return true;
         }
         if (mode === 'KONFEKSIYON_PLANLAMA') {
             if (typeof renderKonfeksiyonPlanlama === 'function') renderKonfeksiyonPlanlama();
             else if (typeof openKonfeksiyonPlanlama === 'function') openKonfeksiyonPlanlama();
-            return;
+            return true;
         }
         if (mode === 'FASON_TAKIP') {
             if (typeof renderFasonTakip === 'function') renderFasonTakip();
-            return;
+            return true;
         }
         if (mode === 'DOKUMA_FASON_TAKIP') {
             if (typeof renderDokumaFasonTakip === 'function') renderDokumaFasonTakip();
-            return;
+            return true;
         }
         if (mode === 'NUMUNE') {
             if (typeof numuneListeYenile === 'function') numuneListeYenile();
-            return;
+            return true;
         }
         if (mode === 'KONFEKSIYON_YIKAMA') {
             if (typeof renderKonfeksiyon === 'function') renderKonfeksiyon();
-            return;
+            return true;
         }
         if (mode === 'YAPILACAKLAR') {
             if (typeof renderYapilacaklar === 'function') await renderYapilacaklar();
-            return;
+            return true;
         }
         if (mode === 'DASHBOARD') {
             if (typeof renderDashboard === 'function') renderDashboard();
-            return;
+            return true;
         }
         if (mode === 'URUN_AGACI' || mode === 'TEKNIK_FOY') {
             if (!force && erpIsUserEditingUi()) return;
             if (typeof renderUrunAgaci === 'function') renderUrunAgaci();
-            return;
+            return true;
         }
         if (mode === 'RAPORLAR' || mode === 'RAPOR') {
             if (typeof renderRaporlar === 'function') renderRaporlar();
-            return;
+            return true;
         }
         if (mode === 'KULLANICI_YONETIMI') {
             if (typeof renderKullaniciYonetimi === 'function') await renderKullaniciYonetimi();
-            return;
+            return true;
         }
         if (mode === 'STOK_SAYIM') {
             if (!force && erpShouldDeferUiRefresh()) {
@@ -2771,11 +2772,11 @@ async function erpRefreshCurrentScreen(opts = {}) {
                 return;
             }
             if (typeof renderStokSayim === 'function') renderStokSayim();
-            return;
+            return true;
         }
         if (mode === 'MUHASEBE_FIS') {
             if (typeof renderMuhasebeFisListe === 'function') renderMuhasebeFisListe({ quiet: true });
-            return;
+            return true;
         }
         if (erpModeLoadDataGuvenliMi(mode) && typeof loadData === 'function') {
             if (!force && erpIsUserEditingUi() && !['SIPARIS_LISTE', 'SIPARIS_KAPANAN', 'KART_LISTE', 'IPLIK', 'KUMAS', 'MAMUL_DEPO', 'DEPO_HAREKET_LISTE'].includes(mode)) {
@@ -2785,9 +2786,10 @@ async function erpRefreshCurrentScreen(opts = {}) {
             if (!force && mode === 'SIPARIS_LISTE'
                 && typeof siparisListeAramaYenile === 'function') {
                 siparisListeAramaYenile();
-                return;
+                return true;
             }
             loadData();
+            return true;
         }
     } catch (e) {
         console.warn('erpRefreshCurrentScreen:', e?.message || e);

@@ -7572,6 +7572,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         });
         (hareketler || []).forEach(x => {
             if (typeof kumasStokHareketiKumasDepoMu === 'function' && !kumasStokHareketiKumasDepoMu(x)) return;
+            /* Siparişe bağlı satır (Dokuma Depo sevk defteri vb.) Simteks stoğuna girmez — bakiye indeksiyle aynı kural */
+            if (x.siparis_id != null && x.siparis_id !== '') return;
             const raw = String(x.stok_kodu || x.desen_kodu || '').trim();
             if (!kumasDepoStokKoduMu(raw)) return;
             const kod = kumasStokListeKoduNorm(raw);
