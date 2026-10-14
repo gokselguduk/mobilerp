@@ -295,6 +295,10 @@ function muhasebeFisNotlarCekiMetniTemizle(txt) {
 }
 
 function muhasebeFisHareketGrupAnahtari(h) {
+    /* Aynı sevkiyatın satırları [FIS:<kimlik>] taşıyorsa tek fiştir (Dokuma Depo toplu müşteri sevki kalemleri
+       sırayla yazar; 2 dakikalık dilim sınırına denk gelince fiş ikiye bölünmesin — 14.10.2026). */
+    const fisGrup = muhasebeFisNotMetaOku(h.notlar, 'FIS');
+    if (fisGrup) return ['FIS', fisGrup, String(h.firma||'').trim().toUpperCase()].join('|');
     const ts = h.created_at ? new Date(h.created_at).getTime() : 0;
     const bucket = Number.isFinite(ts) ? Math.floor(ts / 120000) : 0;
     const teslim = typeof depoNotlarTeslimOku === 'function' ? depoNotlarTeslimOku(h.notlar) : '';
@@ -347,13 +351,37 @@ function muhasebeFisKalemleriCoz(fis) {
     let kalemler = [];
     if (hareketler.length) {
         kalemler = hareketler
-            .map(h => muhasebeFisKalemFromPayload(h, grup))
+            .map(h => muhasebeFisKalemBagla(muhasebeFisKalemFromPayload(h, grup), h))
             .filter(muhasebeFisKalemGosterilebilirMi);
     }
     if (!kalemler.length) {
         kalemler = (fis.kalemler || []).filter(muhasebeFisKalemGosterilebilirMi);
     }
     return kalemler;
+}
+
+/* ─── Satış fiyatı (src/stok/js/34-satis-fiyat.js, 14.10.2026) ───
+   YALNIZ fiyat yetkili oturumda fiş tablosunda "Birim fiyat" + "Tutar" sütunları çıkar (yetkiyi ve fiyatı sunucu verir;
+   yetkisizde sütun da yok). Fiyat kaleme / fişe / harekete YAZILMAZ: çizilirken siparişin kalemindeki fiyattan okunur;
+   kalem yalnız hangi sipariş kalemine ait olduğunu taşır (sip_id, sip_ki). */
+function muhasebeFisKalemBagla(k, h) {
+    if (!k || typeof satisFiyatHareketBagi !== 'function') return k;
+    const b = satisFiyatHareketBagi(h);
+    if (b) { k.sip_id = b.sid; k.sip_ki = b.ki; }
+    return k;
+}
+function muhasebeFisFiyatAcikMi() {
+    return typeof satisFiyatYetkiliMi === 'function' && satisFiyatYetkiliMi();
+}
+/* Yazdır / PDF'te fiyat: yetkili kişi seçer, varsayılan KAPALI (kâğıt fiş şoföre / müşteriye gidebilir) */
+let _muhasebeFisCiktiFiyatli = false;
+function muhasebeFisCiktiFiyatSec(v) {
+    _muhasebeFisCiktiFiyatli = !!v;
+    document.querySelectorAll('input.mf-fiyat-cikti').forEach(el => { el.checked = _muhasebeFisCiktiFiyatli; });
+}
+function muhasebeFisCiktiFiyatHtml() {
+    if (!muhasebeFisFiyatAcikMi()) return '';
+    return `<label class="mf-btn" title="Yazdır / PDF'te birim fiyat ve tutar da çıksın (yalnız fiyat yetkisi olanlar görür)" style="cursor:pointer;gap:6px" onclick="event.stopPropagation()"><input type="checkbox" class="mf-fiyat-cikti" ${_muhasebeFisCiktiFiyatli ? 'checked' : ''} onchange="muhasebeFisCiktiFiyatSec(this.checked)"><span>🔒 Çıktıda fiyat</span></label>`;
 }
 
 /** [CEKI:] yoksa mt/kg/top'tan tek satırlık çeki üret. */
@@ -420,8 +448,123 @@ function muhasebeFisKalemMiktarYazi(k) {
     const parts = [];
     if (mt > 1e-9) parts.push(mt.toLocaleString('tr-TR',{maximumFractionDigits:2}) + ' mt');
     if (kg > 1e-9) parts.push(kg.toLocaleString('tr-TR',{maximumFractionDigits:2}) + ' kg');
-    if (ad > 0)    parts.push(ad + ((mt > 1e-9 || kg > 1e-9) ? ' top' : ' ad'));
+    /* Dokuma Depo sevkinde sayı top değil ADET (adetle satılan kalemin adedi) */
+    if (ad > 0)    parts.push(ad + (((mt > 1e-9 || kg > 1e-9) && !k?.dokuma_depo) ? ' top' : ' ad'));
     return parts.join(' · ') || '—';
+}
+
+/* ─── Dokuma Depo → Müşteri sevki: fişte mamül sevki gibi görünür (14.10.2026) ───
+   Kullanıcı: "sevkiyat fişinde bütün detaylar görünmesine gerek yok; mamül depodan sevk ettiğimiz ürün nasıl
+   görünüyorsa dokuma depodan sevk edilen de öyle görünsün". Defter satırı ([DD_V2]) kumaş hareketidir ama fişte
+   tarak eni / sıklık / iplik sütunları çıkmaz: Sipariş · Stok kodu · Ürün · Ürün grubu · Renk · Ebat · Miktar.
+   Ürün / renk / ebat siparişin kaleminden (Dokuma Depo ekranıyla aynı kaynak: 04 dokumaDepoKalemUrunBilgi,
+   kumaş planında kumaşın adı); miktar önce siparişin BİRİMİYLE, yanında metre ("16 ad · 36 mt", "30 kg · 120 mt", "120 mt"). */
+function muhasebeFisDokumaDepoSatiriMi(h) {
+    const etiket = typeof ortakDepoSevkEtiket === 'function' ? ortakDepoSevkEtiket() : '[DD_V2]';
+    return String(h?.notlar || '').includes(etiket);
+}
+
+function muhasebeFisDokumaDepoKalem(p, taban) {
+    const t = (v) => String(v == null ? '' : v).trim();
+    const ayni = (a, b) => t(a).toLocaleLowerCase('tr-TR') === t(b).toLocaleLowerCase('tr-TR');
+    const { adet, mt, kg } = taban;
+    const fromSip = muhasebeFisSiparisKaleminden(p);
+    let kod = t(p?.stok_kodu), ad = '', renk = t(p?.kumas_rengi), ebat = '', grup = '', birim = '';
+    if (fromSip) {
+        /* Kumaş planındaki kumaş ilk ürünün adıyla değil kumaşın adıyla görünür (Dokuma Depo satırıyla aynı) */
+        const kb = typeof kumasPlaniKalemKumasi === 'function' ? kumasPlaniKalemKumasi(fromSip.sip, fromSip.ki) : null;
+        const gorunen = kb ? kb.kalem : fromSip.k;
+        const bilgi = typeof dokumaDepoKalemUrunBilgi === 'function'
+            ? dokumaDepoKalemUrunBilgi(gorunen)
+            : { ad: t(gorunen.ad || gorunen.urun), desen: '', ebat: t(gorunen.ebat || gorunen.olcu) };
+        ad = [bilgi.ad, bilgi.desen].filter(Boolean).join(' · ');
+        ebat = kb ? '' : bilgi.ebat;
+        if (!renk) renk = t(gorunen.renk);
+        grup = t(gorunen.grup || gorunen.urun_grubu || gorunen.urun_grup);
+        const kalemKod = t((kb && kb.km && kb.km.kod) || gorunen.kod || gorunen.stok_kodu);
+        if (kalemKod) kod = kalemKod;
+        birim = typeof ortakKalemBirim === 'function' ? ortakKalemBirim(gorunen) : t(gorunen.birim).toUpperCase();
+    }
+    if (!ad) ad = t(p?.kumas_cinsi) || kod;
+    /* Kodsuz kalemde defter satırının "kodu" ürün adının kendisidir — kod sütununda tekrar edilmez */
+    if (kod && ayni(kod, ad)) kod = '';
+    const kart = kod ? muhasebeFisKartBul(kod) : null;
+    const mamulKart = kart && (typeof kumasKutuphanesiKartiMamulMu !== 'function' || kumasKutuphanesiKartiMamulMu(kart));
+    if (mamulKart && typeof mamulTopluUrunDetayOlustur === 'function') {
+        /* Stok kartı olan ürün mamül sevkindeki gibi yazılır: ad ve ürün grubu karttan (mamül kolundaki aynı kural) */
+        const d = mamulTopluUrunDetayOlustur(kart);
+        const dolu = (v) => { const s = t(v); return s && s !== '—' ? s : ''; };
+        if (dolu(d.ad)) ad = dolu(d.ad);
+        if (!ebat) ebat = dolu(d.ebat);
+        if (!renk) renk = dolu(d.renk);
+        if (!grup) grup = dolu(d.grup);
+    } else if (kart && !grup) {
+        grup = typeof kumasStokListeAnaGrup === 'function'
+            ? t(kumasStokListeAnaGrup({ stok_kodu: kod, ana_grup: kart.ana_grup, urun_grubu: kart.urun_grubu }))
+            : t(kart.urun_grubu || kart.ana_grup);
+    }
+    if (grup.toUpperCase() === 'MAMUL') grup = '';
+    if (birim !== 'ADET' && birim !== 'MT' && birim !== 'KG') birim = adet > 0 ? 'ADET' : (kg > 1e-9 && !(mt > 1e-9) ? 'KG' : 'MT');
+    return {
+        depo_grup: 'KUMAS',
+        dokuma_depo: true,
+        birim,
+        siparis_no: taban.siparisNo,
+        stok_kodu: kod || '—',
+        urun_adi: ad || '—',
+        urun_grubu: grup,
+        kumas_cinsi: '', terbiye: '', tarak_eni: '', ham_en: '',
+        atki_sikligi: '', cozgu_sikligi: '', atki_ipi: '', cozgu_ipi: '',
+        renk, ebat,
+        adet, mt, kg
+    };
+}
+
+/** Kalemlerin hepsi Dokuma Depo sevki mi — öyleyse fiş mamül düzeninde çizilir. */
+function muhasebeFisSadeMi(kalemler) {
+    const ks = (kalemler || []).filter(Boolean);
+    return ks.length > 0 && ks.every(k => k.dokuma_depo);
+}
+
+/** Tablo / PDF düzeni hangi depo grubuyla çizilecek (Dokuma Depo sevki → mamül düzeni). */
+function muhasebeFisDuzenGrup(depoGrup, kalemler) {
+    const g = String(depoGrup || '').toUpperCase();
+    return g === 'KUMAS' && muhasebeFisSadeMi(kalemler) ? 'MAMUL' : g;
+}
+
+/** Fişin "Tip" yazısı: Mamül / Kumaş / İplik / Dokuma depo. */
+function muhasebeFisTipEtiket(depoGrup, kalemler) {
+    return muhasebeFisDuzenGrup(depoGrup, kalemler) !== String(depoGrup || '').toUpperCase()
+        ? 'Dokuma depo'
+        : muhasebeFisDepoGrupEtiket(depoGrup);
+}
+
+/** Dokuma Depo kaleminin fişteki miktarı — siparişin birimiyle tek sayı: { ad } | { mt } | { kg }. */
+function muhasebeFisDokumaDepoMiktar(k) {
+    const mt = Math.abs(parseFloat(k?.mt) || 0);
+    const kg = Math.abs(parseFloat(k?.kg) || 0);
+    const ad = Math.abs(parseInt(k?.adet, 10) || 0);
+    const b = String(k?.birim || '').toUpperCase();
+    /* Önce siparişin birimi, yanında metre (kullanıcı 14.10.2026: "metre de görülsün") */
+    if (b === 'ADET' && ad > 0) return { ad, mt };
+    if (b === 'KG' && kg > 1e-9) return { kg, mt };
+    if (mt > 1e-9) return { mt };
+    if (kg > 1e-9) return { kg };
+    return ad > 0 ? { ad } : {};
+}
+
+function muhasebeFisMiktarParcaYazi(m) {
+    const s = (n) => n.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+    return [
+        m.ad > 0 ? m.ad + ' ad' : '',
+        m.kg > 1e-9 ? s(m.kg) + ' kg' : '',
+        m.mt > 1e-9 ? s(m.mt) + ' mt' : ''
+    ].filter(Boolean).join(' · ') || '—';
+}
+
+/** Fiş satırındaki miktar hücresi (depo hareket defteri muhasebeFisKalemMiktarYazi'yı kullanır). */
+function muhasebeFisFisMiktarYazi(k) {
+    return k?.dokuma_depo ? muhasebeFisMiktarParcaYazi(muhasebeFisDokumaDepoMiktar(k)) : muhasebeFisKalemMiktarYazi(k);
 }
 
 function muhasebeFisKartBul(kod) {
@@ -534,6 +677,10 @@ function muhasebeFisKalemFromPayload(p, depoGrup) {
             ebat: '',
             adet, mt, kg
         };
+    }
+
+    if (grup === 'KUMAS' && muhasebeFisDokumaDepoSatiriMi(p)) {
+        return muhasebeFisDokumaDepoKalem(p, { siparisNo, adet, mt, kg });
     }
 
     if (grup === 'KUMAS') {
@@ -726,6 +873,10 @@ function muhasebeFisHareketGruplarOlustur(kayitlar, depoGrup) {
             const temizle = (raw) => {
                 let t = typeof depoNotlarStripMeta === 'function' ? depoNotlarStripMeta(raw || '') : String(raw || '');
                 t = muhasebeFisNotlarCekiMetniTemizle(t);
+                /* Dokuma Depo defter satırının iç izi ("[DOKUMA_DEPO_SEVK][DD_V2] KD:… · saat · kişi") fiş notu değildir */
+                if (muhasebeFisDokumaDepoSatiriMi({ notlar: raw })) {
+                    t = t.replace(/\[DOKUMA_DEPO_SEVK\]|\[DD_V2\]/gi, '').replace(/KD:\S+\s*·[^\[\n]*/g, '').trim();
+                }
                 return t;
             };
             const uniq = [];
@@ -845,7 +996,11 @@ function muhasebeFisFiltreUygula(list, f) {
     const q = String(f.q || '').trim().toLowerCase();
     const tip = String(f.tip || 'HEPSİ').toUpperCase();
     return (list || []).filter(fis => {
-        if (tip && tip !== 'HEPSİ' && String(fis.depo_grup || '').toUpperCase() !== tip) return false;
+        /* "Dokuma depo" = Dokuma Depo'dan müşteriye sevk fişleri (kumaş hareketi ama ayrı tip; Kumaş süzgecinde çıkmaz) */
+        if (tip && tip !== 'HEPSİ') {
+            const dokuma = String(fis.depo_grup || '').toUpperCase() === 'KUMAS' && muhasebeFisSadeMi(fis.kalemler);
+            if (tip === 'DOKUMA' ? !dokuma : (dokuma || String(fis.depo_grup || '').toUpperCase() !== tip)) return false;
+        }
         if (f.bas || f.bit) {
             const gun = muhasebeFisTarihGun(fis.created_at);
             if (f.bas && gun && gun < f.bas) return false;
@@ -1069,13 +1224,14 @@ async function muhasebeFisOverlayAc(fisId) {
     if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return; }
 
     await muhasebeFisHareketleriTazele(fis);
+    if (muhasebeFisFiyatAcikMi()) await satisFiyatHazirla();
     fis = muhasebeFisBul(fisId) || fis;
     const esc = muhasebeFisEsc;
     const kalemler = muhasebeFisKalemleriCoz(fis);
 
     const tarih = fis.created_at ? new Date(fis.created_at).toLocaleDateString('tr-TR') : '';
     const durumYazi = 'Sevkiyat fişi';
-    const tipYazi   = muhasebeFisDepoGrupEtiket(fis.depo_grup);
+    const tipYazi   = muhasebeFisTipEtiket(fis.depo_grup, kalemler);
     const toplamYazi = muhasebeFisKalemToplamYazi(kalemler, fis.depo_grup);
     const teslimMeta = `Teslim alan: ${esc(fis.teslim_alan || '—')} · Plaka: ${esc(fis.plaka || '—')}`;
     const kalemTablo = muhasebeFisKalemTabloHtml(fis.depo_grup, kalemler, {
@@ -1102,6 +1258,7 @@ async function muhasebeFisOverlayAc(fisId) {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
                         <span>PDF indir</span>
                     </button>
+                    ${muhasebeFisCiktiFiyatHtml()}
                     <button type="button" class="mf-btn mf-btn--danger-soft" onclick="muhasebeFisCekiKapat()">Kapat</button>
                 </div>
             </div>
@@ -1130,6 +1287,12 @@ function muhasebeFisCekiKapat() {
 function muhasebeFisKalemToplamYazi(kalemler, depoGrup) {
     const ks = kalemler || [];
     const g = String(depoGrup || '').toUpperCase();
+    if (g === 'KUMAS' && muhasebeFisSadeMi(ks)) {
+        /* Dokuma Depo sevki: her kalem siparişin birimiyle sayılır (adet + metre + kg ayrı ayrı toplanır) */
+        const top = { ad: 0, mt: 0, kg: 0 };
+        ks.forEach(k => { const m = muhasebeFisDokumaDepoMiktar(k); top.ad += m.ad || 0; top.mt += m.mt || 0; top.kg += m.kg || 0; });
+        return muhasebeFisMiktarParcaYazi(top);
+    }
     if (g === 'KUMAS') {
         const mt = ks.reduce((s, k) => s + (parseFloat(k.mt) || 0), 0);
         const kg = ks.reduce((s, k) => s + (parseFloat(k.kg) || 0), 0);
@@ -1246,35 +1409,43 @@ function muhasebeFisKalemHucreler(k, i, depoGrup, opts) {
         k.urun_grubu || '—',
         k.renk || '—',
         k.ebat || '—',
-        muhasebeFisKalemMiktarYazi(k)
+        muhasebeFisFisMiktarYazi(k)
     ].map(esc);
 }
 
-function muhasebeFisKalemTabloHtml(depoGrup, kalemler, opts) {
+function muhasebeFisKalemTabloHtml(depoGrupHam, kalemler, opts) {
     opts = opts || {};
     const esc = muhasebeFisEsc;
     const ks = (kalemler || []).filter(muhasebeFisKalemGosterilebilirMi);
+    /* Dokuma Depo sevki mamül düzeninde çizilir (toplam satırı fişin kendi grubuyla hesaplanır) */
+    const depoGrup = muhasebeFisDuzenGrup(depoGrupHam, ks);
     const kumasHam = String(depoGrup || '').toUpperCase() === 'KUMAS' && muhasebeFisKumasListeHamMi(ks);
     const heads = muhasebeFisKalemBasliklar(depoGrup, { kumasHam });
     const last = heads.length - 1;
+    const fiyatli = muhasebeFisFiyatAcikMi();
+    const fiyatlar = fiyatli ? ks.map(k => satisFiyatFisKalem(k)) : [];
     const th = 'padding:6px 10px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);border-bottom:1px solid var(--border)';
     const td = 'padding:6px 10px;font-size:12px;border-bottom:1px solid var(--border)';
     const headHtml = heads.map((h, i) =>
         `<th style="${th}${i === last ? ';text-align:right' : ''}${i === 0 ? ';width:28px' : ''}">${esc(h)}</th>`
-    ).join('');
+    ).join('') + (fiyatli ? `<th style="${th};text-align:right">Birim fiyat</th><th style="${th};text-align:right">Tutar</th>` : '');
     const bodyHtml = ks.map((k, i) => {
         const cells = muhasebeFisKalemHucreler(k, i, depoGrup, { kumasHam });
         return `<tr>${cells.map((c, j) =>
             `<td data-th="${esc(heads[j] || '')}" style="${td}${j === 1 ? ';font-weight:600;font-family:DM Mono,monospace;font-size:11px' : ''}${j === last ? ';text-align:right;font-weight:600' : ''}">${c}</td>`
-        ).join('')}</tr>`;
+        ).join('')}${fiyatli ? (() => {
+            const f = satisFiyatFisHucre(fiyatlar[i]);
+            return `<td data-th="Birim fiyat" style="${td};text-align:right;white-space:nowrap;font-family:DM Mono,monospace;font-size:11px">${esc(f.fiyat)}</td><td data-th="Tutar" style="${td};text-align:right;white-space:nowrap;font-weight:600">${esc(f.tutar)}</td>`;
+        })() : ''}</tr>`;
     }).join('');
-    const toplam = opts.toplamYazi || muhasebeFisKalemToplamYazi(ks, depoGrup);
+    const toplam = opts.toplamYazi || muhasebeFisKalemToplamYazi(ks, depoGrupHam);
     return `<div class="mf-kalem-wrap"><table class="mf-kalem-tablo" style="width:100%;border-collapse:collapse">
         <thead><tr style="background:var(--surface)">${headHtml}</tr></thead>
-        <tbody>${bodyHtml || `<tr><td colspan="${heads.length}" style="padding:12px;text-align:center;color:var(--text3)">Kalem yok</td></tr>`}
+        <tbody>${bodyHtml || `<tr><td colspan="${heads.length + (fiyatli ? 2 : 0)}" style="padding:12px;text-align:center;color:var(--text3)">Kalem yok</td></tr>`}
             ${ks.length ? `<tr style="background:var(--surface);font-weight:700">
                 <td colspan="${last}" style="padding:8px 10px;font-size:11px;text-align:right;border-top:2px solid var(--border)">TOPLAM</td>
                 <td style="padding:8px 10px;font-size:12px;text-align:right;border-top:2px solid var(--border)">${esc(toplam)}</td>
+                ${fiyatli ? `<td style="border-top:2px solid var(--border)"></td><td style="padding:8px 10px;font-size:12px;text-align:right;white-space:nowrap;border-top:2px solid var(--border)">${esc(satisFiyatFisToplamYazi(fiyatlar))}</td>` : ''}
             </tr>` : ''}
         </tbody>
     </table></div>`;
@@ -1288,7 +1459,8 @@ function muhasebeFisSatirDetay(fis) {
     const icoPrint = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>';
     const icoPdf = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>';
     const icoCeki = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>';
-    const cekiBtn = (fis.depo_grup === 'KUMAS' && (fis.hareket_ids || []).length)
+    /* Dokuma Depo sevkinde çeki (top top metre) listesi yok — kalem adetle / metreyle tek satır */
+    const cekiBtn = (fis.depo_grup === 'KUMAS' && (fis.hareket_ids || []).length && !muhasebeFisSadeMi(ks))
         ? `<button type="button" class="mf-btn mf-btn--ceki" onclick="event.stopPropagation();muhasebeFisCekiGoster('${id}')">${icoCeki}<span>Çeki listesi</span></button>`
         : '';
     const meta = [
@@ -1303,6 +1475,8 @@ function muhasebeFisSatirDetay(fis) {
             <button type="button" class="mf-btn mf-btn--print" onclick="muhasebeFisPdfYaz('${id}')">${icoPrint}<span>Yazdır</span></button>
             <button type="button" class="mf-btn mf-btn--pdf" onclick="muhasebeFisPdfIndir('${id}')">${icoPdf}<span>PDF indir</span></button>
             ${cekiBtn}
+            ${muhasebeFisCiktiFiyatHtml()}
+            ${(typeof fisDuzeltYetkiliMi === 'function' && fisDuzeltYetkiliMi()) ? `<button type="button" class="mf-btn" style="border-color:var(--rose-c,#f43f5e);color:var(--rose-c,#f43f5e)" title="Yalnız admin: başlık, miktar, kalemi / fişi geri alma — depo, sipariş sevk sayısı ve günlük birlikte düzelir" onclick="event.stopPropagation();fisDuzeltAc('${id}')"><span>✎ Fişi düzenle</span></button>` : ''}
         </div>
         ${meta ? `<div class="mf-fis-detay-meta">${meta}</div>` : ''}
         ${muhasebeFisKalemTabloHtml(fis.depo_grup, ks)}
@@ -1328,6 +1502,7 @@ function muhasebeFisListeImza(ham) {
         (ham || []).length,
         _muhasebeFisStokKaynak?.tamMi ? '1' : '0',
         acik,
+        (typeof satisFiyatImza === 'function' ? satisFiyatImza() : ''),
         rows.join('|')
     ].join('~');
 }
@@ -1338,6 +1513,11 @@ async function renderMuhasebeFisListe(opts) {
     if (!list) return;
     if (typeof appMode === 'string' && appMode && appMode !== 'MUHASEBE_FIS') return;
     muhasebeFisFiltreIlkYukle();
+    /* Fiyat yetkilisinde fiyatlar ilk çizimden önce okunur (yetkisizde istek yok) */
+    if (muhasebeFisFiyatAcikMi()) {
+        try { await satisFiyatHazirla(); } catch (e) {}
+        if (typeof appMode === 'string' && appMode && appMode !== 'MUHASEBE_FIS') return;
+    }
 
     const quiet = opts.quiet === true;
     const force = opts.force === true;
@@ -1386,7 +1566,8 @@ function muhasebeFisListeGovdeYaz(list, ham, renderOpts) {
             { value: 'HEPSİ', label: 'Tümü' },
             { value: 'MAMUL', label: 'Mamül' },
             { value: 'KUMAS', label: 'Kumaş' },
-            { value: 'IPLIK', label: 'İplik' }
+            { value: 'IPLIK', label: 'İplik' },
+            { value: 'DOKUMA', label: 'Dokuma depo' }
         ],
         onChangeFn: 'muhasebeFisFiltreYenile',
         onResetFn: 'muhasebeFisFiltreleriSifirla',
@@ -1405,7 +1586,10 @@ function muhasebeFisListeGovdeYaz(list, ham, renderOpts) {
         const kalemler = muhasebeFisKalemleriCoz(fis);
         const adetTop  = kalemler.reduce((s,k) => s+(parseInt(k.adet,10)||0), 0);
         const mtTop    = kalemler.reduce((s,k) => s+(parseFloat(k.mt)||0), 0);
-        const miktarYazi = fis.depo_grup === 'KUMAS'
+        const sade = fis.depo_grup === 'KUMAS' && muhasebeFisSadeMi(kalemler);
+        const miktarYazi = sade
+            ? muhasebeFisKalemToplamYazi(kalemler, 'KUMAS')
+            : fis.depo_grup === 'KUMAS'
             ? (mtTop.toLocaleString('tr-TR',{maximumFractionDigits:2}) + ' mt')
             : (fis.depo_grup === 'IPLIK'
                 ? muhasebeFisKalemToplamYazi(kalemler, 'IPLIK')
@@ -1422,7 +1606,7 @@ function muhasebeFisListeGovdeYaz(list, ham, renderOpts) {
         const tarih = fis.created_at
             ? new Date(fis.created_at).toLocaleString('tr-TR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
             : '—';
-        const tip = muhasebeFisDepoGrupEtiket(fis.depo_grup);
+        const tip = muhasebeFisTipEtiket(fis.depo_grup, kalemler);
         return `<tr class="mf-fis-tr${acik ? ' is-open' : ''}" id="mf-row-${id}" onclick="muhasebeFisSatirToggle('${id}')" title="Detayı aç/kapat">
             <td class="mf-fis-chev-td"><span class="mf-fis-chev" id="mf-chev-${id}">${acik ? '▾' : '▸'}</span></td>
             <td class="mf-fis-kod">${esc(fis.fis_no || '—')}</td>
@@ -1533,7 +1717,7 @@ function muhasebeFisYazdirHucreler(k, depoGrup, opts) {
             ].map(esc);
         }
         return [
-            muhasebeFisSiparisNo(k) || '—',
+            k.siparis_no || muhasebeFisSiparisNo(k) || '—',
             k.stok_kodu || '—',
             k.urun_adi || '—',
             k.kumas_cinsi || '—',
@@ -1551,13 +1735,16 @@ function muhasebeFisYazdirHucreler(k, depoGrup, opts) {
             muhasebeFisKalemMiktarYazi(k)
         ].map(esc);
     }
+    /* Mamül (ve mamül düzeninde çizilen Dokuma Depo sevki). Başlıkta "Sipariş" var: hücresi 10.09'dan beri eksikti,
+       yazdırılan mamül fişinde sütunlar bir sola kayıyor, "Miktar" boş kalıyordu (14.10.2026). */
     return [
+        k.siparis_no || muhasebeFisSiparisNo(k) || '—',
         k.stok_kodu || '—',
         k.urun_adi || '—',
         k.urun_grubu || '—',
         k.renk || '—',
         k.ebat || '—',
-        muhasebeFisKalemMiktarYazi(k)
+        muhasebeFisFisMiktarYazi(k)
     ].map(esc);
 }
 
@@ -1565,7 +1752,9 @@ async function muhasebeFisPdfYaz(id) {
     if (!(_muhasebeFisCache||[]).length) await muhasebeFisleriYukle();
     let fis = muhasebeFisBul(id);
     if (fis) await muhasebeFisHareketleriTazele(fis);
-    const html = muhasebeFisBelgeHtml(id);
+    const fiyatli = _muhasebeFisCiktiFiyatli && muhasebeFisFiyatAcikMi();
+    if (fiyatli) await satisFiyatHazirla();
+    const html = muhasebeFisBelgeHtml(id, { fiyatli });
     if (!html) return;
     fis = muhasebeFisBul(id) || fis;
     if (typeof erpBelgeYazdir === 'function') erpBelgeYazdir(html, String((fis && fis.fis_no) || 'Fiş'));
@@ -1581,12 +1770,14 @@ async function muhasebeFisPdfIndir(id) {
     if (!(_muhasebeFisCache||[]).length) await muhasebeFisleriYukle();
     let fis = muhasebeFisBul(id);
     if (fis) await muhasebeFisHareketleriTazele(fis);
-    const html = muhasebeFisBelgeHtml(id);
+    const fiyatli = _muhasebeFisCiktiFiyatli && muhasebeFisFiyatAcikMi();
+    if (fiyatli) await satisFiyatHazirla();
+    const html = muhasebeFisBelgeHtml(id, { fiyatli });
     if (!html) return;
     fis = muhasebeFisBul(id) || fis;
-    const ad = (fis && fis.fis_no)
+    const ad = ((fis && fis.fis_no)
         ? ('sevkiyat-fis-' + fis.fis_no)
-        : ('sevkiyat-fis-' + (id || 'belge'));
+        : ('sevkiyat-fis-' + (id || 'belge'))) + (fiyatli ? '-fiyatli' : '');
     if (typeof erpBelgePdfIndir === 'function') {
         await erpBelgePdfIndir(html, ad);
         return;
@@ -1594,24 +1785,32 @@ async function muhasebeFisPdfIndir(id) {
     await muhasebeFisPdfYaz(id);
 }
 
-function muhasebeFisBelgeHtml(id) {
+function muhasebeFisBelgeHtml(id, opts) {
     const fis = muhasebeFisBul(id);
     if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return ''; }
     const esc = muhasebeFisEsc;
     const kalemler = muhasebeFisKalemleriCoz(fis);
-    const kumasHam = String(fis.depo_grup || '').toUpperCase() === 'KUMAS' && muhasebeFisKumasListeHamMi(kalemler);
+    /* Dokuma Depo sevki mamül düzeninde yazdırılır */
+    const duzen = muhasebeFisDuzenGrup(fis.depo_grup, kalemler);
+    const kumasHam = duzen === 'KUMAS' && muhasebeFisKumasListeHamMi(kalemler);
 
-    const heads = muhasebeFisYazdirBasliklar(fis.depo_grup, { kumasHam });
+    const heads = muhasebeFisYazdirBasliklar(duzen, { kumasHam });
     const last = heads.length - 1;
-    const kalemRows = kalemler.map(k => {
-        const cells = muhasebeFisYazdirHucreler(k, fis.depo_grup, { kumasHam });
-        return `<tr>${cells.map((c, j) => `<td${j===last?' class="r"':''}${j===0?' class="kod"':''}>${c}</td>`).join('')}</tr>`;
+    /* Satış fiyatı yalnız istenirse (opts.fiyatli = "Çıktıda fiyat") ve oturum fiyat yetkiliyse */
+    const fiyatli = !!(opts && opts.fiyatli) && muhasebeFisFiyatAcikMi();
+    const fiyatlar = fiyatli ? kalemler.map(k => satisFiyatFisKalem(k)) : [];
+    const kalemRows = kalemler.map((k, i) => {
+        const cells = muhasebeFisYazdirHucreler(k, duzen, { kumasHam });
+        const f = fiyatli ? satisFiyatFisHucre(fiyatlar[i]) : null;
+        return `<tr>${cells.map((c, j) => `<td${j===last?' class="r"':''}${j===0?' class="kod"':''}>${c}</td>`).join('')}${f ? `<td class="r">${esc(f.fiyat)}</td><td class="r">${esc(f.tutar)}</td>` : ''}</tr>`;
     }).join('');
     const topYazi = muhasebeFisKalemToplamYazi(kalemler, fis.depo_grup);
     const tarih = fis.created_at
         ? new Date(fis.created_at).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })
         : new Date().toLocaleString('tr-TR');
-    const depoAd = muhasebeFisDepoGrupEtiket(fis.depo_grup) + ' depo';
+    const depoAd = duzen !== String(fis.depo_grup || '').toUpperCase()
+        ? muhasebeFisTipEtiket(fis.depo_grup, kalemler)
+        : muhasebeFisDepoGrupEtiket(fis.depo_grup) + ' depo';
     const metaSatir = [
         fis.musteri ? `<div class="meta-row"><span>Müşteri</span><b>${esc(fis.musteri)}</b></div>` : '',
         `<div class="meta-row"><span>Teslim alan</span><b>${esc(fis.teslim_alan || '—')}</b></div>`,
@@ -1674,9 +1873,9 @@ function muhasebeFisBelgeHtml(id) {
         </div>
         ${metaSatir ? `<div class="meta">${metaSatir}</div>` : ''}
         <table>
-            <thead><tr>${heads.map((h,i) => `<th${i===last?' class="r"':''}>${esc(h)}</th>`).join('')}</tr></thead>
-            <tbody>${kalemRows||`<tr><td colspan="${heads.length}" style="padding:16px;text-align:center;color:#888">Kalem bulunamadı</td></tr>`}</tbody>
-            <tfoot><tr><td colspan="${last}">TOPLAM</td><td class="r">${esc(topYazi||'—')}</td></tr></tfoot>
+            <thead><tr>${heads.map((h,i) => `<th${i===last?' class="r"':''}>${esc(h)}</th>`).join('')}${fiyatli ? '<th class="r">Birim fiyat</th><th class="r">Tutar</th>' : ''}</tr></thead>
+            <tbody>${kalemRows||`<tr><td colspan="${heads.length + (fiyatli ? 2 : 0)}" style="padding:16px;text-align:center;color:#888">Kalem bulunamadı</td></tr>`}</tbody>
+            <tfoot><tr><td colspan="${last}">TOPLAM</td><td class="r">${esc(topYazi||'—')}</td>${fiyatli ? `<td></td><td class="r">${esc(satisFiyatFisToplamYazi(fiyatlar))}</td>` : ''}</tr></tfoot>
         </table>
         <div class="imza">
             <div><i></i><span>Teslim Eden</span></div>

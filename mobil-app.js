@@ -147,6 +147,9 @@ function erpInitSupabaseClient() {
         const opts = (typeof erpSupabaseClientOptions === 'function') ? erpSupabaseClientOptions() : {};
         sb = supabase.createClient(SB_URL, SB_KEY, opts);
         mobilSaltOkunurKapisiKur(sb);
+        /* Mobilin izinli yazmaları (sayım, foto) da öbür programlara "değişti" haberi verir — çekirdek 04 / 32.
+           Kapıdan SONRA kurulur: engellenen yazma hata döndürür, haber gitmez. */
+        if (typeof erpKendiYazmaIzle === 'function') erpKendiYazmaIzle(sb);
         return true;
     } catch (e) {
         console.error('Supabase client oluşturulamadı:', e);
@@ -10402,7 +10405,7 @@ try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
 
     // —— Excel API stub ——
     const excelFns = [
-        'importSiparisExcel', 'importStokExcel', 'openStokExcelImport', 'downloadStokExcelTemplate',
+        'importStokExcel', 'openStokExcelImport', 'downloadStokExcelTemplate',
         'exportDepoHareketExcel', 'exportAktifModalExcel', 'exportToExcel',
         'dtExcelDosyaOku', 'openDtExcelImport', 'dtExcelSonImportGeriAl',
         'downloadSiparisExcelTemplate', 'exportSiparisFormuExcel',
@@ -10417,7 +10420,6 @@ try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
         const hideIds = [
             'stok-excel-template-btn',
             'stok-excel-import-btn',
-            'siparis-excel-input',
             'stok-excel-input',
             'dt-excel-input',
             'modal-excel-btn',
