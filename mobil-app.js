@@ -280,6 +280,13 @@ function mobilSayimYazmasiMi(tablo, payload) {
    Burada yalnız etiket işlenir (data-mobil-etiket); görünümü mobil-erp.css yapar.
    Yalnız ekrana SIĞMAYAN tablolar işaretlenir, dar tablolar tablo olarak kalır. */
 const MOBIL_TABLO_ESIK = 560;
+/* Sabit düzenli tablo (table-layout:fixed, width:100%) hiç taşmaz: sütunlar telefonda 20 px'e iner,
+   yazı yan hücreye biner — "taşıyor mu" ölçüsü bunu görmez (Dokuma Depo, 14.10.2026: tarih rengin
+   üstünde, metre ile kg bitişik "21567"). Başlığı kendi hücresine sığmayan sabit tablo sıkışmış sayılır. */
+function mobilTabloSikismisMi(t) {
+    if (getComputedStyle(t).tableLayout !== 'fixed') return false;
+    return [...t.querySelectorAll('thead th')].some((th) => th.scrollWidth > th.clientWidth + 2);
+}
 function mobilTabloKartlastir(kok, yalnizBunlar) {
     try {
         if (window.innerWidth > MOBIL_TABLO_ESIK) return;
@@ -303,17 +310,19 @@ function mobilTabloKartlastir(kok, yalnizBunlar) {
                 /* Sarmalayıcı da tabloyla birlikte genişlemiş olabilir (esnek öğe min-width:auto) —
                    ekran genişliği de sınır sayılır; yoksa tablo "sığıyor" sanılıp dışı kesiliyordu. */
                 const sinir = Math.min(sar ? sar.clientWidth : window.innerWidth, window.innerWidth - 16);
-                if (t.scrollWidth <= sinir + 8) return;
+                if (t.scrollWidth <= sinir + 8 && !mobilTabloSikismisMi(t)) return;
             }
             /* Başlık az sayıda — innerText ile okunur: "SİP<br>MİKTAR" textContent'te "SİPMİKTAR" oluyordu. */
-            const basliklar = [...t.querySelectorAll('thead th')].map((th) => (th.innerText || '').replace(/\s+/g, ' ').trim());
+            /* Kapalı <details> içindeki tabloda innerText boş döner (Dokuma Depo "Sevk edilenler") — o zaman textContent */
+            const basliklar = [...t.querySelectorAll('thead th')].map((th) => (th.innerText || th.textContent || '').replace(/\s+/g, ' ').trim());
             if (!basliklar.length) return;
             const hucreler = [];
             t.querySelectorAll('tbody tr').forEach((tr) => {
                 [...tr.children].forEach((td, i) => {
                     /* Değeri olmayan alan (—) kartı uzatmasın; dolu bilgiler görünür kalır. */
                     const bos = !td.querySelector('input,select,button,img,svg') && ['', '—', '-', '–'].includes(metinAl(td));
-                    hucreler.push([td, basliklar[i] || '', bos]);
+                    /* Birden çok sütunu kaplayan hücre (grup başlığı: "▶ SP540 RATEKS …") tek sütunun etiketini almaz */
+                    hucreler.push([td, td.colSpan > 1 ? '' : (basliklar[i] || ''), bos]);
                 });
             });
             yazilacak.push([t, hucreler]);
@@ -2697,8 +2706,33 @@ async function erpRefreshCurrentScreen(opts = {}) {
         return;
     }
     try {
+        /* Ana sayfa yerinde yenilenir. Eskiden burada setAppMode(boot) vardı: anlık senkronla (13.10.2026)
+           başka birinin her kaydında telefon ana sayfadan Sipariş listesine atlıyordu (14.10.2026, kullanıcı:
+           "mobilde her şey karışmış"). Dallar 00-header.js erpRefreshCurrentScreen ile aynı kuralda. */
         if (mode === 'DASHBOARD') {
-            if (typeof setAppMode === 'function') setAppMode(window.ERP_MOBIL_BOOT_MODE || 'SIPARIS_LISTE');
+            if (typeof renderDashboard === 'function') renderDashboard();
+            return true;
+        }
+        if (mode === 'SEVKIYAT') {
+            if (!force && erpShouldDeferUiRefresh()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
+            if (document.getElementById('sevkiyat-out') && typeof sevkiyatHafifYenile === 'function') await sevkiyatHafifYenile();
+            else if (typeof renderSevkiyat === 'function') await renderSevkiyat();
+            return true;
+        }
+        /* Bu iki ekran her yenilemede sunucudan okur: canlı değişiklik ekranı ilgilendirmiyorsa okunmaz (04 erpLiveEkranIlgiliMi).
+           Mobilde dalları yoktu — Dokuma Depo başka programda değişse de telefonda eski rakamla kalıyordu. */
+        if (mode === 'DOKUMA_DEPO') {
+            if (!force && typeof erpLiveEkranIlgiliMi === 'function' && !erpLiveEkranIlgiliMi('DOKUMA_DEPO')) return;
+            if (typeof renderDokumaDepo === 'function') renderDokumaDepo();
+            return true;
+        }
+        if (mode === 'TEZGAH_PLANLAMA') {
+            if (!force && typeof erpLiveEkranIlgiliMi === 'function' && !erpLiveEkranIlgiliMi('TEZGAH_PLANLAMA')) return;
+            if (typeof tpCanliYenile === 'function') await tpCanliYenile({ force });
+            else if (typeof renderTezgahPlanlama === 'function') await renderTezgahPlanlama();
             return true;
         }
         if (mode === 'PLANLAMA') {
@@ -2728,16 +2762,23 @@ async function erpRefreshCurrentScreen(opts = {}) {
             else if (typeof openKonfeksiyonPlanlama === 'function') openKonfeksiyonPlanlama();
             return true;
         }
-        if (mode === 'FASON_TAKIP') {
-            if (typeof renderFasonTakip === 'function') renderFasonTakip();
-            return true;
-        }
-        if (mode === 'DOKUMA_FASON_TAKIP') {
-            if (typeof renderDokumaFasonTakip === 'function') renderDokumaFasonTakip();
+        /* Fason / Terbiye / Numune: ana programdaki gibi açık form varken çizilmez, veri yeniden okunur */
+        if (mode === 'FASON_TAKIP' || mode === 'DOKUMA_FASON_TAKIP' || mode === 'BOYAHANE_URETIM') {
+            if ((typeof _fasonForm !== 'undefined' && _fasonForm) || (!force && erpIsUserEditingUi())) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
+            if (force && typeof fasonAkisYukle === 'function') await fasonAkisYukle(true);
+            if (typeof fasonEkranYenile === 'function') fasonEkranYenile();
             return true;
         }
         if (mode === 'NUMUNE') {
-            if (typeof numuneListeYenile === 'function') numuneListeYenile();
+            if ((typeof numuneEditor !== 'undefined' && numuneEditor) || (!force && erpIsUserEditingUi())) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
+            if (typeof numuneYukle === 'function') await numuneYukle(force);
+            if (appMode === 'NUMUNE' && typeof numuneListeYenile === 'function') numuneListeYenile();
             return true;
         }
         if (mode === 'KONFEKSIYON_YIKAMA') {
@@ -2748,16 +2789,16 @@ async function erpRefreshCurrentScreen(opts = {}) {
             if (typeof renderYapilacaklar === 'function') await renderYapilacaklar();
             return true;
         }
-        if (mode === 'DASHBOARD') {
-            if (typeof renderDashboard === 'function') renderDashboard();
-            return true;
-        }
         if (mode === 'URUN_AGACI' || mode === 'TEKNIK_FOY') {
             if (!force && erpIsUserEditingUi()) return;
             if (typeof renderUrunAgaci === 'function') renderUrunAgaci();
             return true;
         }
         if (mode === 'RAPORLAR' || mode === 'RAPOR') {
+            if (!force && erpIsUserEditingUi()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
             if (typeof renderRaporlar === 'function') renderRaporlar();
             return true;
         }
@@ -2778,6 +2819,10 @@ async function erpRefreshCurrentScreen(opts = {}) {
             return true;
         }
         if (mode === 'MUHASEBE_FIS') {
+            if (!force && erpIsUserEditingUi()) {
+                erpScheduleDeferredUiRefresh();
+                return;
+            }
             if (typeof renderMuhasebeFisListe === 'function') renderMuhasebeFisListe({ quiet: true });
             return true;
         }
