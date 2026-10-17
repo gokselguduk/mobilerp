@@ -469,7 +469,7 @@ function muhasebeFisDokumaDepoKalem(p, taban) {
     const ayni = (a, b) => t(a).toLocaleLowerCase('tr-TR') === t(b).toLocaleLowerCase('tr-TR');
     const { adet, mt, kg } = taban;
     const fromSip = muhasebeFisSiparisKaleminden(p);
-    let kod = t(p?.stok_kodu), ad = '', renk = t(p?.kumas_rengi), ebat = '', grup = '', birim = '';
+    let kod = t(p?.stok_kodu), ad = '', renk = t(p?.kumas_rengi), ebat = '', grup = '', birim = '', ek = [];
     if (fromSip) {
         /* Kumaş planındaki kumaş ilk ürünün adıyla değil kumaşın adıyla görünür (Dokuma Depo satırıyla aynı) */
         const kb = typeof kumasPlaniKalemKumasi === 'function' ? kumasPlaniKalemKumasi(fromSip.sip, fromSip.ki) : null;
@@ -484,6 +484,8 @@ function muhasebeFisDokumaDepoKalem(p, taban) {
         const kalemKod = t((kb && kb.km && kb.km.kod) || gorunen.kod || gorunen.stok_kodu);
         if (kalemKod) kod = kalemKod;
         birim = typeof ortakKalemBirim === 'function' ? ortakKalemBirim(gorunen) : t(gorunen.birim).toUpperCase();
+        /* metre siparişte "dokumada metreyle birlikte" işaretli birimler (15.10.2026, 36): fişte de metrenin yanında */
+        ek = typeof ortakKalemEkBirim === 'function' ? ortakKalemEkBirim(gorunen) : [];
     }
     if (!ad) ad = t(p?.kumas_cinsi) || kod;
     /* Kodsuz kalemde defter satırının "kodu" ürün adının kendisidir — kod sütununda tekrar edilmez */
@@ -509,6 +511,7 @@ function muhasebeFisDokumaDepoKalem(p, taban) {
         depo_grup: 'KUMAS',
         dokuma_depo: true,
         birim,
+        ek_birim: ek,
         siparis_no: taban.siparisNo,
         stok_kodu: kod || '—',
         urun_adi: ad || '—',
@@ -548,6 +551,11 @@ function muhasebeFisDokumaDepoMiktar(k) {
     /* Önce siparişin birimi, yanında metre (kullanıcı 14.10.2026: "metre de görülsün") */
     if (b === 'ADET' && ad > 0) return { ad, mt };
     if (b === 'KG' && kg > 1e-9) return { kg, mt };
+    /* metre sipariş + ek birim (15.10.2026): işaretli kg / adet de yazılır ("120 mt · 30 kg") */
+    const ek = Array.isArray(k?.ek_birim) ? k.ek_birim : [];
+    if (b === 'MT' && mt > 1e-9 && ek.length) {
+        return { mt, ...(ek.includes('KG') && kg > 1e-9 ? { kg } : {}), ...(ek.includes('ADET') && ad > 0 ? { ad } : {}), metreOnce: true };
+    }
     if (mt > 1e-9) return { mt };
     if (kg > 1e-9) return { kg };
     return ad > 0 ? { ad } : {};
@@ -555,10 +563,12 @@ function muhasebeFisDokumaDepoMiktar(k) {
 
 function muhasebeFisMiktarParcaYazi(m) {
     const s = (n) => n.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+    const mt = m.mt > 1e-9 ? s(m.mt) + ' mt' : '';
     return [
+        m.metreOnce ? mt : '',   /* metre sipariş + ek birim: önce siparişin birimi (metre) */
         m.ad > 0 ? m.ad + ' ad' : '',
         m.kg > 1e-9 ? s(m.kg) + ' kg' : '',
-        m.mt > 1e-9 ? s(m.mt) + ' mt' : ''
+        m.metreOnce ? '' : mt
     ].filter(Boolean).join(' · ') || '—';
 }
 

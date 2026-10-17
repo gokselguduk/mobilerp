@@ -7948,6 +7948,10 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             if (typeof kumasStokHareketiKumasDepoMu === 'function' && !kumasStokHareketiKumasDepoMu(x)) return;
             if (hamIstegi && typeof kumasStokHareketiHamKumasMu === 'function' && !kumasStokHareketiHamKumasMu(x)) return;
             if (mamulIstegi && typeof kumasStokHareketiMamulKumasMu === 'function' && !kumasStokHareketiMamulKumasMu(x)) return;
+            /* Siparişe bağlı satır (Dokuma Depo sevk defteri [DD_V2] vb.) Simteks stoğuna girmez — stok listesi ve
+               bakiye indeksiyle aynı kural. Sayılınca Dokuma Depo → Genel Depo sevkinin GİRİŞ eşi siliniyordu
+               (SM-0001 16.10.2026: stokta 18.881 mt, burada 17.273 mt). */
+            if (x.siparis_id != null && x.siparis_id !== '') return;
             const kod = String(x.stok_kodu || '').trim();
             if (/^SIP-/i.test(kod)) return;
             if (kod && !kumasDepoStokKoduMu(kod) && mamulKodMu(kod)) return;
