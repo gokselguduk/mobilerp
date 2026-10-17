@@ -164,12 +164,17 @@ function erpInitSupabaseClient() {
  * Mobil ana programdan kaymış hesaplar içerdiği için yazdığı veri ana programın
  * doğru verisini bozabiliyordu.
  * İzin verilen: STOK_SAYIM ekranındayken iplik_stok / kumas_stok hareketi ve
- * siparis_akis'e yalnız sayım raporu (islem = STOK_SAYIM_RAPOR); giriş/oturum RPC'leri.
+ * siparis_akis'e yalnız sayım raporu (islem = STOK_SAYIM_RAPOR); giriş/oturum RPC'leri; 17.10.2026 (yapı geçişi M3)
+ * sayım ekranındayken raporun yeni yazma kapısı erp_sayim_yaz (yetki veritabanında da denetlenir); yapı geçişinin İZLEME
+ * bildirimleri (cihaz sürümü erp_yapi_cihaz_bildir, fark defteri erp_yapi_fark_yaz — kullanıcı verisi değil; 17.10.2026 kullanıcı
+ * onayı: telefonlar da cihaz listesinde görünsün). Anahtar değiştirme / fark açıklama mobilde KAPALI kalır.
  * 24.09.2026 ikinci istisna: SIPARIS_FOTO_EKLE yetkilisi siparişe açıklamalı fotoğraf
  * ekleyebilir (bkz. mobilFotoYazmasiMi) — sipariş bilgisi yine değiştirilemez.
  */
 const MOBIL_SAYIM_TABLOLARI = ['iplik_stok', 'kumas_stok', 'siparis_akis'];
 const MOBIL_OKUMA_RPC = /^(erp_login|erp_session_me|erp_logout|erp_session_[a-z_]*|erp_admin_users_list)$/;
+const MOBIL_SAYIM_RPC = /^erp_sayim_yaz$/;
+const MOBIL_IZLEME_RPC = /^erp_yapi_(cihaz_bildir|fark_yaz)$/;
 let _mobilSaltOkunurUyariAt = 0;
 
 function mobilSaltOkunurMesaj() {
@@ -741,7 +746,8 @@ function mobilSaltOkunurKapisiKur(client) {
         return q;
     };
     const asilRpc = client.rpc.bind(client);
-    client.rpc = (ad, ...rest) => (MOBIL_OKUMA_RPC.test(String(ad || ''))
+    client.rpc = (ad, ...rest) => (MOBIL_OKUMA_RPC.test(String(ad || '')) || MOBIL_IZLEME_RPC.test(String(ad || ''))
+        || (MOBIL_SAYIM_RPC.test(String(ad || '')) && typeof appMode !== 'undefined' && appMode === 'STOK_SAYIM')
         ? asilRpc(ad, ...rest)
         : mobilSaltOkunurEngelSonucu('rpc ' + ad));
     if (client.storage && client.storage.from) {
@@ -9317,266 +9323,7 @@ async function exportAktifSiparisFormuExcel() {
     }
 }
 
-/** Genel Durum — C:ürün, G:renk, H:ebat · J:Toplam Dokunan Mt, K:Toplam Dokunan Ad/Kg */
-const GENEL_DURUM_DOKUMA = {
-    basSatir: 3, bitSatir: 32,
-    colUrun: 3, colRenk: 7, colEbat: 8,
-    colMetre: 10, colAdKg: 11
-};
-
-function genelDurumSheetAdiBul(wb) {
-    const names = wb?.SheetNames || [];
-    return names.find(sn => siparisExcelNormHeader(sn).includes('genel durum')) || '';
-}
-
-function siparisExcelHucreSayi(ws, row, col) {
-    if (!ws) return 0;
-    const addr = XLSX.utils.encode_cell({ r: row - 1, c: col - 1 });
-    const cell = ws[addr];
-    if (!cell) return 0;
-    if (cell.t === 'n' && typeof cell.v === 'number' && Number.isFinite(cell.v)) return cell.v;
-    const raw = siparisFormuHucre(ws, row, col);
-    if (!raw) return 0;
-    return stokToNumber(raw);
-}
-
-function genelDurumKalemBul(kalemler, urunRaw, renkRaw, ebatRaw) {
-    const urunTxt = String(urunRaw || '').trim();
-    let kod = '', ad = '';
-    if (urunTxt) {
-        const ayir = urunTxt.split(/\s*[—–\-|]\s*/);
-        if (ayir.length >= 2) {
-            kod = ayir[0].trim();
-            ad = ayir.slice(1).join(' — ').trim();
-        } else {
-            kod = urunTxt;
-            ad = urunTxt;
-        }
-    }
-    kod = dtNormTxt(kod).replace(/\s+/g, '');
-    ad = dtNormTxt(ad);
-    const renk = dtNormTxt(renkRaw);
-    const ebatN = dtExcelEbatNorm(ebatRaw);
-    let best = -1;
-    let bestSk = 0;
-    (kalemler || []).forEach((k, i) => {
-        let sk = 0;
-        const kk = dtNormTxt(k.kod || '').replace(/\s+/g, '');
-        const ka = dtNormTxt(k.ad || '');
-        const kr = dtNormTxt(k.renk || '');
-        const ke = dtExcelEbatNorm(k.ebat || k.olcu || '');
-        if (kod && kk && (kk === kod || kk.includes(kod) || kod.includes(kk))) sk += 5;
-        if (ad && ka && (ka.includes(ad) || ad.includes(ka))) sk += 3;
-        if (!kod && !ad && urunTxt) {
-            const ut = dtNormTxt(urunTxt);
-            if (ka && (ka.includes(ut) || ut.includes(ka))) sk += 3;
-            const utK = ut.replace(/\s+/g, '');
-            if (kk && utK && (kk.includes(utK) || utK.includes(kk))) sk += 5;
-        }
-        if (renk && kr && (renk === kr || renk.includes(kr) || kr.includes(renk))) sk += 2;
-        if (ebatN && ke && (ke === ebatN || ke.includes(ebatN) || ebatN.includes(ke))) sk += 2;
-        if (sk > bestSk) { bestSk = sk; best = i; }
-    });
-    if (best >= 0 && bestSk >= 3) return best;
-    if ((kalemler || []).length === 1) return 0;
-    return -1;
-}
-
-function genelDurumDokumaEslestir(kalemler, hamSatirlar) {
-    const eslesen = [];
-    const hatali = [];
-    for (const s of (hamSatirlar || [])) {
-        const idx = genelDurumKalemBul(kalemler, s.urun, s.renk, s.ebat);
-        if (idx >= 0) {
-            eslesen.push({ index: idx, metre: s.metre, adKg: s.adKg, urun: s.urun, renk: s.renk, ebat: s.ebat, excelSatir: s.row });
-        } else {
-            hatali.push({ ...s, mesaj: 'Ürün adı / renk / ebat eşleşmedi' });
-        }
-    }
-    return { eslesen, hatali };
-}
-
-function genelDurumDokumaOku(ws) {
-    const satirlar = [];
-    if (!ws) return satirlar;
-    for (let row = GENEL_DURUM_DOKUMA.basSatir; row <= GENEL_DURUM_DOKUMA.bitSatir; row++) {
-        const urun = siparisFormuHucre(ws, row, GENEL_DURUM_DOKUMA.colUrun);
-        const renk = siparisFormuHucre(ws, row, GENEL_DURUM_DOKUMA.colRenk);
-        const ebat = siparisFormuHucre(ws, row, GENEL_DURUM_DOKUMA.colEbat);
-        const metre = siparisExcelHucreSayi(ws, row, GENEL_DURUM_DOKUMA.colMetre);
-        const adKg = siparisExcelHucreSayi(ws, row, GENEL_DURUM_DOKUMA.colAdKg);
-        if (!String(urun || '').trim() && !String(renk || '').trim() && !String(ebat || '').trim() && metre <= 0 && adKg <= 0) continue;
-        if (metre <= 0 && adKg <= 0) continue;
-        satirlar.push({ row, urun, renk, ebat, metre, adKg });
-    }
-    return satirlar;
-}
-
-async function genelDurumDokumaKdGuncelle(siparisId, satirlar, kalemler, opts = {}) {
-    if (!siparisId || !satirlar?.length) return { ok: 0, atla: 0, deltalar: [] };
-    const siparis = (dataCache.siparisler || []).find(s => String(s.id) === String(siparisId));
-    const kd = await sbKdGet(siparisId, 'KD_DOKUMA', true) || {};
-    if (!kd.urunler) kd.urunler = {};
-    const tarih = new Date().toLocaleString('tr-TR');
-    const userLabel = typeof dtCurrentUserLabel === 'function' ? dtCurrentUserLabel() : (erpCurrentUser?.ad || 'Excel');
-    let ok = 0;
-    let atla = 0;
-    const deltalar = [];
-    satirlar.forEach(s => {
-        const idx = parseInt(s.index, 10);
-        if (!Number.isFinite(idx) || idx < 0) { atla++; return; }
-        const kalem = kalemler[idx];
-        if (!kalem && (parseFloat(s.metre) || 0) <= 0 && (parseFloat(s.adKg) || 0) <= 0) { atla++; return; }
-        const metre = parseFloat(s.metre) || 0;
-        const adKg = parseFloat(s.adKg) || 0;
-        const birim = siparisKalemBirim(kalem || {});
-        const key = String(idx);
-        if (!kd.urunler[idx]) kd.urunler[idx] = { toplam_metre: 0, toplam_kg: 0, toplam_adet: 0, girisler: [] };
-        if (!kd.urunler[key]) kd.urunler[key] = kd.urunler[idx];
-        const u = kd.urunler[idx];
-        const eskiMt = parseFloat(u.toplam_metre) || 0;
-        const eskiKg = parseFloat(u.toplam_kg) || 0;
-        const eskiAd = parseInt(u.toplam_adet, 10) || 0;
-        const yeniKg = birim === 'KG' ? adKg : 0;
-        const yeniAd = birim !== 'KG' ? Math.round(adKg) : 0;
-        u.toplam_metre = metre;
-        if (birim === 'KG') {
-            u.toplam_kg = adKg;
-            u.toplam_adet = 0;
-        } else {
-            u.toplam_adet = Math.round(adKg);
-            u.toplam_kg = 0;
-        }
-        const dMt = Math.max(0, Math.round((metre - eskiMt) * 10) / 10);
-        const dKg = Math.max(0, Math.round((yeniKg - eskiKg) * 10) / 10);
-        const dAd = Math.max(0, yeniAd - eskiAd);
-        if (!Array.isArray(u.girisler)) u.girisler = [];
-        if (dMt > 0 || dKg > 0 || dAd > 0) {
-            const nowIso = new Date().toISOString();
-            u.girisler.push({
-                metre: dMt || null,
-                kg: birim === 'KG' ? (dKg || null) : null,
-                adet: birim !== 'KG' ? (dAd || null) : null,
-                tarih,
-                tarih_iso: nowIso,
-                kaynak: 'GENEL_DURUM_EXCEL',
-                dosya: opts.kaynakDosya || '',
-                ...dtGirisKullaniciAlanlari(),
-                stok_durumu: 'STOK',
-                stok_otomatik: true
-            });
-            deltalar.push({ idx, metre: dMt, kg: dKg, adet: dAd });
-        }
-        kd.urunler[key] = u;
-        ok++;
-    });
-    await sbKdSet(siparisId, 'KD_DOKUMA', kd);
-    _kdCache[`KD_DOKUMA_${siparisId}`] = kd;
-    if (ok > 0 && typeof dtPushHareket === 'function') {
-        dtPushHareket({
-            dosya: 'SIPARIS',
-            islem: 'Genel Durum Excel — dokuma toplamları',
-            siparis: siparis?.sno || String(siparisId),
-            detay: `${ok} kalem güncellendi · fark ${deltalar.length} satır${opts.kaynakDosya ? ' · ' + opts.kaynakDosya : ''}`
-        });
-    }
-    return { ok, atla, deltalar };
-}
-
-async function siparisGenelDurumDokumaUygula(veri, opts = {}) {
-    const hamSatirlar = veri?.genelDurumDokuma || [];
-    if (!hamSatirlar.length) {
-        erpToast('Genel Durum sayfasında dokuma verisi yok (J: Mt, K: Ad/Kg).', 'warning', 5000);
-        return false;
-    }
-    let snoNorm = normalizeSiparisNo(veri?.sno);
-    if (!snoNorm && dtSeciliSiparisId) {
-        const secili = (dataCache.siparisler || []).find(s => String(s.id) === String(dtSeciliSiparisId));
-        if (secili?.sno) snoNorm = normalizeSiparisNo(secili.sno);
-    }
-    if (!snoNorm) {
-        alert('Sipariş bulunamadı.\n\nDokuma Takip\'te sipariş seçin veya Excel\'de SİPARİŞ FORMU (C4) dolu olsun.');
-        return false;
-    }
-    let siparis = (dataCache.siparisler || []).find(s => normalizeSiparisNo(s.sno) === snoNorm);
-    if (!siparis?.id) {
-        const { data: rows, error } = await sbTumSatirlar(() => sb.from('siparisler').select('id,sno,cins').order('id', { ascending: true }));
-        if (error) throw error;
-        siparis = (rows || []).find(s => normalizeSiparisNo(s.sno) === snoNorm);
-        if (siparis?.id) await syncAllData();
-    }
-    if (!siparis?.id) {
-        alert(`Sipariş sistemde yok: ${snoNorm}. Önce siparişi kaydedin veya sipariş noyu kontrol edin.`);
-        return false;
-    }
-    let kalemler = (veri.kalemler || []).filter(siparisFormuKalemGecerli);
-    if (!kalemler.length) {
-        try { kalemler = typeof siparis.cins === 'string' ? JSON.parse(siparis.cins) : (siparis.cins || []); } catch (e) { kalemler = []; }
-    }
-    const { eslesen, hatali } = genelDurumDokumaEslestir(kalemler, hamSatirlar);
-    if (!eslesen.length) {
-        const detay = hatali.slice(0, 6).map(h => `  · ${h.urun || '—'} / ${h.renk || '—'} / ${h.ebat || '—'}`).join('\n');
-        alert(`Eşleşen kalem yok.\n\nExcel satırları sipariş kalemleriyle (ürün adı, renk, ebat) eşleşmedi:\n${detay || '  (boş satır)'}`);
-        return false;
-    }
-    const ozet = eslesen.map(s => {
-        const k = kalemler[s.index];
-        const lbl = k?.ad || k?.kod || s.urun || `Kalem ${s.index + 1}`;
-        const birimLbl = siparisKalemBirim(k || {}) === 'KG' ? 'kg' : 'adet';
-        return `  ${lbl} (${s.renk || '—'} · ${s.ebat || '—'}): ${s.metre} m / ${s.adKg} ${birimLbl}`;
-    }).join('\n');
-    const hataliOzet = hatali.length
-        ? `\n\n⚠ ${hatali.length} satır atlanacak (eşleşmedi):\n` + hatali.slice(0, 8).map(h => `  · ${h.urun || '—'} / ${h.renk || '—'} / ${h.ebat || '—'}`).join('\n')
-        : '';
-    if (!opts.atlaOnay && !confirm(`${snoNorm}: ${eslesen.length} kalem güncellenecek.${hataliOzet}\n\n${ozet}\n\nDevam?`)) {
-        return false;
-    }
-    const undoPkg = {
-        type: 'genel_durum',
-        at: new Date().toISOString(),
-        satir: eslesen.length,
-        sno: snoNorm,
-        siparisler: {},
-        stokIds: []
-    };
-    undoPkg.siparisler[siparis.id] = JSON.parse(JSON.stringify(await sbKdGet(siparis.id, 'KD_DOKUMA', true) || { urunler: {} }));
-    const sonuc = await genelDurumDokumaKdGuncelle(siparis.id, eslesen, kalemler, opts);
-    try { localStorage.setItem(DT_EXCEL_UNDO_LS, JSON.stringify(undoPkg)); } catch (e) {}
-    if (appMode === 'DOKUMA_TAKIP' && String(dtSeciliSiparisId) === String(siparis.id) && typeof renderDokumaTakip === 'function') {
-        renderDokumaTakip();
-    }
-    if (hatali.length) {
-        erpToast(`${snoNorm}: ${sonuc.ok} kalem aktarıldı, ${hatali.length} satır eşleşmedi.`, 'warning', 8000);
-    } else {
-        erpToast(`${snoNorm}: ${sonuc.ok} kalem dokuma verisi aktarıldı.`, 'success', 7000);
-    }
-    return true;
-}
-
-async function genelDurumSheetDokumaIsle(wb, opts = {}) {
-    const gdAd = genelDurumSheetAdiBul(wb);
-    if (!gdAd) {
-        erpToast('Genel Durum sekmesi bulunamadı.', 'error');
-        return false;
-    }
-    const hamSatirlar = genelDurumDokumaOku(wb.Sheets[gdAd]);
-    if (!hamSatirlar.length) {
-        erpToast('Genel Durum: J (toplam m) ve K (toplam adet/kg) sütunlarında veri yok.', 'warning', 5000);
-        return false;
-    }
-    const veri = { sno: '', kalemler: [], genelDurumDokuma: hamSatirlar };
-    const formSheetAd = siparisFormuSheetAdiBul(wb);
-    if (formSheetAd) {
-        const formVeri = siparisFormuVeriOku(wb.Sheets[formSheetAd]);
-        veri.sno = formVeri.sno || '';
-        veri.kalemler = formVeri.kalemler || [];
-    }
-    if (!veri.sno && dtSeciliSiparisId) {
-        const secili = (dataCache.siparisler || []).find(s => String(s.id) === String(dtSeciliSiparisId));
-        if (secili?.sno) veri.sno = secili.sno;
-    }
-    return siparisGenelDurumDokumaUygula(veri, opts);
-}
+/* Genel Durum sekmesinden dokuma aktarımı 17.10.2026'da silindi (ana programla birlikte; Excel ile dokuma girişi yok). */
 
 function iplikAaaaExcelFormatMi(wb) {
     for (const sn of wb.SheetNames || []) {
@@ -10452,7 +10199,6 @@ try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
     const excelFns = [
         'importStokExcel', 'openStokExcelImport', 'downloadStokExcelTemplate',
         'exportDepoHareketExcel', 'exportAktifModalExcel', 'exportToExcel',
-        'dtExcelDosyaOku', 'openDtExcelImport', 'dtExcelSonImportGeriAl',
         'downloadSiparisExcelTemplate', 'exportSiparisFormuExcel',
         'mamulUretimKartiExcelIndir', 'uretimKartiExcelIndir'
     ];
@@ -10466,7 +10212,6 @@ try { window.sevkiyatMerkezKapat = sevkiyatMerkezKapat; } catch (e) {}
             'stok-excel-template-btn',
             'stok-excel-import-btn',
             'stok-excel-input',
-            'dt-excel-input',
             'modal-excel-btn',
             'nav-DASHBOARD'
         ];

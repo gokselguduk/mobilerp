@@ -1102,9 +1102,31 @@ function sayimArsivBirlestir(a, b) {
     return Array.from(map.values()).sort((x, y) => String(y.tarih || '').localeCompare(String(x.tarih || '')));
 }
 
+/* Yapı geçişi M3 (17.10.2026, plan bölüm M3; SQL supabase/yapi-adim/9-sayim-yazma): anahtar 'stok_sayim'
+   - ESKI / KARSILASTIR: rapor eskisi gibi siparis_akis'e (STOK_SAYIM_RAPOR); KARSILASTIR'da arşiv iki yerden okunur,
+     eski yerde olup yeni tabloda (stok_sayim) olmayan rapor fark defterine düşer.
+   - YENI: rapor tek yazma kapısından (erp_sayim_yaz: kişi oturumdan, yetki veritabanında, aynı rapor tek kayıt);
+     arşiv stok_sayim'dan. Fonksiyon kurulu değilse eski yazıma düşer (rapor kaybolmaz).
+   Fark hareketleri (kumas_stok / iplik_stok) her durumda eskisi gibi (M5'e kalır). */
+function sayimYapiDurum() {
+    return typeof yapiModulDurum === 'function' ? yapiModulDurum('stok_sayim') : 'ESKI';
+}
+
 async function sayimArsivSunucuyaYaz(rapor) {
     const client = sayimSb();
     if (!client || !rapor?.id) return false;
+    if (sayimYapiDurum() === 'YENI' && typeof yapiRpc === 'function') {
+        const r = await yapiRpc('erp_sayim_yaz', { p_rapor: rapor }, ['siparis_akis']);
+        if (r && r.ok) return true;
+        if (!r || r.err !== 'kurulu_degil') {
+            console.warn('sayım rapor (yazma kapısı):', r && r.err, (r && r.mesaj) || '');
+            if (r && (r.err === 'yetki' || r.err === 'cakisma') && typeof erpToast === 'function') {
+                erpToast(r.err === 'yetki' ? 'Sayım raporu sunucuya yazılamadı: stok sayım yetkiniz yok.'
+                    : `Sayım raporu sunucuya yazılamadı: ${rapor.id} numarasında başka bir rapor var.`, 'error', 8000);
+            }
+            return false;
+        }
+    }
     const row = {
         siparis_id: 0,
         islem: SAYIM_AKIS_ISLEM,
@@ -1130,6 +1152,26 @@ async function sayimArsivSunucuyaYaz(rapor) {
     }
 }
 
+/** M3 KARSILASTIR: eski yerden okunan raporlar yeni tabloda (stok_sayim) var mı, satır sayısı aynı mı. Tutmazsa fark
+    defterine: anahtar 'stok_sayim|<rapor no>', eski = eski yerdeki satır sayısı, yeni = yeni tablodaki (yoksa 0).
+    Ekrana dokunmaz; okuma başarısızsa sessizce geçer. */
+async function sayimArsivKarsilastir(client, eskiler) {
+    if (typeof yapiFarkBildir !== 'function' || !eskiler || !eskiler.length) return;
+    try {
+        const nolar = eskiler.map(r => String(r.id || '')).filter(Boolean);
+        const res = await client.from('stok_sayim').select('rapor_no,satir_sayisi').in('rapor_no', nolar);
+        if (res.error) return;
+        const yeni = new Map((res.data || []).map(r => [String(r.rapor_no), Number(r.satir_sayisi) || 0]));
+        eskiler.forEach(r => {
+            const no = String(r.id || '');
+            if (!no) return;
+            const e = Array.isArray(r.satirlar) ? r.satirlar.length : 0;
+            yapiFarkBildir('stok_sayim', 'stok_sayim|' + no, e, yeni.has(no) ? yeni.get(no) : 0,
+                { ayrinti: { tip: r.tip || null, yeni_tabloda: yeni.has(no) } });
+        });
+    } catch (e) {}
+}
+
 async function sayimArsivSunucudanCek(opts = {}) {
     if (_sayimArsivCekiliyor) return sayimArsivOku();
     const client = sayimSb();
@@ -1140,26 +1182,42 @@ async function sayimArsivSunucudanCek(opts = {}) {
     }
     _sayimArsivCekiliyor = true;
     try {
-        const q = client.from('siparis_akis')
-            .select('kalem_ad,notlar,created_at,miktar')
-            .eq('islem', SAYIM_AKIS_ISLEM)
-            .order('created_at', { ascending: false })
-            .limit(SAYIM_ARSIV_MAX);
-        const res = typeof erpWithTimeout === 'function'
-            ? await erpWithTimeout(q, 'sayim-arsiv', 18000)
-            : await q;
-        if (res.error) throw res.error;
-        const sunucu = (res.data || []).map(row => {
-            try {
-                const j = JSON.parse(row.notlar || '');
-                if (!j || typeof j !== 'object') return null;
-                if (!j.id) j.id = row.kalem_ad;
-                if (!j.tarih) j.tarih = row.created_at;
+        const durum = sayimYapiDurum();
+        const sure = (q, ad) => (typeof erpWithTimeout === 'function' ? erpWithTimeout(q, ad, 18000) : q);
+        let sunucu;
+        if (durum === 'YENI') {
+            /* yeni tablo: raporun tam hâli veri'de, kişi oturumdan yazılmış */
+            const res = await sure(client.from('stok_sayim').select('rapor_no,veri,kayit_tarihi,kisi')
+                .order('kayit_tarihi', { ascending: false }).limit(SAYIM_ARSIV_MAX), 'sayim-arsiv');
+            if (res.error) throw res.error;
+            sunucu = (res.data || []).map(row => {
+                const j = row.veri && typeof row.veri === 'object' ? { ...row.veri } : null;
+                if (!j) return null;
+                if (!j.id) j.id = row.rapor_no;
+                if (!j.tarih) j.tarih = row.kayit_tarihi;
+                if (row.kisi) j.kullanici = row.kisi;
                 return j;
-            } catch (e) {
-                return null;
-            }
-        }).filter(Boolean);
+            }).filter(Boolean);
+        } else {
+            const res = await sure(client.from('siparis_akis')
+                .select('kalem_ad,notlar,created_at,miktar')
+                .eq('islem', SAYIM_AKIS_ISLEM)
+                .order('created_at', { ascending: false })
+                .limit(SAYIM_ARSIV_MAX), 'sayim-arsiv');
+            if (res.error) throw res.error;
+            sunucu = (res.data || []).map(row => {
+                try {
+                    const j = JSON.parse(row.notlar || '');
+                    if (!j || typeof j !== 'object') return null;
+                    if (!j.id) j.id = row.kalem_ad;
+                    if (!j.tarih) j.tarih = row.created_at;
+                    return j;
+                } catch (e) {
+                    return null;
+                }
+            }).filter(Boolean);
+            if (durum === 'KARSILASTIR') await sayimArsivKarsilastir(client, sunucu);
+        }
         const birlesik = sayimArsivBirlestir(yerel, sunucu).slice(0, SAYIM_ARSIV_MAX);
         sayimArsivYaz(birlesik);
         const sunucuIds = new Set(sunucu.map(r => String(r.id)));
