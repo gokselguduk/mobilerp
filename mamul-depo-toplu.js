@@ -1087,6 +1087,8 @@ async function mamulTopluKaydet() {
             KUMAS_STOK_OLMAYAN_ALANLAR.forEach(c => { delete r[c]; });
             return r;
         });
+        /* M5b karşılaştırma: aynı satırlar kapıya deneme (yalnız anahtar 'depo' KARSILASTIR; yazım değişmez) */
+        try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('MAMUL_DEPO', insertPayload); } catch (e) {}
         const triedCols = new Set();
         let hareketIds = [];
         while (true) {

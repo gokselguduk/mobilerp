@@ -60,6 +60,89 @@ function muhasebeFisBul(id) {
     return (_muhasebeFisCache || []).find(f => String(f.id) === String(id)) || null;
 }
 
+/* ─── Kalıcı fiş numarası (M5a, 18.10.2026): SF-<yıl>-<sıra> veritabanında (sevk_fis). Numara HAREKETTEN okunur
+   (sevk_fis_hareket: hareket → fiş) — bugünkü MF- numarası çok satırlı fişte hareketlerin yüklenme sırasına göre
+   değişebiliyor. Numarası olmayan fiş (iplik fişleri M8'e kadar; okunamazsa) bugünkü MF- numarasıyla görünür.
+   Program yalnız okur; eski MF- numarası listede küçük yazıyla ve aramada kalır. ─── */
+const _muhasebeFisSfNo = new Map();       // hareket id → SF numarası
+const _muhasebeFisSfSorulma = new Map();  // hareket id → son soruluş (numarasız cevap 2 dk'da bir yeniden sorulur)
+const _muhasebeFisSfBekleyen = new Map(); // hareket id → süren istek (aynı anda iki çizim aynı numarayı iki kez sormasın)
+let _muhasebeFisSfKapali = false;         // tablo kurulu değil → hiç sorulmaz
+let _muhasebeFisSfSurum = 0;              // yeni numara geldikçe artar (liste imzasına girer)
+const MUHASEBE_FIS_SF_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function muhasebeFisSfNo(fis) {
+    if (!fis || String(fis.depo_grup || '').toUpperCase() === 'IPLIK') return '';
+    for (const id of (fis.hareket_ids || [])) {
+        const sf = _muhasebeFisSfNo.get(String(id));
+        if (sf) return sf;
+    }
+    return '';
+}
+
+/** Ekranda / belgede gösterilecek numara: kalıcı numara varsa o, yoksa bugünkü MF-. */
+function muhasebeFisGorunenNo(fis) {
+    return muhasebeFisSfNo(fis) || String((fis && fis.fis_no) || '');
+}
+
+/** Fişlerin kalıcı numarasını oku (her fişin ilk hareketi; 100'lük parçalar; bilinenler yeniden sorulmaz).
+ *  En çok opts.bekle ms (varsayılan 2,5 sn) bekler — geç gelen cevap bir sonraki çizimde görünür. */
+async function muhasebeFisKaliciNoYukle(fisler, opts) {
+    opts = opts || {};
+    if (_muhasebeFisSfKapali || typeof sb === 'undefined' || !sb) return;
+    const simdi = Date.now();
+    const ids = [];
+    const surenler = new Set();
+    for (const f of (fisler || [])) {
+        if (!f || String(f.depo_grup || '').toUpperCase() === 'IPLIK' || muhasebeFisSfNo(f)) continue;
+        const id = String((f.hareket_ids || [])[0] || '');
+        if (!MUHASEBE_FIS_SF_UUID.test(id) || ids.includes(id)) continue;
+        if (_muhasebeFisSfBekleyen.has(id)) { surenler.add(_muhasebeFisSfBekleyen.get(id)); continue; }
+        if (simdi - (_muhasebeFisSfSorulma.get(id) || 0) < MUHASEBE_FIS_CACHE_MS) continue;
+        ids.push(id);
+    }
+    if (!ids.length && !surenler.size) return;
+    const parcalar = [];
+    for (let i = 0; i < ids.length; i += 100) parcalar.push(ids.slice(i, i + 100));
+    const yeni = parcalar.map((p) => {
+        const istek = (async () => {
+            const { data, error } = await sb.from('sevk_fis_hareket').select('eski_id,sevk_fis(fis_no)').in('eski_id', p);
+            if (error) {
+                if (/PGRST20[05]|42P01|does not exist|could not find/i.test(`${error.code || ''} ${error.message || ''}`)) _muhasebeFisSfKapali = true;
+                return;
+            }
+            p.forEach((id) => _muhasebeFisSfSorulma.set(id, simdi));
+            let yeniNo = 0;
+            (data || []).forEach((r) => {
+                const sf = r && r.sevk_fis && r.sevk_fis.fis_no;
+                if (sf && _muhasebeFisSfNo.get(String(r.eski_id)) !== String(sf)) { _muhasebeFisSfNo.set(String(r.eski_id), String(sf)); yeniNo++; }
+            });
+            if (yeniNo) {
+                _muhasebeFisSfSurum++;
+                /* bekleme süresini aşan cevap: fiş ekranı açıksa liste kendiliğinden tazelenir (imza değişmediyse çizilmez) */
+                setTimeout(() => {
+                    const liste = document.getElementById('main-list');
+                    if (liste && typeof appMode === 'string' && appMode === 'MUHASEBE_FIS' && Array.isArray(_muhasebeFisCache) && _muhasebeFisCache.length) {
+                        muhasebeFisListeGovdeYaz(liste, _muhasebeFisCache);
+                    }
+                }, 0);
+            }
+        })().catch((e) => console.warn('muhasebeFisKaliciNoYukle', e))
+            .finally(() => p.forEach((id) => { if (_muhasebeFisSfBekleyen.get(id) === istek) _muhasebeFisSfBekleyen.delete(id); }));
+        p.forEach((id) => _muhasebeFisSfBekleyen.set(id, istek));
+        return istek;
+    });
+    const is = Promise.all([...yeni, ...surenler]);
+    await Promise.race([is, new Promise((r) => setTimeout(r, opts.bekle != null ? opts.bekle : 2500))]);
+}
+
+/** Tek fişin gösterilecek numarası (çıkış sonrası bildirim, belge): kalıcı numarayı sorar, yoksa MF-. */
+async function muhasebeFisNoAl(fis) {
+    if (!fis) return '';
+    try { await muhasebeFisKaliciNoYukle([fis], { bekle: 2000 }); } catch (e) {}
+    return muhasebeFisGorunenNo(fis);
+}
+
 /* ─── Supabase: fiş ekranı için sınırlı stok çekme ─── */
 
 async function muhasebeFisStokTablosuCek(tablo, opts) {
@@ -161,6 +244,7 @@ async function muhasebeFisleriYukle(opts) {
     }
     _muhasebeFisCache = muhasebeFisHareketlerdenOlustur();
     _muhasebeFisCacheAt = Date.now();
+    await muhasebeFisKaliciNoYukle(_muhasebeFisCache);
     return _muhasebeFisCache;
 }
 
@@ -1019,7 +1103,7 @@ function muhasebeFisFiltreUygula(list, f) {
         }
         if (q) {
             const blob = [
-                fis.fis_no, fis.musteri, fis.teslim_alan, fis.plaka, fis.sofor,
+                muhasebeFisSfNo(fis), fis.fis_no, fis.musteri, fis.teslim_alan, fis.plaka, fis.sofor,
                 fis.irsaliye_no, fis.depo_grup, fis.created_by, fis.notlar,
                 muhasebeFisDepoGrupEtiket(fis.depo_grup),
                 ...(fis.kalemler || []).map(k => [k.stok_kodu, k.urun_adi, k.urun_grubu, k.kumas_cinsi, k.terbiye, k.renk, k.ebat].join(' '))
@@ -1154,6 +1238,7 @@ async function muhasebeFisCekiGoster(fisId) {
     if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return; }
 
     await muhasebeFisHareketleriTazele(fis);
+    await muhasebeFisKaliciNoYukle([fis], { bekle: 2000 });
     const hareketler = muhasebeFisHareketleriCoz(fis);
 
     // Kumaş: tüm çekiler tek listede; renk değişince araya renk adı + stok kodu satırı
@@ -1234,6 +1319,7 @@ async function muhasebeFisOverlayAc(fisId) {
     if (!fis) { if (typeof erpToast === 'function') erpToast('Fiş bulunamadı', 'error'); return; }
 
     await muhasebeFisHareketleriTazele(fis);
+    await muhasebeFisKaliciNoYukle([fis], { bekle: 2000 });
     if (muhasebeFisFiyatAcikMi()) await satisFiyatHazirla();
     fis = muhasebeFisBul(fisId) || fis;
     const esc = muhasebeFisEsc;
@@ -1255,7 +1341,7 @@ async function muhasebeFisOverlayAc(fisId) {
             <div class="kumas-ceki-head mf-ceki-head">
                 <div>
                     <h3>SEVKİYAT FİŞİ</h3>
-                    <div class="kumas-ceki-meta">${esc(fis.fis_no)} · ${esc(fis.musteri)}</div>
+                    <div class="kumas-ceki-meta">${esc(muhasebeFisGorunenNo(fis))} · ${esc(fis.musteri)}${muhasebeFisSfNo(fis) ? ` <span style="font-weight:400;opacity:.6;font-size:.85em">· eski no ${esc(fis.fis_no)}</span>` : ''}</div>
                     <div class="kumas-ceki-musteri">${esc(tarih)} · ${esc(tipYazi)} · ${esc(durumYazi)}</div>
                     <div class="kumas-ceki-musteri">${teslimMeta}</div>
                 </div>
@@ -1507,6 +1593,7 @@ function muhasebeFisListeImza(ham) {
     ].join(':'));
     return [
         f.q || '', f.tip || '', f.bas || '', f.bit || '',
+        'sf' + _muhasebeFisSfSurum,                 /* kalıcı numaralar gelince liste yeniden çizilsin */
         _muhasebeFisGecmisAcik ? '1' : '0',
         String(_muhasebeFisListeLimit || MUHASEBE_FIS_SAYFA_ADIM),
         (ham || []).length,
@@ -1619,7 +1706,9 @@ function muhasebeFisListeGovdeYaz(list, ham, renderOpts) {
         const tip = muhasebeFisTipEtiket(fis.depo_grup, kalemler);
         return `<tr class="mf-fis-tr${acik ? ' is-open' : ''}" id="mf-row-${id}" onclick="muhasebeFisSatirToggle('${id}')" title="Detayı aç/kapat">
             <td class="mf-fis-chev-td"><span class="mf-fis-chev" id="mf-chev-${id}">${acik ? '▾' : '▸'}</span></td>
-            <td class="mf-fis-kod">${esc(fis.fis_no || '—')}</td>
+            <td class="mf-fis-kod">${muhasebeFisSfNo(fis)
+                ? `<div style="font-weight:700;letter-spacing:.2px">${esc(muhasebeFisSfNo(fis))}</div><div style="font-size:11px;opacity:.55;margin-top:1px">${esc(fis.fis_no || '')}</div>`
+                : esc(fis.fis_no || '—')}</td>
             <td class="mf-fis-tarih">${esc(tarih)}</td>
             <td class="mf-fis-tip">${esc(tip)}</td>
             <td class="mf-fis-musteri">${esc(fis.musteri || '—')}</td>
@@ -1762,13 +1851,14 @@ async function muhasebeFisPdfYaz(id) {
     if (!(_muhasebeFisCache||[]).length) await muhasebeFisleriYukle();
     let fis = muhasebeFisBul(id);
     if (fis) await muhasebeFisHareketleriTazele(fis);
+    if (fis) await muhasebeFisKaliciNoYukle([fis], { bekle: 2000 });
     const fiyatli = _muhasebeFisCiktiFiyatli && muhasebeFisFiyatAcikMi();
     if (fiyatli) await satisFiyatHazirla();
     const html = muhasebeFisBelgeHtml(id, { fiyatli });
     if (!html) return;
     fis = muhasebeFisBul(id) || fis;
-    if (typeof erpBelgeYazdir === 'function') erpBelgeYazdir(html, String((fis && fis.fis_no) || 'Fiş'));
-    else if (typeof erpPrintHtml === 'function') erpPrintHtml(html, { title: String((fis && fis.fis_no) || 'Fiş') });
+    if (typeof erpBelgeYazdir === 'function') erpBelgeYazdir(html, muhasebeFisGorunenNo(fis) || 'Fiş');
+    else if (typeof erpPrintHtml === 'function') erpPrintHtml(html, { title: muhasebeFisGorunenNo(fis) || 'Fiş' });
     else {
         const win = window.open('', '_blank');
         if (win) { win.document.write(html); win.document.close(); }
@@ -1780,13 +1870,14 @@ async function muhasebeFisPdfIndir(id) {
     if (!(_muhasebeFisCache||[]).length) await muhasebeFisleriYukle();
     let fis = muhasebeFisBul(id);
     if (fis) await muhasebeFisHareketleriTazele(fis);
+    if (fis) await muhasebeFisKaliciNoYukle([fis], { bekle: 2000 });
     const fiyatli = _muhasebeFisCiktiFiyatli && muhasebeFisFiyatAcikMi();
     if (fiyatli) await satisFiyatHazirla();
     const html = muhasebeFisBelgeHtml(id, { fiyatli });
     if (!html) return;
     fis = muhasebeFisBul(id) || fis;
-    const ad = ((fis && fis.fis_no)
-        ? ('sevkiyat-fis-' + fis.fis_no)
+    const ad = (muhasebeFisGorunenNo(fis)
+        ? ('sevkiyat-fis-' + muhasebeFisGorunenNo(fis))
         : ('sevkiyat-fis-' + (id || 'belge'))) + (fiyatli ? '-fiyatli' : '');
     if (typeof erpBelgePdfIndir === 'function') {
         await erpBelgePdfIndir(html, ad);
@@ -1832,7 +1923,7 @@ function muhasebeFisBelgeHtml(id, opts) {
     ].filter(Boolean).join('');
 
     // PDF için px ölçü (mm + html2canvas kaydırma/boş sayfa üretebiliyor)
-    const html = `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>${esc(fis.fis_no || 'Sevkiyat Fişi')}</title>
+    const html = `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>${esc(muhasebeFisGorunenNo(fis) || 'Sevkiyat Fişi')}</title>
     <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#111;font-size:12px}
     .page{width:794px;max-width:794px;margin:0;padding:36px 40px;background:#fff;color:#111}
     .antet{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:10px}
@@ -1877,7 +1968,7 @@ function muhasebeFisBelgeHtml(id, opts) {
             </div>
             <div class="antet-sag">
                 <div class="belge">Sevkiyat Fişi</div>
-                <div class="belge-no">${esc(fis.fis_no || '—')}</div>
+                <div class="belge-no">${esc(muhasebeFisGorunenNo(fis) || '—')}</div>
                 <div class="belge-meta">${esc(tarih)}<br>${esc(depoAd)}</div>
             </div>
         </div>

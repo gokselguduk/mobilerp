@@ -1549,6 +1549,8 @@ async function sayimHareketleriYaz(table, payloads, onIlerleme) {
     let done = 0;
     for (const chunk of chunks) {
         let insertPayload = chunk.map(x => ({ ...x }));
+        /* M5b karşılaştırma: sayım düzeltmesi kapıya deneme (yalnız kumaş / mamül deposu, anahtar 'depo' KARSILASTIR; yazım değişmez) */
+        if (table === 'kumas_stok') { try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('STOK_SAYIM', insertPayload); } catch (e) {} }
         const triedCols = new Set();
         let ok = false;
         for (let deneme = 0; deneme < 12 && !ok; deneme++) {

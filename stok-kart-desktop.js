@@ -9051,6 +9051,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 if (typeof kumasStokYazimUyarla === 'function') kumasStokYazimUyarla(r);
                 return r;
             });
+            /* M5b karşılaştırma: aynı satırlar kapıya deneme (yalnız anahtar 'depo' KARSILASTIR; yazım değişmez) */
+            try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('KUMAS', insertPayload); } catch (e) {}
             const triedCols = new Set();
             let hareketIds = [];
             while (true) {
@@ -10030,6 +10032,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         });
 
         let insertPayload = rows.map(r => ({ ...r }));
+        /* M5b karşılaştırma: aynı satırlar kapıya deneme (yalnız anahtar 'depo' KARSILASTIR; yazım değişmez) */
+        try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('KART', insertPayload); } catch (e) {}
         const triedCols = new Set();
         let hareketIds = [];
         while (true) {
