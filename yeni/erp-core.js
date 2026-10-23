@@ -43272,6 +43272,9 @@ const FASON_ALAN = {
     hasil_kalan_kg: { ad: 'Haşılda kalan iplik (kg)', tip: 'num', step: '0.01' }, hedef_firma: { ad: 'Teslim alan dokumacı', tip: 'firma' },
     levent_kalan_mt: { ad: 'Leventte kalan çözgü (m)', tip: 'num', step: '0.01' }, telef_kg: { ad: 'Telef / döküntü (kg)', tip: 'num', step: '0.01' },
     kaynak_kod: { ad: 'Hangi ham iplikten (kod)', ph: 'ör. IP-0006' },
+    /* Çözgücü raporu (41, 22.10.2026, kullanıcı: "100 kg levent gelmişse %3 haşıl var dersek 97 kilo iplik geldi"): levent kg'ı haşıllı,
+       iplik = kg × (1 − haşıl %); yalnız C| formunda (fasonHareketAlanlari) */
+    hasil_pct: { ad: 'Haşıl payı (%)', tip: 'num', step: '0.1' },
     /* Terbiye kumaş (22.10.2026): top listesi / çeki — satır başına "top no · metre · kg"; doluysa metre / kg / top bundan toplanır (42) */
     top_liste: { ad: 'Top listesi / çeki (her satır: top no · metre · kg)', tip: 'ta', genis: true, ph: '1  52,3  18,2  —  2  49,8  17,6 (alt alta)' },
 };
@@ -43341,6 +43344,12 @@ const FASON_HAREKET_ALANLARI = Object.keys(FASON_ALAN);
    (aks_key yerine agac_malzeme), ürün hareketinde hangi kalem (satir_id) seçilir. */
 function fasonHareketAlanlari(tip, anahtar) {
     const t = FASON_TIPLER[tip];
+    /* Çözgücü raporu: levent ağırlığı haşıllı gelir → haşıl payı kg'ın ardında (41 fasonCbHesap iplik = kg × (1 − %)) */
+    if (tip === 'COZGU_RAPOR' && String(anahtar || '').startsWith('C|')) {
+        const i = t.alanlar.indexOf('kg');
+        return { alanlar: [...t.alanlar.slice(0, i + 1), 'hasil_pct', ...t.alanlar.slice(i + 1)], zorunlu: t.zorunlu,
+            etiketler: { kg: 'Levent ağırlığı (kg; boşsa tel × metreden)' } };
+    }
     if (!String(anahtar || '').startsWith('A|')) return { alanlar: t.alanlar, zorunlu: t.zorunlu };
     const ekle = (l, alan) => l.includes(alan) ? l : [...l.slice(0, 3), alan, ...l.slice(3)];
     let alanlar = t.alanlar.map(a => a === 'aks_key' ? 'agac_malzeme' : a);
@@ -43597,7 +43606,9 @@ function fasonHareketMiktarMetin(h) {
         return `${fasonSecenekAd(FASON_KONTROL_TURLERI, h.kontrol_tur)} · ${fasonSecenekAd(FASON_SONUCLAR, h.sonuc)}${h.kontrol_adet ? ` · ${fasonFmtI(h.kontrol_adet)} kontrol` : ''}${h.hatali ? ` / ${fasonFmtI(h.hatali)} hatalı` : ''}`;
     }
     if (t.alan === 'HESAP') return fasonFiyatGorur() ? fasonFmtPara(h.tutar, h.para_birimi) : '•••';
-    if (h.tip === 'COZGU_RAPOR') return [`${fasonFmtM(h.mt)} m`, h.tel ? `${fasonFmtI(h.tel)} tel` : '', h.kg ? `${fasonFmtM(h.kg)} kg sarıldı` : '', h.artik_kg ? `artık ${fasonFmtM(h.artik_kg)} kg` : ''].filter(Boolean).join(' · ');
+    if (h.tip === 'COZGU_RAPOR') return [`${fasonFmtM(h.mt)} m`, h.tel ? `${fasonFmtI(h.tel)} tel` : '',
+        h.kg ? (h.hasil_pct > 0 ? `${fasonFmtM(h.kg)} kg levent · %${fasonFmtM(h.hasil_pct)} haşıl → ${fasonFmtM(Math.round(h.kg * (1 - h.hasil_pct / 100) * 100) / 100)} kg iplik` : `${fasonFmtM(h.kg)} kg sarıldı`) : '',
+        h.artik_kg ? `artık ${fasonFmtM(h.artik_kg)} kg` : ''].filter(Boolean).join(' · ');
     if (h.tip === 'HASIL_RAPOR') return [h.giren_mt ? `${fasonFmtM(h.giren_mt)} → ${fasonFmtM(h.mt)} m` : `${fasonFmtM(h.mt)} m`, h.kg ? `${fasonFmtM(h.kg)} kg` : '', h.hasil_kalan_kg ? `haşılda kalan ${fasonFmtM(h.hasil_kalan_kg)} kg` : ''].filter(Boolean).join(' · ');
     if (h.tip === 'SAYIM') return [`kalan ${fasonFmtM(h.kg)} kg`, h.levent_kalan_mt ? `leventte ${fasonFmtM(h.levent_kalan_mt)} m` : '', h.telef_kg ? `telef ${fasonFmtM(h.telef_kg)} kg` : ''].filter(Boolean).join(' · ');
     /* Fason ağacı malzemesi: kendi kodu ve birimiyle ("C · 300 ad", "E · 120 m") */
@@ -44024,6 +44035,8 @@ function fasonIplikKodDegisti(on) {
     if (lotList) lotList.innerHTML = s ? Object.entries(s.lots).filter(([, l]) => l.kg > 0.001).map(([lot, l]) => `<option value="${pdfEsc(lot === 'LOTSUZ' ? '' : lot)}">${fasonFmtM(l.kg)} kg</option>`).join('') : '';
     bilgi.textContent = s ? `Depoda: ${fasonFmtM(s.kg)} kg` : (kod ? 'Bu kodla iplik bulunamadı' : '');
     bilgi.style.color = !s || s.kg <= 0 ? 'var(--rose-c)' : 'var(--text3)';
+    /* Çözgücü / bükümcü formu (41): bilgi satırı depo yerine firmanın hesabından, seçili iplik düğmesi işaretli */
+    if (typeof fasonCbFormKodDegisti === 'function') fasonCbFormKodDegisti(on);
 }
 
 /* ── Genel alan çizici ──────────────────────────────────────────── */
@@ -44091,12 +44104,12 @@ async function fasonHareketFormAc(anahtar, tip, fgid, isId, firmaHazir) {
     const alanlar = formAlan.alanlar.filter(a => a !== 'para_birimi' || fasonFiyatGorur());
     const govde = alanlar.map(a => {
         const s = FASON_ALAN[a];
-        const etiket = t.etiketler?.[a] || (a === 'adet' && !['GELEN', 'TAMIR_GELEN'].includes(tip) ? 'Adet' : s.ad);
+        const etiket = formAlan.etiketler?.[a] || t.etiketler?.[a] || (a === 'adet' && !['GELEN', 'TAMIR_GELEN'].includes(tip) ? 'Adet' : s.ad);
         return fasonAlanHtml('fh', a, s.tip || 'text', v[a], { etiket, zorunlu: formAlan.zorunlu.includes(a), secenek: s.secenek, step: s.step, ph: s.ph, genis: s.genis,
             lot: v.lot_no, aksPlan, lotListe: a === 'lot_no' && t.depo && t.depo.startsWith('IPLIK'), anahtar: b.anahtar, tipHareket: tip });
     }).join('');
     const depoNot = t.depo ? (h
-        ? `<div style="font-size:10px;color:var(--text3)">${h.depo?.dus ? '📦 Bu hareket depoya yazılmıştı — miktar / kod değişirse farkı kadar depo düzeltmesi yazılır.' : 'Bu hareket depoya yazılmamıştı.'}</div>`
+        ? `<div style="font-size:10px;color:var(--text3)">${h.depo?.dus ? (b.cb ? '📦 Depoya yazıldı' : '📦 Bu hareket depoya yazılmıştı — miktar / kod değişirse farkı kadar depo düzeltmesi yazılır.') : 'Bu hareket depoya yazılmamıştı.'}</div>`
         : `<label style="display:flex;gap:8px;align-items:center;font-size:11px;cursor:pointer"><input id="fh-depo" type="checkbox" checked> ${{
             KUMAS_CIKIS: 'Kumaş deposundan ÇIKIŞ yaz (stoktan düşer)', KUMAS_GIRIS: 'Kumaş deposuna GİRİŞ yaz', IPLIK_CIKIS: 'İplik deposundan ÇIKIŞ yaz (stoktan düşer)', IPLIK_GIRIS: 'İplik deposuna GİRİŞ yaz'
         }[t.depo]}</label>`) : '';
@@ -44114,10 +44127,12 @@ async function fasonHareketFormAc(anahtar, tip, fgid, isId, firmaHazir) {
                 ${h ? `<button id="fh-sil" type="button" class="btn-pro btn-ghost-pro" style="padding:8px 14px;color:var(--rose-c)" onclick="fasonHareketSil()">🗑 Sil</button>` : '<span></span>'}
                 <button id="fh-kaydet" type="button" class="btn-pro btn-primary-pro" style="padding:8px 18px" onclick="fasonHareketKaydet()">${h ? 'Düzeltmeyi kaydet' : 'Kaydet'}</button>
             </div>
-            <div style="font-size:9px;color:var(--text3)">Kayıt kim / ne zaman bilgisiyle saklanır; düzeltme ve silme de işlem defterinde görünür.</div>
+            ${b.cb ? '' : '<div style="font-size:9px;color:var(--text3)">Kayıt kim / ne zaman bilgisiyle saklanır; düzeltme ve silme de işlem defterinde görünür.</div>'}
         </div>`, 720);
     if (alanlar.includes('kumas_kodu')) fasonKumasKodDegisti('fh');
     if (alanlar.includes('iplik_kodu')) fasonIplikKodDegisti('fh');
+    /* Çözgücü / bükümcü (41, 22.10.2026): firmaya giden iplikler düğme olarak; birden çok iplik gittiyse kod kutusu boş açılır */
+    if (b.cb && typeof fasonCbFormHazirla === 'function') fasonCbFormHazirla(b, tip, !!h);
     /* Terbiye (42-terbiye-bobin.js, 22.10.2026): boyalı iplikte kod renk kartından (iplik × renk başına tek kart); kumaşta top listesi toplanır */
     if (!h && tip === 'BOYALI_IPLIK' && typeof terbiyeBoyaliFormHazirla === 'function') terbiyeBoyaliFormHazirla(b);
     if (alanlar.includes('top_liste') && typeof terbiyeTopListeBagla === 'function') terbiyeTopListeBagla();
@@ -44196,6 +44211,9 @@ function fasonHareketDogrula(tip, v) {
     if (tip === 'LEVENT_GECIS' && fasonFirmaKey(v.hedef_firma) === fasonFirmaKey(v.firma)) return 'Teslim alan dokumacı, gönderen firmayla aynı olamaz.';
     /* Çözgücü hesabında rapor iplik başına tutulur: hangi iplikle çözüldüğü şart (22.10.2026) */
     if (tip === 'COZGU_RAPOR' && String(_fasonForm?.anahtar || '').startsWith('C|') && !String(v.iplik_kodu || '').trim()) return 'Leventin hangi iplikle çözüldüğünü (iplik kodu) girin.';
+    /* İade / sayım da iplik başına (kutu birden çok iplik gidince boş açılır — 41 fasonCbHareketVarsayilan) */
+    if ((tip === 'IPLIK_IADE' || tip === 'SAYIM') && /^[CB]\|/.test(String(_fasonForm?.anahtar || '')) && !String(v.iplik_kodu || '').trim()) return 'Hangi iplik olduğunu seçin (iplik kodu).';
+    if (v.hasil_pct >= 50) return 'Haşıl payı %50\'den küçük olmalı.';
     return null;
 }
 
@@ -44642,6 +44660,12 @@ function fasonDefterSatirlari(alanFiltre, filtre) {
         if (!q) return true;
         return [x.b.baslik, x.firma, x.o.user, x.o.n.fis_no, x.o.n.not].join(' ').toLocaleLowerCase('tr-TR').includes(q);
     }).reverse();
+    return satirlar;
+}
+function fasonDefterHtml(alanFiltre, filtre) {
+    const f = filtre || {};
+    const tur = String(f.defterTur || 'HEPSI');
+    const satirlar = fasonDefterSatirlari(alanFiltre, f);
     const toplam = satirlar.length;
     const gorunen = satirlar.slice(0, _fasonDefterSinir);
     const secenek = (v, ad) => `<option value="${v}" ${tur === v ? 'selected' : ''}>${ad}</option>`;
@@ -44660,12 +44684,6 @@ function fasonDefterSatirlari(alanFiltre, filtre) {
                 <th style="text-align:left;padding:6px 8px">İşlem tarihi</th><th style="text-align:left;padding:6px 8px">İş</th>
                 <th style="text-align:left;padding:6px 8px">Firma</th><th style="text-align:left;padding:6px 8px">Ne yapıldı</th>
             </tr></thead><tbody>${gorunen.map(x => `<tr style="border-top:1px solid var(--border)">
-    return satirlar;
-}
-function fasonDefterHtml(alanFiltre, filtre) {
-    const f = filtre || {};
-    const tur = String(f.defterTur || 'HEPSI');
-    const satirlar = fasonDefterSatirlari(alanFiltre, f);
                 <td style="padding:6px 8px;white-space:nowrap">${fasonZamanYaz(x.o.ts)}</td>
                 <td style="padding:6px 8px;white-space:nowrap;font-weight:600">${pdfEsc(x.o.user)}</td>
                 <td style="padding:6px 8px;white-space:nowrap">${x.o.n.tarih ? fasonTarihYaz(x.o.n.tarih) : '—'}</td>
@@ -44729,6 +44747,10 @@ function fasonHareketTabloHtml(hareketler, opt = {}) {
 }
 
 /* ── Firmalar ve cari ekranı ────────────────────────────────────── */
+/** Firmalar & cari listesi: işi ya da cari satırı olan firmalar, ada göre (ana program + mobil). */
+function fasonCariListesi(alanFiltre) {
+    return fasonCari(alanFiltre).filter(r => r.is || r.satirlar.length).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+}
 function fasonFirmaCariHtml(alanFiltre) {
     const fiyatGor = fasonFiyatGorur();
     const hesapYaz = fasonYazabilir('HESAP');
@@ -44746,10 +44768,6 @@ function fasonFirmaCariHtml(alanFiltre) {
                 <td style="padding:8px;text-align:right">${r.is}</td>
                 ${fiyatGor ? `<td style="padding:8px;text-align:right;font-family:'DM Mono',monospace">${fasonParaMetin(r.hakedis)}</td>
                 <td style="padding:8px;text-align:right;font-family:'DM Mono',monospace">${fasonParaMetin(r.odeme)}</td>
-/** Firmalar & cari listesi: işi ya da cari satırı olan firmalar, ada göre (ana program + mobil). */
-function fasonCariListesi(alanFiltre) {
-    return fasonCari(alanFiltre).filter(r => r.is || r.satirlar.length).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
-}
                 <td style="padding:8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:var(--rose-c)">${fasonParaMetin(r.bakiye)}</td>` : ''}
                 <td style="padding:8px;white-space:nowrap;text-align:right">
                     ${fiyatGor ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:10px" onclick="fasonEkstreAc(${fasonArg(r.ad)}, ${fasonArg(alanFiltre || '')})">📄 Ekstre</button>` : ''}
@@ -44763,6 +44781,16 @@ function fasonCariListesi(alanFiltre) {
 function fasonEkstreSatirlari(firmaAd, alanFiltre) {
     const r = fasonCari(alanFiltre || null).find(x => x.key === fasonFirmaKey(firmaAd));
     return r ? r.satirlar : [];
+}
+/** Cari ekstre: satır + o satırdan sonraki bakiye (para birimi başına) — yalnız fiyat yetkilisine (ana program + mobil). */
+function fasonEkstreModeli(firmaAd, alanFiltre) {
+    if (!fasonFiyatGorur()) return null;
+    const bakiye = {};
+    const satirlar = fasonEkstreSatirlari(firmaAd, alanFiltre).map(s => {
+        bakiye[s.pb] = (bakiye[s.pb] || 0) + s.tutar;
+        return { s, bakiye: bakiye[s.pb] };
+    });
+    return { satirlar, bakiye };
 }
 function fasonEkstreAc(firmaAd, alanFiltre) {
     if (!fasonFiyatGorur()) { erpToast('Ekstre için fason fiyat yetkisi gerekir.', 'error'); return; }
@@ -44781,16 +44809,6 @@ function fasonEkstreAc(firmaAd, alanFiltre) {
         </tr>`;
     }).join('');
     fasonPencereAc(fasonPencereBaslik('📄', 'Cari ekstre — ' + pdfEsc(firmaAd), 'Bakiye: ' + fasonParaMetin(bakiye)) + `
-/** Cari ekstre: satır + o satırdan sonraki bakiye (para birimi başına) — yalnız fiyat yetkilisine (ana program + mobil). */
-function fasonEkstreModeli(firmaAd, alanFiltre) {
-    if (!fasonFiyatGorur()) return null;
-    const bakiye = {};
-    const satirlar = fasonEkstreSatirlari(firmaAd, alanFiltre).map(s => {
-        bakiye[s.pb] = (bakiye[s.pb] || 0) + s.tutar;
-        return { s, bakiye: bakiye[s.pb] };
-    });
-    return { satirlar, bakiye };
-}
         <div style="overflow:auto;max-height:60vh"><table class="dt-table" style="width:100%;min-width:900px;font-size:10px">
             <thead><tr style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">
                 <th style="text-align:left;padding:5px 8px">Tarih</th><th style="text-align:left;padding:5px 8px">Tür</th><th style="text-align:left;padding:5px 8px">Açıklama</th>
@@ -44968,7 +44986,7 @@ function fasonFoyEkHtml(b, bolum) {
         ${aks.length ? `<div><b>Aksesuar planı:</b> ${aks.map(a => `${pdfEsc(a.ad)} ${fasonFmtM(a.birim)}/ad = ${fasonFmtM(a.plan)}`).join(' · ')}</div>` : ''}</div>`;
 }
 function fasonHareketIpucu(b, tip, is) {
-    if (b.cb) return typeof fasonCbIpucu === 'function' ? fasonCbIpucu(b, tip) : '';   /* çözgücü / bükümcü (41) */
+    if (b.cb) return '';   /* çözgücü / bükümcü (41): açıklama gösterilmez (kullanıcı 22.10.2026) */
     if (b.alan === 'DOKUMA') return typeof dokumaFasonHareketIpucu === 'function' ? dokumaFasonHareketIpucu(b, tip, is) : '';
     if (b.alan === 'TERBIYE') return typeof terbiyeHareketIpucu === 'function' ? terbiyeHareketIpucu(b, tip) : '';
     if (b.alan !== 'KONF' || !b.siparis) return '';
@@ -58913,7 +58931,7 @@ async function fasonFiyatYetkiDegistir(un, ver) {
              zorunlu) — burada YALNIZ OKUNUR (çift giriş yok). Firma anahtarı yazım farkını yutar (`fasonCbFirmaKey`).
    DÖNÜŞ:    fason motoru (12) olayları, anahtar C|<firma> / B|<firma>: COZGU_RAPOR (iplik kodu + tel + metre), BUKUM_GELEN (bükülü
              iplik → iplik deposuna GİRİŞ; kaynak_kod = hangi ham iplik), IPLIK_IADE (depoya GİRİŞ), SAYIM (firmada kalan).
-   HESAP (iplik kodu başına, `fasonCbHesap`): gönderilen − iade − kullanılan (çözgü: rapor kg'ı, yoksa tel × metre ÷ m/kg;
+   HESAP (iplik kodu başına, `fasonCbHesap`): gönderilen − iade − kullanılan (çözgü: rapor kg'ı × (1 − haşıl %), yoksa tel × metre ÷ m/kg;
              büküm: o hamdan gelen bükülü kg) = firmada kalması gereken; son sayım (sonraki iade düşülür) + telef → fark.
    İplik numarası BİRİMİNE göre m/kg (`fasonCbIplikMpk`): denye 9.000.000 ÷ den, dtex 10.000.000 ÷ dtex, Nm × 1000, Ne × 1666,67
              (katlıda numara ÷ kat). Yalnız hesap; yazma 12 fasonHareketKaydet (olay + depo) üzerinden. */
@@ -59037,6 +59055,13 @@ function fasonCbBaglam(anahtar, tur, key) {
     return { alan: 'DOKUMA', cb: tur, anahtar, firmaKey: key, firma, siparisId: null, baslik: `${T.firmaAd} · ${firma}${yazim && yazim !== firma ? ` (yazım: ${yazim})` : ''}` };
 }
 
+/** Çözgü raporundan levente sarılan iplik (kg): çözgücü levent kg'ı bildirdiyse kg × (1 − haşıl %) (kullanıcı 22.10.2026: "100 kg
+    levent, %3 haşıl → 97 kg iplik"), yoksa tel × metre ÷ m/kg (haşılsız iplik). Hesaplanamazsa null. */
+function fasonCbRaporIplikKg(h, mpk) {
+    const pct = Math.min(Math.max(Number(h.hasil_pct) || 0, 0), 99);
+    if (h.kg > 0) return h.kg * (1 - pct / 100);
+    return mpk > 0 && h.tel > 0 && h.mt > 0 ? h.tel * h.mt / mpk : null;
+}
 /** Firma hesabı — iplik kodu başına satırlar + toplam (yalnız hesap). key birleştirilmiş bir yazım olabilir → köke çözülür */
 function fasonCbHesap(tur, keyGelen) {
     const key = fasonCbKok(tur, keyGelen);
@@ -59066,7 +59091,7 @@ function fasonCbHesap(tur, keyGelen) {
         if (h.tip === 'COZGU_RAPOR') {
             const s = S(h.iplik_kodu, h.iplik_ad);
             s.levent++; s.leventMt += h.mt;
-            const kg = h.kg > 0 ? h.kg : (s.mpk > 0 && h.tel > 0 ? h.tel * h.mt / s.mpk : null);
+            const kg = fasonCbRaporIplikKg(h, s.mpk);
             if (kg == null) s.kullanilanEksik = true; else s.kullanilan += kg;
         } else if (h.tip === 'BUKUM_GELEN') {
             const s = S(h.kaynak_kod);
@@ -59099,27 +59124,126 @@ function fasonCbHesap(tur, keyGelen) {
 }
 
 /* ── 12 fasonHareketFormAc / fasonHareketIpucu kancaları ───────────────── */
+/* Formda iplik seçimi (kullanıcı 22.10.2026: "2 farklı iplik göndermişim Aslan Tekstil'e, çözgü raporuna basınca sadece bir tanesi
+   çıkıyor"): kod kutusu son gönderimin koduyla dolu açılıyor, tarayıcı açılır listeyi o koda süzüyordu. Firmaya giden iplikler
+   düğme olarak çıkar; tek iplik gittiyse kutu onunla, birden çoksa BOŞ açılır. Hangi form hangi kutuyu doldurur: */
+const FASON_CB_IPLIK_ALANI = { COZGU_RAPOR: 'iplik_kodu', IPLIK_IADE: 'iplik_kodu', SAYIM: 'iplik_kodu', BUKUM_GELEN: 'kaynak_kod' };
+/** Bu firmaya depodan giden iplikler (hesap dışı bırakılanlar hariç), en çok gidenden */
+function fasonCbFormIplikleri(h) {
+    return h.satirlar.filter(s => s.kod !== '—' && s.gon > 0);
+}
+/** Bu firmaya bu iplikten giden son gönderim (iade formunda lot / marka önerisi) */
+function fasonCbSonGonderim(h, kod) {
+    return [...h.gonderimler].filter(g => g.kod === kod).sort((a, b) => b.ts.localeCompare(a.ts))[0] || null;
+}
 function fasonCbHareketVarsayilan(b, tip) {
     const h = fasonCbHesap(b.cb, b.firmaKey);
-    const g = h.sonGonderim;
+    const iplikler = fasonCbFormIplikleri(h);
+    const tek = iplikler.length === 1 ? iplikler[0] : null;
+    const g = tek ? fasonCbSonGonderim(h, tek.kod) : null;
     const v = { firma: b.firma };
-    if (tip === 'COZGU_RAPOR') Object.assign(v, { iplik_kodu: g?.kod || '', iplik_ad: g?.ad || '', tel: '' });
-    if (tip === 'IPLIK_IADE' || tip === 'SAYIM') Object.assign(v, { iplik_yer: 'COZGU', iplik_kodu: g?.kod || '', iplik_ad: g?.ad || '', lot_no: tip === 'IPLIK_IADE' ? (g?.lot || '') : '', marka: tip === 'IPLIK_IADE' ? (g?.marka || '') : '' });
-    if (tip === 'BUKUM_GELEN') Object.assign(v, { kaynak_kod: g?.kod || '', iplik_kodu: '', iplik_ad: '' });
+    if (tip === 'COZGU_RAPOR') {
+        /* Haşıl payı: bu firmanın son raporundaki oran önerilir */
+        const sonHasil = h.hareketler.filter(x => x.tip === 'COZGU_RAPOR' && x.hasil_pct > 0).sort((a, b2) => `${a.tarih}|${a.ts}`.localeCompare(`${b2.tarih}|${b2.ts}`)).pop();
+        Object.assign(v, { iplik_kodu: tek?.kod || '', iplik_ad: tek?.ad || '', tel: '', hasil_pct: sonHasil ? sonHasil.hasil_pct : '' });
+    }
+    if (tip === 'IPLIK_IADE' || tip === 'SAYIM') Object.assign(v, { iplik_yer: 'COZGU', iplik_kodu: tek?.kod || '', iplik_ad: tek?.ad || '', lot_no: tip === 'IPLIK_IADE' ? (g?.lot || '') : '', marka: tip === 'IPLIK_IADE' ? (g?.marka || '') : '' });
+    if (tip === 'BUKUM_GELEN') Object.assign(v, { kaynak_kod: tek?.kod || '', iplik_kodu: '', iplik_ad: '' });
     return v;
 }
-function fasonCbIpucu(b, tip) {
+/** Form açılınca (12 fasonHareketFormAc): kod kutusunun altına firmaya giden ipliklerin düğmeleri. Yalnız görünüm, yazmaz. */
+function fasonCbFormHazirla(b, tip, duzeltme) {
+    const alan = FASON_CB_IPLIK_ALANI[tip];
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kodEl || !b?.cb) return;
+    if (tip === 'COZGU_RAPOR') fasonCbRaporSonucBagla();
     const h = fasonCbHesap(b.cb, b.firmaKey);
+    const iplikler = fasonCbFormIplikleri(h);
+    if (!iplikler.length) return;
     const kg = (x) => `${fasonFmtM(Math.round((x || 0) * 10) / 10)} kg`;
-    const bakiye = h.satirlar.filter(s => s.gon > 0 || s.kullanilan > 0).map(s => `${s.kod}${s.metin ? ' (' + s.metin + ')' : ''}: giden ${kg(s.gon)}${s.kalmali != null ? ' · kalmalı ' + kg(s.kalmali) : ''}`).join(' · ');
-    const genel = `Bu firmaya: ${bakiye || 'depodan gönderim yok'}. Gönderim Depo Hareketleri'nden (iplik çıkış → ${FASON_CB_TUR[b.cb].sevkYer} + firma) girilir.`;
-    if (tip === 'COZGU_RAPOR') return `Çözgücüden gelen her levent için ayrı girin: hangi iplik, tel sayısı, çözgü metresi. Kullanılan iplik = tel × metre ÷ iplik numarasının m/kg'ı (birimine göre: Ne, Nm, denye, dtex); çözgücü kg bildirdiyse kg'ı girin, o geçerli olur. Depoya yazılmaz. ${genel}`;
-    if (tip === 'BUKUM_GELEN') return `Bükümden dönen bükülü iplik iplik deposuna GİRİŞ olarak yazılır (bükülü ipliğin kodunu girin). "Hangi ham iplikten" hesabın hangi satırdan düşeceğini belirler. ${genel}`;
-    if (tip === 'IPLIK_IADE') return `Firmadan geri gelen kullanılmamış iplik — depoya GİRİŞ yazılır, firmanın hesabından düşer. ${genel}`;
-    if (tip === 'SAYIM') return `Firmada kalan ipliği İPLİK BAŞINA girin (kalmadıysa 0). Aynı ipliğin son sayımı geçerlidir; sayımdan sonra gelen iade sayılandan düşer. ${genel}`;
-    return genel;
+    const div = document.createElement('div');
+    div.id = 'fh-cb-iplikler';
+    div.style.gridColumn = '1/-1';
+    div.innerHTML = `<div style="font-size:10px;color:var(--text2);margin-bottom:4px">Bu firmaya giden ${iplikler.length > 1 ? 'iplikler' : 'iplik'}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${iplikler.map(s => `<button type="button" class="btn-pro btn-ghost-pro" data-cb-kod="${pdfEsc(s.kod)}" onclick="fasonCbIplikSec(this.getAttribute('data-cb-kod'))" style="padding:5px 10px;font-size:10px;text-align:left;line-height:1.35;display:inline-flex;flex-direction:column;align-items:flex-start">
+            <span><b>${pdfEsc(s.kod)}</b> ${pdfEsc(s.ad || '')}</span><div style="font-size:9px;color:var(--text3)">giden ${kg(s.gon)}${s.kalmali != null ? ' · firmada kalmalı ' + kg(s.kalmali) : ''}</div></button>`).join('')}</div>`;
+    (kodEl.parentElement || kodEl).after(div);
+    if (alan === 'kaynak_kod' && !document.getElementById('fh-kaynak_kod-bilgi')) {
+        const bilgi = document.createElement('div');
+        bilgi.id = 'fh-kaynak_kod-bilgi';
+        bilgi.style.cssText = 'font-size:9px;color:var(--text3);margin-top:2px';
+        kodEl.after(bilgi);
+        kodEl.addEventListener('input', () => fasonCbFormKodDegisti('fh'));
+    }
+    /* Yeni kayıtta önerilen ad kendiliğinden yazılmış sayılır: iplik değişince adı da değişsin (elle yazılan ada dokunulmaz) */
+    const adEl = document.getElementById('fh-iplik_ad');
+    if (!duzeltme && alan === 'iplik_kodu' && adEl && adEl.dataset.oto !== '0') adEl.dataset.oto = '1';
+    fasonCbFormKodDegisti('fh');
 }
-
+/** Çözgü raporu formunda anlık sonuç: levente sarılan iplik (haşıl düşülmüş ya da tel × metreden) — yalnız gösterir */
+function fasonCbRaporSonucBagla() {
+    const pctEl = document.getElementById('fh-hasil_pct');
+    if (!pctEl || document.getElementById('fh-cb-iplik-sonuc')) return;
+    const sonuc = document.createElement('div');
+    sonuc.id = 'fh-cb-iplik-sonuc';
+    sonuc.style.cssText = 'font-size:10px;color:var(--emerald-c);margin-top:3px;font-family:\'DM Mono\',monospace';
+    pctEl.after(sonuc);
+    const oku = (a) => fasonTakipNum(document.getElementById('fh-' + a)?.value, 2);
+    const ciz = () => {
+        const kod = String(document.getElementById('fh-iplik_kodu')?.value || '').trim().toUpperCase();
+        const mpk = fasonCbIplikBilgi(kod, document.getElementById('fh-iplik_ad')?.value || '').mpk;
+        const h = { kg: oku('kg'), hasil_pct: oku('hasil_pct'), tel: oku('tel'), mt: oku('mt') };
+        const kg = fasonCbRaporIplikKg(h, mpk);
+        sonuc.textContent = kg == null ? '' : `İplik: ${fasonFmtM(Math.round(kg * 10) / 10)} kg${h.kg > 0 ? '' : ' (tel × metre)'}`;
+    };
+    ['kg', 'hasil_pct', 'tel', 'mt', 'iplik_kodu'].forEach(a => document.getElementById('fh-' + a)?.addEventListener('input', ciz));
+    sonuc._ciz = ciz;
+    ciz();
+}
+/** Düğmeyle iplik seçimi: kod (+ iadede boşsa lot / marka) dolar */
+function fasonCbIplikSec(kod) {
+    const ctx = _fasonForm;
+    const alan = ctx && FASON_CB_IPLIK_ALANI[ctx.tip];
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kodEl) return;
+    kodEl.value = kod;
+    if (ctx.tip === 'IPLIK_IADE') {
+        const b = fasonBaglam(ctx.anahtar);
+        const g = b?.cb ? fasonCbSonGonderim(fasonCbHesap(b.cb, b.firmaKey), kod) : null;
+        [['lot_no', g?.lot], ['marka', g?.marka]].forEach(([a, d]) => {
+            const el = document.getElementById('fh-' + a);
+            if (el && d && (!el.value || el.dataset.cbOto === '1')) { el.value = d; el.dataset.cbOto = '1'; }
+        });
+    }
+    if (alan === 'iplik_kodu') fasonIplikKodDegisti('fh'); else fasonCbFormKodDegisti('fh');
+}
+/** Kod değişince (12 fasonIplikKodDegisti sonu + düğme): bilgi satırı firmanın hesabından, seçili düğme işaretli, ad karttan */
+function fasonCbFormKodDegisti(on) {
+    if (on === 'fh') document.getElementById('fh-cb-iplik-sonuc')?._ciz?.();
+    const ctx = _fasonForm;
+    const alan = ctx && on === 'fh' && FASON_CB_IPLIK_ALANI[ctx.tip];
+    const kutu = document.getElementById('fh-cb-iplikler');
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kutu || !kodEl) return;
+    const b = fasonBaglam(ctx.anahtar);
+    if (!b?.cb) return;
+    const h = fasonCbHesap(b.cb, b.firmaKey);
+    const kod = String(kodEl.value || '').trim().toUpperCase();
+    const s = kod ? fasonCbFormIplikleri(h).find(x => x.kod === kod) : null;
+    kutu.querySelectorAll('[data-cb-kod]').forEach(d => {
+        const sec = d.getAttribute('data-cb-kod') === kod;
+        d.style.borderColor = sec ? 'var(--accent)' : '';
+        d.style.background = sec ? 'rgba(99,102,241,0.14)' : '';
+    });
+    const adEl = alan === 'iplik_kodu' ? document.getElementById('fh-iplik_ad') : null;
+    if (adEl && s?.ad && adEl.dataset.oto === '1') adEl.value = s.ad;
+    const bilgi = document.getElementById('fh-' + alan + '-bilgi');
+    if (!bilgi) return;
+    const kg = (x) => `${fasonFmtM(Math.round((x || 0) * 10) / 10)} kg`;
+    bilgi.textContent = s ? `${b.firma}: giden ${kg(s.gon)}${s.kalmali != null ? ' · firmada kalmalı ' + kg(s.kalmali) : ''}`
+        : kod ? '⚠ Bu iplik bu firmaya depodan gönderilmemiş' : '';
+    bilgi.style.color = s ? 'var(--text3)' : 'var(--amber-c)';
+}
 /* ── Birleştirme / hesaptan çıkarma (föy olayı, yalnız siparis_akis'e FASON_FOY; depo satırına dokunmaz) ── */
 function fasonCbYazKapisi() {
     if (!fasonYazabilir('DOKUMA')) { erpToast('Yetkiniz yok.', 'error'); return false; }
@@ -59136,7 +59260,6 @@ function fasonCbBirlestirAc(tur, kok) {
     const digerleri = fasonCbFirmalar(tur).filter(f => f.key !== kok && f.key !== FASON_CB_FIRMASIZ).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
     if (!digerleri.length) { erpToast('Birleştirilecek başka firma yok.', 'info'); return; }
     fasonPencereAc(`${fasonPencereBaslik('⇄', 'Firmayı birleştir', `${pdfEsc(T.firmaAd)} · ${pdfEsc(ad)}`)}
-        <div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px">Aynı firmanın farklı yazımlarını tek kartta toplar: <b>${pdfEsc(ad)}</b> yazımıyla girilen gönderimler ve kayıtlar seçtiğiniz firmanın hesabına katılır. Depo kayıtlarına dokunulmaz; kim / ne zaman işlem defterinde kalır, firma kartındaki "⤺ ayır" ile geri alınır.</div>
         <label style="font-size:10px;color:var(--text3)">Hangi firmaya katılsın?</label>
         <select id="cb-birlestir-hedef" class="pro-input" style="width:100%;margin:4px 0 12px">${digerleri.map(f => `<option value="${pdfEsc(f.key)}">${pdfEsc(f.ad)}</option>`).join('')}</select>
         <div style="display:flex;justify-content:flex-end;gap:8px"><button type="button" class="btn-pro btn-ghost-pro" onclick="fasonPencereKapat()">Vazgeç</button>
@@ -59158,7 +59281,7 @@ async function fasonCbAyir(tur, takmaKey) {
     const an = tur + '|' + takmaKey;
     const eski = fasonFoyOku(an, 'cbad');
     if (!eski.hedef) return false;
-    if (!(await erpAskConfirm(`"${fasonCbFirmaAdi(tur, takmaKey)}" yazımı yeniden ayrı firma olarak görünsün mü?\n\nO yazımla girilen gönderimler kendi kartına döner.`))) return false;
+    if (!(await erpAskConfirm(`"${fasonCbFirmaAdi(tur, takmaKey)}" yazımı yeniden ayrı firma olsun mu?`))) return false;
     return fasonFoyOlayYaz(an, 'cbad', '', { hedef: eski.hedef }, { hedef: '' });
 }
 /** Gönderimi hesaptan çıkar / geri al — işaret gönderimin KENDİ yazımının anahtarına yazılır (birleştirme / ayırmada gönderimle birlikte gider) */
@@ -59173,7 +59296,7 @@ async function fasonCbDislaDegistir(tur, depoId, disla) {
     const yeniIds = disla ? [...eskiIds, id] : eskiIds.filter(x => x !== id);
     const metin = `${fasonTarihYaz(g.tarih)} · ${g.kod} ${g.ad} · ${fasonFmtM(g.kg)} kg · ${g.firma}`;
     const soru = disla
-        ? `Bu gönderim ${FASON_CB_TUR[tur].firmaAd.toLocaleLowerCase('tr-TR')} hesabından çıkarılsın mı?\n\n${metin}\n\n(Örnek: fason dokuma için giden iplik.) Depo kaydı değişmez; gönderim listede üstü çizili kalır, geri alınabilir.`
+        ? `Bu gönderim ${FASON_CB_TUR[tur].firmaAd.toLocaleLowerCase('tr-TR')} hesabından çıkarılsın mı?\n\n${metin}`
         : `Bu gönderim yeniden hesaba katılsın mı?\n\n${metin}`;
     if (!(await erpAskConfirm(soru))) return false;
     return fasonFoyOlayYaz(an, 'cbdisla', '', { ids: eskiIds.join(',') }, { ids: yeniIds.join(',') });
@@ -59186,6 +59309,13 @@ function fasonCbEkranYenile() {
 function fasonCbAcKapa(anahtar) {
     if (_fasonCbAcik.has(anahtar)) _fasonCbAcik.delete(anahtar); else _fasonCbAcik.add(anahtar);
     fasonCbEkranYenile();
+}
+/** Firmalar (firmada kalması gerekenden büyüğe) + genel toplam — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
+function fasonCbListeModeli(tur) {
+    const firmalar = fasonCbFirmalar(tur).map(f => ({ f, h: fasonCbHesap(tur, f.key) }))
+        .sort((a, b) => (b.h.toplam.kalmali || 0) - (a.h.toplam.kalmali || 0) || b.h.toplam.gon - a.h.toplam.gon);
+    const genel = firmalar.reduce((a, x) => ({ gon: a.gon + x.h.toplam.gon, kul: a.kul + x.h.toplam.kullanilan, kal: a.kal + (x.h.toplam.kalmali || 0), mt: a.mt + x.h.toplam.leventMt }), { gon: 0, kul: 0, kal: 0, mt: 0 });
+    return { firmalar, genel };
 }
 function fasonCbHtml(tur) {
     const T = FASON_CB_TUR[tur];
@@ -59218,7 +59348,6 @@ function fasonCbHtml(tur) {
         </tr>`;
         const disSay = h.tumGonderim.length - h.gonderimler.length;
         const gonTablo = h.tumGonderim.length ? `<details style="font-size:10px"${disSay ? ' open' : ''}><summary style="cursor:pointer;color:var(--text2)">📦 Depodan gönderimler (${fasonFmtI(h.tumGonderim.length)}${disSay ? ` · ${fasonFmtI(disSay)} hesap dışı` : ''})</summary>
-            <div style="font-size:9px;color:var(--text3);margin:4px 0">Bu firmaya başka iş için giden ipliği (ör. fason dokuma ipliği) "↷ Hesap dışı" ile çıkarın; depo kaydı değişmez.</div>
             <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:6px">${[...h.tumGonderim].sort((a, b) => b.ts.localeCompare(a.ts)).map(g => `<tr style="border-top:1px solid var(--border)${g.disla ? ';opacity:.55;text-decoration:line-through' : ''}">
                 <td style="padding:4px 8px">${fasonTarihYaz(g.tarih)}</td><td style="padding:4px 8px">${pdfEsc(g.kod)} ${pdfEsc(g.ad)}</td><td style="padding:4px 8px">lot ${pdfEsc(g.lot || '—')} · ${pdfEsc(g.marka || '')}</td>
                 <td style="${td}">${kg(g.kg)}</td><td style="${td}">${g.top ? fasonFmtI(g.top) + ' çuval' : ''}</td><td style="padding:4px 8px;color:var(--text3)">${pdfEsc(g.firma)} · ${pdfEsc(g.user)}</td>
@@ -59238,30 +59367,20 @@ function fasonCbHtml(tur) {
             </div></div>`;
     };
     return `<div style="display:flex;flex-direction:column;gap:10px">
-        <div class="panel-box" style="padding:10px 14px;font-size:10px;color:var(--text2);line-height:1.6;border-left:3px solid var(--accent)">
-            <b>${T.ikon} ${T.cogul}</b> — firma firma iplik hesabı. Gönderimler <b>Depo Hareketleri</b>'nden okunur (iplik çıkış → <b>${pdfEsc(T.sevkYer)}</b> + firma adı); ${tur === 'C' ? 'çözülen leventler (çözgü raporu)' : 'dönen bükülü iplik'}, iade ve sayım buradan girilir.
-            ${tur === 'C' ? 'Levente sarılan iplik = tel × metre ÷ iplik numarasının m/kg\'ı.' : 'Bükülü iplik depoya giriş olarak yazılır.'} Firmada kalmalı = giden − iade − ${tur === 'C' ? 'sarılan' : 'bükülü gelen'}.
-        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
             ${fasonKpiKutu(T.cogul, fasonFmtI(firmalar.length), 'var(--accent)', 'firma')}
             ${fasonKpiKutu('Giden iplik', fasonFmtM(Math.round(genel.gon)) + ' kg', '#06b6d4', 'depodan')}
             ${fasonKpiKutu(tur === 'C' ? 'Levente sarılan' : 'Bükülü gelen', fasonFmtM(Math.round(genel.kul)) + ' kg', 'var(--emerald-c)', tur === 'C' ? fasonFmtM(Math.round(genel.mt)) + ' m levent' : 'depoya giren')}
             ${fasonKpiKutu('Firmalarda kalmalı', fasonFmtM(Math.round(genel.kal)) + ' kg', 'var(--amber-c)', 'hesaba göre')}
         </div>
-        ${firmalar.length ? firmalar.map(kart).join('') : `<div class="empty-pro" style="padding:30px"><div class="empty-pro-title">${pdfEsc(T.cogul)} yok</div><div class="empty-pro-sub">Depo Hareketleri'nden iplik çıkışı → ${pdfEsc(T.sevkYer)} yazılınca burada görünür.</div></div>`}
+        ${firmalar.length ? firmalar.map(kart).join('') : `<div class="empty-pro" style="padding:30px"><div class="empty-pro-title">${pdfEsc(T.cogul)} yok</div></div>`}
     </div>`;
 }
 
 try {
-    Object.assign(window, { fasonCbAcKapa, fasonCbHtml, fasonCbHesap, fasonCbFirmaKey, fasonCbIplikMpk, fasonCbKok, fasonCbBirlestirAc, fasonCbBirlestirKaydet, fasonCbAyir, fasonCbDislaDegistir });
+    Object.assign(window, { fasonCbAcKapa, fasonCbHtml, fasonCbHesap, fasonCbFirmaKey, fasonCbIplikMpk, fasonCbKok, fasonCbBirlestirAc, fasonCbBirlestirKaydet, fasonCbAyir, fasonCbDislaDegistir,
+        fasonCbFormHazirla, fasonCbIplikSec, fasonCbFormKodDegisti });
 } catch (e) {}
-/** Firmalar (firmada kalması gerekenden büyüğe) + genel toplam — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
-function fasonCbListeModeli(tur) {
-    const firmalar = fasonCbFirmalar(tur).map(f => ({ f, h: fasonCbHesap(tur, f.key) }))
-        .sort((a, b) => (b.h.toplam.kalmali || 0) - (a.h.toplam.kalmali || 0) || b.h.toplam.gon - a.h.toplam.gon);
-    const genel = firmalar.reduce((a, x) => ({ gon: a.gon + x.h.toplam.gon, kul: a.kul + x.h.toplam.kullanilan, kal: a.kal + (x.h.toplam.kalmali || 0), mt: a.mt + x.h.toplam.leventMt }), { gon: 0, kul: 0, kal: 0, mt: 0 });
-    return { firmalar, genel };
-}
 /* ════ TERBİYE — BOBİN BOYA UÇTAN UCA (22.10.2026) ═══════════════════════
    Kullanıcı: "bobin gönderdiğimizde iplik özellikleri, ne kadar gönderildiği, hangi renge boyatılacağı …; bu bilgilerden otomatik
    bobin boya talimatı; hangi sipariş için, gönderim tarihi; boyahanenin verdiği termin ve tarih gelince uyarı; gelen kg ile giden kg

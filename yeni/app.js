@@ -32,26 +32,83 @@
 
     /* ── Simgeler ─────────────────────────────────────────────────────── */
     const svg = (yol, b = 20, k = 1.9) => `<svg width="${b}" height="${b}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${k}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${yol}</svg>`;
+    /* Düğme işaretleri (görsel takımda karşılığı olmayanlar): geri / ileri oku, kilit, uyarı üçgeni */
     const I = {
-        ev: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path>',
-        sip: '<rect x="5" y="4" width="14" height="17" rx="2"></rect><path d="M9 4h6v3H9zM9 12h6M9 16h4"></path>',
-        kutu: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"></path><path d="M3 8l9 5 9-5M12 13v8"></path>',
-        zil: '<path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4z"></path><path d="M10 21h4"></path>',
-        izgara: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"></rect><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"></rect><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"></rect><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"></rect>',
-        ara: '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
         geri: '<path d="M15 5l-7 7 7 7"></path>',
         sag: '<path d="m9 6 6 6-6 6"></path>',
         ucgen: '<path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path>',
-        takvim: '<rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path>',
-        kamyon: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"></path><circle cx="7" cy="18" r="1.8"></circle><circle cx="17" cy="18" r="1.8"></circle>',
-        tamam: '<circle cx="12" cy="12" r="8.5"></circle><path d="m8.5 12 2.5 2.5 4.5-5"></path>',
-        saat: '<circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2M9 2h6"></path>',
-        kilit: '<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>',
-        yenile: '<path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path>',
-        cikis: '<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"></path>',
-        dis: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>',
-        hazir: '<path d="M4 7l8-4 8 4-8 4z"></path><path d="M4 12l8 4 8-4M4 17l8 4 8-4"></path>'
+        kilit: '<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>'
     };
+    /* SİMGELER = görsel yenilemenin çizgi takımı (23.10.2026, kullanıcı: "tekstil erp görsel klasöründeki ikonları kullanalım,
+       yeni tasarım o şekilde olacak"). Takım aşağıdaki blokta (betik yazar); ekran → simge görsel kenar çubuğunun grubu,
+       görselin ekranlarda kullandığı özel simgeler (stok türü, depo girişi, kesim, kart) EKRAN_OZEL'de. Bekçi "Yeni mobil: simgeler". */
+    /* GORSEL-SIMGELER:BAS — görsel yenileme dalı (rafta/gorsel-yenileme) src/stok/partials/shell.html sbi- takımı; node scripts/yeni-mobil-simgeler.js yazar, ELLE DEĞİŞTİRME */
+    const GS = {
+        'home': '<path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-6h4v6"/>',
+        'siparis': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>',
+        'depo': '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>',
+        'sevkiyat': '<path d="M14 17V6H3v11h2"/><path d="M14 9h4l3 3.5V17h-2"/><path d="M9 17h6"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
+        'kart': '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M5.5 16c.6-1.4 1.9-2.2 3.5-2.2s2.9.8 3.5 2.2"/><path d="M15 10h3M15 14h3"/>',
+        'dokuma': '<path d="M6 4h12M6 20h12"/><path d="M8 4v16M16 4v16"/><path d="M8 8.5l8 2.5M8 13l8 2.5"/>',
+        'terbiye': '<path d="M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0c0-4.4 6-10.8 6-10.8z"/><path d="M9.2 14.5a2.9 2.9 0 0 0 2.8 2.7"/>',
+        'konfeksiyon': '<path d="M8.5 3.5L3.5 6.5 5.5 10.5 8 9.5V20.5h8V9.5l2.5 1 2-4-5-3c-.5 1.5-2 2.5-3.5 2.5s-3-1-3.5-2.5z"/>',
+        'fason': '<path d="M4 8h14l-3-3"/><path d="M20 16H6l3 3"/>',
+        'numune': '<path d="M9 3h6"/><path d="M10 3v6l-5.2 9.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9V3"/><path d="M7.6 15h8.8"/>',
+        'planlama': '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+        'yonetim': '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+        'gunluk': '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h6M9 19h3"/>',
+        'kullanici': '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.9c1.8.9 3 2.6 3.5 5.1"/>',
+        'ara': '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+        'asagi': '<path d="M6 9l6 6 6-6"/>',
+        'panel': '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/><path d="M15.5 10l-2 2 2 2"/>',
+        'cikis': '<path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2"/><path d="M9 12h11M17 9l3 3-3 3"/>',
+        'yenile': '<path d="M20 11.5a8 8 0 1 0-2.4 5.7"/><path d="M20 5v6.5h-6.5"/>',
+        'arti': '<path d="M12 5v14M5 12h14"/>',
+        'kapat': '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+        'konum': '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+        'kutu': '<path d="M3.5 7.5L12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5L12 11.5l8.5-4M12 11.5v9"/>',
+        'liste': '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M3.8 6.6l1.4 1.4 2.4-2.6M3.8 12.1l1.4 1.4 2.4-2.6M3.8 17.6l1.4 1.4 2.4-2.6"/>',
+        'giris': '<path d="M12 3.5v10.5M8 10l4 4 4-4"/><path d="M4 14.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"/>',
+        'makas': '<circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M8.2 8.3L20 18M8.2 15.7L20 6"/>',
+        'gunes': '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+        'zil': '<path d="M12 3.5a5.6 5.6 0 0 0-5.6 5.6v3.2c0 1-.35 2-1 2.8L4.6 16.5h14.8l-.8-1.4a4.5 4.5 0 0 1-1-2.8V9.1A5.6 5.6 0 0 0 12 3.5z"/><path d="M9.7 19.6a2.4 2.4 0 0 0 4.6 0"/>',
+        'ay': '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+        'agac': '<circle cx="12" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/><path d="M12 7v5M6 17v-5h12v5"/>',
+        'a-bobin': '<path d="M5 4h9M5 20h9"/><path d="M6.5 4v16M12.5 4v16"/><path d="M6.5 9l6 2M6.5 13l6 2"/><path d="M18.5 9.5s2 2.2 2 3.7a2 2 0 0 1-4 0c0-1.5 2-3.7 2-3.7z"/>',
+        'a-bukum': '<path d="M7 3c0 5.5 10 6.5 10 12v6"/><path d="M17 3c0 5.5-10 6.5-10 12v6"/>',
+        'a-topboya': '<ellipse cx="6.5" cy="12" rx="2.5" ry="5"/><path d="M6.5 7H14M6.5 17H14M14 7v10"/><path d="M19 9.5s2 2.2 2 3.7a2 2 0 0 1-4 0c0-1.5 2-3.7 2-3.7z"/>',
+        'a-baski': '<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/>',
+        'a-topyikama': '<ellipse cx="6.5" cy="9.5" rx="2.5" ry="4.5"/><path d="M6.5 5H16M6.5 14H16M16 5v9"/><path d="M3 19c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0 3 1.2 4.5 0"/>',
+        'a-sacak': '<path d="M4 5h16"/><path d="M6 5v11M10 5v13M14 5v11M18 5v13"/>',
+        'a-parcabaski': '<path d="M9.5 3h5v5l3 3h-11l3-3z"/><path d="M5 14h14v3H5z"/><path d="M5 20.5h14"/>',
+        'iplik': '<circle cx="12" cy="12" r="8"/><path d="M5.2 8.6c4.3-.2 9.2 2 12.6 6.2M4.4 13.3c3.6-.6 8.4.9 11 5M8.6 4.8c3 2.1 5.8 6 6.8 10.6"/>',
+        'kumas': '<ellipse cx="6.5" cy="9" rx="3" ry="5"/><path d="M6.5 4H17a3 5 0 0 1 0 10H6.5"/><path d="M17 14v6H9.5"/>',
+        'mamul': '<rect x="4" y="4.5" width="16" height="4.5" rx="1.2"/><rect x="4" y="10" width="16" height="4.5" rx="1.2"/><rect x="4" y="15.5" width="16" height="4.5" rx="1.2"/>',
+        'a-nakis': '<path d="M5 19L16.5 7.5"/><circle cx="18" cy="6" r="1.8"/><path d="M3.5 14.5c2.5 0 3 4.5 6 4.5"/>'
+    };
+    /* GORSEL-SIMGELER:SON */
+    const gs = (ad, b = 20) => svg(GS[ad] || '', b, 1.7);
+    const EKRAN_SIMGE = {
+        DASHBOARD: 'home',
+        SIPARIS_GIRIS: 'siparis', SIPARIS_LISTE: 'siparis', SIPARIS_KAPANAN: 'siparis', URUN_AGACI: 'siparis',
+        IPLIK: 'depo', KUMAS: 'depo', MAMUL_DEPO: 'depo', STOK_SAYIM: 'depo',
+        SEVKIYAT: 'sevkiyat', DEPO_HAREKET_LISTE: 'sevkiyat', MUHASEBE_FIS: 'sevkiyat',
+        KART_LISTE: 'kart',
+        TEZGAH_PLANLAMA: 'dokuma', DOKUMA_TAKIP: 'dokuma', DOKUMA_DEPO: 'dokuma',
+        BOYAHANE_URETIM: 'terbiye', KONFEKSIYON_YIKAMA: 'terbiye',
+        KONFEKSIYON_KESIM: 'konfeksiyon', KONFEKSIYON_KALITE: 'konfeksiyon', KONF_ISLEM_RAPOR: 'konfeksiyon',
+        DOKUMA_FASON_TAKIP: 'fason', FASON_TAKIP: 'fason',
+        NUMUNE: 'numune',
+        PLANLAMA: 'planlama', YAPILACAKLAR: 'planlama', TEKNIK_FOY: 'planlama', KONFEKSIYON_PLANLAMA: 'planlama',
+        RAPORLAR: 'yonetim', DIAGNOSTICS: 'yonetim', GUNLUK_ISLEMLER: 'gunluk', KULLANICI_YONETIMI: 'kullanici'
+    };
+    /* Görselin menü dışında kullandığı ekrana özel simgeler (Sevkiyat merkezi / Depo hareketleri: stok türü; ana sayfa düğmeleri) */
+    const EKRAN_OZEL = { IPLIK: 'iplik', KUMAS: 'kumas', MAMUL_DEPO: 'mamul', DEPO_HAREKET: 'giris', KONFEKSIYON_KESIM: 'makas',
+        KONFEKSIYON: 'konfeksiyon', IPLIK_KART_GIRIS: 'kart', KUMAS_KART_GIRIS: 'kart', MAMUL_KART_GIRIS: 'kart' };
+    const ekranSimge = kod => EKRAN_OZEL[kod] || EKRAN_SIMGE[kod] || 'liste';
+    /* Ekranlar sekmesi grup kartı → görsel kenar çubuğundaki karşılığı */
+    const GRUP_SIMGE = { genel: 'home', siparis: 'siparis', depo: 'depo', dokuma: 'dokuma', terbiye: 'terbiye', konfeksiyon: 'konfeksiyon', kart: 'kart', sistem: 'yonetim', yonetim: 'yonetim' };
+
 
     /* ── Renkler: sipariş durumu (veritabanındaki durum alanı, 02 SIPARIS_DURUM_SECENEKLERI) ── */
     const DURUM_RENK = {
@@ -163,12 +220,12 @@
     /* ── Parçalar ─────────────────────────────────────────────────────── */
     function bantDugmeleri() {
         const n = uyarilar().length;
-        return `<button class="yuvarlak-dugme ${D.yukleniyor ? 'donuyor' : ''}" data-is="yenile" aria-label="Yenile">${svg(I.yenile, 19)}</button>
-            <button class="yuvarlak-dugme" data-is="tab" data-d="uyari" aria-label="Uyarılar">${svg(I.zil, 20)}${n ? `<span class="rozet">${n}</span>` : ''}</button>`;
+        return `<button class="yuvarlak-dugme ${D.yukleniyor ? 'donuyor' : ''}" data-is="yenile" aria-label="Yenile">${gs('yenile', 19)}</button>
+            <button class="yuvarlak-dugme" data-is="tab" data-d="uyari" aria-label="Uyarılar">${gs('zil', 20)}${n ? `<span class="rozet">${n}</span>` : ''}</button>`;
     }
     function yukleniyorSerit() {
         if (D.hata) return `<div class="yukleniyor-serit" style="color:#B42318">${esc(D.hata)}</div>`;
-        return D.yukleniyor ? `<div class="yukleniyor-serit">${svg(I.yenile, 14)}<span>${esc(D.yukleniyor)}</span></div>` : '';
+        return D.yukleniyor ? `<div class="yukleniyor-serit">${gs('yenile', 14)}<span>${esc(D.yukleniyor)}</span></div>` : '';
     }
     function sipKart(s) {
         const [renk, zemin] = durumRenk(s);
@@ -197,31 +254,31 @@
         const tarih = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
         const uy = uyarilar();
         const kpi = (is, d, ikon, renk, zemin, deger, ad, degerRenk) => `<button class="kpi" data-is="${is}" data-d="${d}">
-            <span class="simge" style="background:${zemin};color:${renk}">${svg(ikon)}</span>
+            <span class="simge" style="background:${zemin};color:${renk}">${ikon}</span>
             <span><span class="kpi-deger" style="${degerRenk ? 'color:' + degerRenk : ''}">${D.hazir.sip ? deger : '…'}</span><span class="kpi-ad">${ad}</span></span></button>`;
-        const kisayol = (is, d, ikon, renk, zemin, ad) => `<button class="kisayol" data-is="${is}" data-d="${d}"><span class="simge" style="background:${zemin};color:${renk}">${svg(ikon, 22)}</span><span>${ad}</span></button>`;
+        const kisayol = (is, d, ikon, renk, zemin, ad) => `<button class="kisayol" data-is="${is}" data-d="${d}"><span class="simge" style="background:${zemin};color:${renk}">${ikon}</span><span>${ad}</span></button>`;
         return `<div class="bant buyuk">
                 <div class="bant-ust">
                     <button class="avatar" data-is="profil" aria-label="Hesap">${esc(harf(u.display_name || u.username))}</button>
                     <span style="flex:1;display:flex;flex-direction:column;gap:1px;min-width:0"><span class="bant-alt">${esc(tarih)}</span><span class="tek-satir" style="font-size:19px;font-weight:600">Merhaba, ${esc(String(u.display_name || u.username || '').split(' ')[0])}</span></span>
                     ${bantDugmeleri()}
                 </div>
-                <button class="arama" data-is="aramaya-git">${svg(I.ara, 18, 2)}<span>Sipariş, müşteri ya da ürün ara</span></button>
+                <button class="arama" data-is="aramaya-git">${gs('ara', 18)}<span>Sipariş, müşteri ya da ürün ara</span></button>
             </div>
             <div class="kpi-izgara">
-                ${kpi('liste', 'acik', I.sip, '#4A5FC1', '#E7EBF8', acik.length, 'Açık sipariş')}
-                ${kpi('liste', 'geciken', I.ucgen, '#D92D20', '#FEECEB', geciken, 'Termini geçen', geciken ? '#B42318' : '')}
-                ${kpi('liste', 'yakin', I.takvim, '#B54708', '#FEF4E6', yakin, `Termine ≤${ERP_UYARI_ESIK.terminYakinGun} gün`)}
+                ${kpi('liste', 'acik', gs('siparis'), '#4A5FC1', '#E7EBF8', acik.length, 'Açık sipariş')}
+                ${kpi('liste', 'geciken', svg(I.ucgen), '#D92D20', '#FEECEB', geciken, 'Termini geçen', geciken ? '#B42318' : '')}
+                ${kpi('liste', 'yakin', gs('planlama'), '#B54708', '#FEF4E6', yakin, `Termine ≤${ERP_UYARI_ESIK.terminYakinGun} gün`)}
                 ${/* dokununca bugünün sevkiyat fişleri (kullanıcı 23.10.2026) */ erpUserCan('MUHASEBE_FIS')
-                    ? kpi('fis-bugun', '', I.kamyon, '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')
-                    : kpi('liste', 'acik', I.kamyon, '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')}
+                    ? kpi('fis-bugun', '', gs('sevkiyat'), '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')
+                    : kpi('liste', 'acik', gs('sevkiyat'), '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')}
             </div>
             ${yukleniyorSerit()}
             <div class="kisayollar">
-                ${kisayol('liste', 'hazir', I.hazir, '#175CD3', '#E8F1FD', 'Hazır')}
-                ${kisayol('liste', 'kapanan', I.tamam, '#067647', '#E7F6EC', 'Kapanan')}
-                ${kisayol('tab', 'uyari', I.zil, '#B54708', '#FEF4E6', 'Uyarılar')}
-                ${kisayol('tab', 'ekranlar', I.izgara, '#6927DA', '#F2EEFF', 'Ekranlar')}
+                ${kisayol('liste', 'hazir', gs('kutu', 22), '#175CD3', '#E8F1FD', 'Hazır')}
+                ${kisayol('liste', 'kapanan', gs('liste', 22), '#067647', '#E7F6EC', 'Kapanan')}
+                ${kisayol('tab', 'uyari', gs('zil', 22), '#B54708', '#FEF4E6', 'Uyarılar')}
+                ${kisayol('tab', 'ekranlar', gs('panel', 22), '#6927DA', '#F2EEFF', 'Ekranlar')}
             </div>
             <div class="bolum-baslik"><span>Dikkat isteyenler</span><button data-is="tab" data-d="uyari">Hepsi</button></div>
             ${uy.length ? `<div class="yatay yatay-kartlar">${uy.slice(0, 6).map((x, i) => {
@@ -303,7 +360,7 @@
         const cipler = [['acik', 'Açık'], ['yakin', 'Termini yakın'], ['geciken', 'Geciken'], ['hazir', 'Hazır'], ['kapanan', 'Kapanan']];
         return `<div class="bant">
                 <div class="bant-ust"><span class="bant-baslik">Siparişler</span><span class="sayi-hap" id="ym-sayi">${l.length} sipariş</span>${bantDugmeleri()}</div>
-                <label class="arama">${svg(I.ara, 18, 2)}<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Sipariş ara</span>
+                <label class="arama">${gs('ara', 18)}<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Sipariş ara</span>
                     <input type="search" id="ym-arama" value="${esc(D.arama)}" placeholder="Sipariş no, müşteri, ürün…" autocomplete="off" data-canli="serbest"></label>
                 <div class="yatay cipler">${cipler.map(([id, ad]) => `<button class="cip ${(D.arama ? aramaKapsami() === id : D.suzgec === id) ? 'secili' : ''}" data-is="suzgec" data-d="${id}">${ad}<b>${siparisler().filter(s => suzgecUyar(s, id)).length}</b></button>`).join('')}</div>
             </div>
@@ -440,7 +497,7 @@
                 const [r, z] = GRUP_RENK[g.id] || GRUP_RENK.sistem;
                 const acik = D.acikGrup === g.id;
                 return `<div class="grup-kart"><button class="grup-bas" data-is="grup" data-d="${g.id}">
-                        <span class="simge" style="width:40px;height:40px;border-radius:13px;background:${z};color:${r};font-weight:700;font-size:15px">${esc(g.ad.charAt(0))}</span>
+                        <span class="simge" style="width:40px;height:40px;border-radius:13px;background:${z};color:${r}">${gs(GRUP_SIMGE[g.id] || ekranSimge(g.kodlar[0]))}</span>
                         <span class="satir-orta"><span style="font-weight:600">${esc(g.ad)}</span><span class="alt tek-satir">${esc(g.kodlar.map(ekranAdi).join(', '))}</span></span>
                         <span class="hap" style="background:#F2F4F7;color:#475467">${g.kodlar.length}</span></button>
                     ${acik ? g.kodlar.map(ekranSatir).join('') : ''}</div>`;
@@ -513,8 +570,8 @@
     }
 
     function stokCiz() {
-        const kart = (kod, renk, zemin, ikon, deger, alt) => erpUserCan(kod) ? `<button class="kpi" style="width:100%" data-is="ekran-ac" data-d="${kod}">
-            <span class="simge" style="background:${zemin};color:${renk}">${svg(ikon)}</span>
+        const kart = (kod, renk, zemin, _ikon, deger, alt) => erpUserCan(kod) ? `<button class="kpi" style="width:100%" data-is="ekran-ac" data-d="${kod}">
+            <span class="simge" style="background:${zemin};color:${renk}">${gs(ekranSimge(kod))}</span>
             <span class="satir-orta"><span style="font-weight:600">${esc(modAd(kod))}</span><span class="alt">${alt}</span></span>
             <span style="font-size:16px;font-weight:700;flex:none;text-align:right">${deger}</span></button>` : '';
         let kumas = '…', mamul = '…', iplik = '…', kAlt = '', mAlt = '', iAlt = '', defter = '…';
@@ -536,12 +593,12 @@
                 <span class="bant-alt">Rakamlar ana programın stok ekranlarıyla aynı · stokta olanlar</span></div>
             ${yukleniyorSerit()}
             <div class="kartlar">
-                ${kart('KUMAS', '#0E7C70', '#E3F5F2', I.kutu, kumas, kAlt)}
-                ${kart('MAMUL_DEPO', '#3538CD', '#EEF0FF', I.hazir, mamul, mAlt)}
-                ${kart('IPLIK', '#C11574', '#FCE7F3', I.saat, iplik, iAlt)}
-                ${kart('DOKUMA_DEPO', '#C4320A', '#FEEFE6', I.kutu, '', esc(ddAlt))}
-                ${kart('DEPO_HAREKET_LISTE', '#175CD3', '#E8F1FD', I.sip, defter, 'bugünkü giriş + çıkış')}
-                ${kart('MUHASEBE_FIS', '#067647', '#E7F6EC', I.kamyon, '', esc(fisAlt))}
+                ${kart('KUMAS', '#0E7C70', '#E3F5F2', null, kumas, kAlt)}
+                ${kart('MAMUL_DEPO', '#3538CD', '#EEF0FF', null, mamul, mAlt)}
+                ${kart('IPLIK', '#C11574', '#FCE7F3', null, iplik, iAlt)}
+                ${kart('DOKUMA_DEPO', '#C4320A', '#FEEFE6', null, '', esc(ddAlt))}
+                ${kart('DEPO_HAREKET_LISTE', '#175CD3', '#E8F1FD', null, defter, 'bugünkü giriş + çıkış')}
+                ${kart('MUHASEBE_FIS', '#067647', '#E7F6EC', null, '', esc(fisAlt))}
                 ${digerleri.length ? `<div class="grup-kart">${digerleri.map(k => `<button class="grup-bas" data-is="ekran-ac" data-d="${k}"><span class="satir-orta"><span style="font-weight:600">${esc(modAd(k))}</span><span class="alt">${YENI_EKRANLAR.has(k) ? 'Kartlar, lotlar, varyantlar' : 'Hazırlanıyor'}</span></span>${svg(I.sag, 16)}</button>`).join('')}</div>` : ''}
             </div>`;
     }
@@ -549,8 +606,8 @@
     /* Ekran başı: geri, başlık, arama, çipler — gövde ayrı çizilir (aramada klavye kapanmasın) */
     function stokEkranBas(baslik, ipucu, cipler, govdeHtml) {
         return `<div class="bant"><div class="bant-ust" style="gap:6px"><button class="geri" data-is="geri" aria-label="Geri">${svg(I.geri, 22, 2.2)}</button>
-                <span class="bant-baslik">${esc(baslik)}</span><button class="yuvarlak-dugme ${D.yukleniyor || D.dd.yukleniyor || D.fis.yukleniyor ? 'donuyor' : ''}" data-is="st-yenile" aria-label="Yenile">${svg(I.yenile, 19)}</button></div>
-                <label class="arama">${svg(I.ara, 18, 2)}<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Ara</span>
+                <span class="bant-baslik">${esc(baslik)}</span><button class="yuvarlak-dugme ${D.yukleniyor || D.dd.yukleniyor || D.fis.yukleniyor ? 'donuyor' : ''}" data-is="st-yenile" aria-label="Yenile">${gs('yenile', 19)}</button></div>
+                <label class="arama">${gs('ara', 18)}<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Ara</span>
                     <input type="search" id="ym-st-ara" value="${esc(D.st.ara)}" placeholder="${esc(ipucu)}" autocomplete="off" data-canli="serbest"></label>
                 ${cipler.map(c => `<div class="yatay cipler">${c}</div>`).join('')}
             </div>${yukleniyorSerit()}<div id="ym-st-govde">${govdeHtml || ''}</div>`;
@@ -2169,15 +2226,15 @@
         return `<div class="bant"><div class="bant-ust" style="gap:6px"><button class="geri" data-is="geri" aria-label="Geri">${svg(I.geri, 22, 2.2)}</button>
                 <span class="bant-baslik">${esc(ekranAdi(D.ekran))}</span></div></div>
             <div class="kartlar"><div class="sip-kart" style="align-items:center;text-align:center;padding:28px 18px;gap:10px">
-                <span class="simge" style="width:56px;height:56px;border-radius:18px;background:#E7EBF8;color:#4A5FC1">${svg(I.izgara, 26)}</span>
+                <span class="simge" style="width:56px;height:56px;border-radius:18px;background:#E7EBF8;color:#4A5FC1">${gs(ekranSimge(D.ekran), 26)}</span>
                 <span style="font-size:16px;font-weight:600">Bu ekran yeni görünümde hazırlanıyor</span>
                 <span class="soluk" style="font-size:13px;line-height:1.5">Rakamları ana programla birebir aynı olacak; hazır olunca burada açılır.</span></div></div>`;
     }
 
     function altMenu() {
         const n = uyarilar().length;
-        const d = (id, ikon, ad) => `<button class="alt-dugme ${D.tab === id ? 'secili' : ''}" data-is="tab" data-d="${id}"><span class="kap">${svg(ikon, 22)}</span><span>${ad}</span>${id === 'uyari' && n ? `<span class="rozet">${n}</span>` : ''}</button>`;
-        return `<nav class="alt-menu">${d('ana', I.ev, 'Ana sayfa')}${d('siparis', I.sip, 'Siparişler')}${d('stok', I.kutu, 'Stok')}${d('uyari', I.zil, 'Uyarılar')}${d('ekranlar', I.izgara, 'Ekranlar')}</nav>`;
+        const d = (id, ikon, ad) => `<button class="alt-dugme ${D.tab === id ? 'secili' : ''}" data-is="tab" data-d="${id}"><span class="kap">${gs(ikon, 22)}</span><span>${ad}</span>${id === 'uyari' && n ? `<span class="rozet">${n}</span>` : ''}</button>`;
+        return `<nav class="alt-menu">${d('ana', 'home', 'Ana sayfa')}${d('siparis', 'siparis', 'Siparişler')}${d('stok', 'depo', 'Stok')}${d('uyari', 'zil', 'Uyarılar')}${d('ekranlar', 'panel', 'Ekranlar')}</nav>`;
     }
 
     function profilPencere() {
@@ -2189,8 +2246,8 @@
             <span class="tutamak"></span>
             <div style="display:flex;align-items:center;gap:12px;padding:6px 0 10px"><span class="avatar">${esc(harf(u.display_name || u.username))}</span>
                 <span class="satir-orta"><span style="font-weight:600;font-size:16px">${esc(u.display_name || u.username || '')}</span><span class="alt">${esc(u.username || '')} · ${kademe}</span></span></div>
-            <button class="pencere-satir" data-is="yenile">${svg(I.yenile)}<span>Verileri yenile</span></button>
-            <button class="pencere-satir" data-is="cikis" style="color:#B42318">${svg(I.cikis)}<span>Oturumu kapat</span></button>
+            <button class="pencere-satir" data-is="yenile">${gs('yenile')}<span>Verileri yenile</span></button>
+            <button class="pencere-satir" data-is="cikis" style="color:#B42318">${gs('cikis')}<span>Oturumu kapat</span></button>
             ${sure ? `<span class="soluk" style="padding-top:8px">Son yükleme: ${esc(sure)}</span>` : ''}
         </div></div>`;
     }
