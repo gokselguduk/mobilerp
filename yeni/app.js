@@ -133,16 +133,23 @@
         if (f === 'hazir') return durumKod(s) === 'HAZIR';
         return true;
     }
-    /* Sipariş araması ana programın kuralıyla (02 siparisListeTekAramaEslesir: kelimelerin hepsi; kod, ad, grup, renk / renk
-       kodu, ebat, birim, miktar, durum …) — 23.10 testinde mobilin ayrı kuralı 17 aramanın 8'inde farklı sayı veriyordu */
-    const aramaUyar = (s, q) => siparisListeTekAramaEslesir(s, q);
+    /* Sipariş araması (kullanıcı 23.10.2026): YALNIZ sipariş no, müşteri adı ve ürün adı — "rateks yazınca Rateks boyahanesinde
+       bobini boyanan sipariş çıkmasın"; yazılan kelimelerin hepsi bu üç alanda geçmeli. Kapsam: Kapanan süzgeci seçili değilse
+       yalnız AÇIK siparişler (aramaKapsami). Ana programın arama kuralından (02 siparisListeTekAramaEslesir: renk, ebat, durum,
+       not … da arar) bilerek ayrı. */
+    /* Türkçe harfler sadeleşir (ı/İ/I → i, ş → s, ç → c, ğ → g, ü → u, ö → o): veride "KIR ÇIÇEĞI" gibi karışık yazım var, kullanıcı
+       Türkçe klavyesiz de yazar ("kir cicegi" de bulur) */
+    const aramaNorm = (t) => String(t || '').toLocaleLowerCase('tr-TR').replace(/̇/g, '').replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ö/g, 'o');
+    const aramaMetni = (s) => aramaNorm([s.sno, s.firma, ...siparisListeKalemleriArr(s).map(k => k.ad)].join(' '));
+    const aramaUyar = (s, q) => { const m = aramaMetni(s); return aramaNorm(q).split(/s+/).filter(Boolean).every(t => m.includes(t)); };
+    const aramaKapsami = () => (D.suzgec === 'kapanan' ? 'kapanan' : 'acik');
     function siraAnahtar(s) { const g = erpUyariGunFarki(s.ttarih); return g == null ? 99999 : g; }
     function listeSiparisleri() {
         const q = D.arama.trim();
         let l = siparisler();
-        if (q) l = l.filter(s => aramaUyar(s, q));
+        if (q) l = l.filter(s => (aramaKapsami() === 'kapanan') === siparisKapaliMi(s) && aramaUyar(s, q));
         else l = l.filter(s => suzgecUyar(s, D.suzgec));
-        const kapanan = !q && D.suzgec === 'kapanan';
+        const kapanan = D.suzgec === 'kapanan';
         return l.slice().sort((a, b) => {
             if (kapanan) return String(b.ttarih || b.starih || '').localeCompare(String(a.ttarih || a.starih || ''));
             const ka = siparisKapaliMi(a) ? 1 : 0, kb = siparisKapaliMi(b) ? 1 : 0;
@@ -205,7 +212,9 @@
                 ${kpi('liste', 'acik', I.sip, '#4A5FC1', '#E7EBF8', acik.length, 'Açık sipariş')}
                 ${kpi('liste', 'geciken', I.ucgen, '#D92D20', '#FEECEB', geciken, 'Termini geçen', geciken ? '#B42318' : '')}
                 ${kpi('liste', 'yakin', I.takvim, '#B54708', '#FEF4E6', yakin, `Termine ≤${ERP_UYARI_ESIK.terminYakinGun} gün`)}
-                ${kpi('liste', 'acik', I.kamyon, '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')}
+                ${/* dokununca bugünün sevkiyat fişleri (kullanıcı 23.10.2026) */ erpUserCan('MUHASEBE_FIS')
+                    ? kpi('fis-bugun', '', I.kamyon, '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')
+                    : kpi('liste', 'acik', I.kamyon, '#067647', '#E7F6EC', D.hazir.sayi ? bugunSevk : '…', 'Bugün sevk edilen')}
             </div>
             ${yukleniyorSerit()}
             <div class="kisayollar">
@@ -296,7 +305,7 @@
                 <div class="bant-ust"><span class="bant-baslik">Siparişler</span><span class="sayi-hap" id="ym-sayi">${l.length} sipariş</span>${bantDugmeleri()}</div>
                 <label class="arama">${svg(I.ara, 18, 2)}<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Sipariş ara</span>
                     <input type="search" id="ym-arama" value="${esc(D.arama)}" placeholder="Sipariş no, müşteri, ürün…" autocomplete="off" data-canli="serbest"></label>
-                <div class="yatay cipler">${cipler.map(([id, ad]) => `<button class="cip ${!D.arama && D.suzgec === id ? 'secili' : ''}" data-is="suzgec" data-d="${id}">${ad}<b>${siparisler().filter(s => suzgecUyar(s, id)).length}</b></button>`).join('')}</div>
+                <div class="yatay cipler">${cipler.map(([id, ad]) => `<button class="cip ${(D.arama ? aramaKapsami() === id : D.suzgec === id) ? 'secili' : ''}" data-is="suzgec" data-d="${id}">${ad}<b>${siparisler().filter(s => suzgecUyar(s, id)).length}</b></button>`).join('')}</div>
             </div>
             ${yukleniyorSerit()}
             <div class="kartlar" id="ym-kartlar">${kartlarHtml(l)}</div>`;
@@ -399,9 +408,20 @@
     }
 
     /* Ana programın menüsü: ERP_PERM_GROUP_DEFS (01) içindeki EKRANLAR (APP_MODE_WHITELIST), kişinin yetkisiyle */
+    /* Mobilde başka grupta duran ekranlar (kullanıcı 23.10.2026: "iplik stoğunu dokumadan stok depo alanına alalım");
+       ana programın menüsü değişmez. Ekran, hedef grupta MAMUL_DEPO'nun ardına girer. */
+    const GRUP_TASI = { IPLIK: 'depo' };
     function ekranGruplari() {
-        const gruplar = ERP_PERM_GROUP_DEFS.map(g => ({ id: g.id, ad: g.ad, kodlar: g.kodlar.filter(k => APP_MODE_WHITELIST.includes(k) && erpUserCan(k)) }))
-            .filter(g => g.kodlar.length);
+        const tasinan = (k, gid) => !GRUP_TASI[k] || GRUP_TASI[k] === gid;
+        const gruplar = ERP_PERM_GROUP_DEFS.map(g => {
+            const kodlar = g.kodlar.filter(k => tasinan(k, g.id));
+            Object.entries(GRUP_TASI).forEach(([k, gid]) => {
+                if (gid !== g.id || kodlar.includes(k)) return;
+                const i = kodlar.indexOf('MAMUL_DEPO');
+                kodlar.splice(i >= 0 ? i + 1 : kodlar.length, 0, k);
+            });
+            return { id: g.id, ad: g.ad, kodlar: kodlar.filter(k => APP_MODE_WHITELIST.includes(k) && erpUserCan(k)) };
+        }).filter(g => g.kodlar.length);
         if (erpIsAdmin()) gruplar.push({ id: 'yonetim', ad: 'Yönetim', kodlar: ['GUNLUK_ISLEMLER', 'KULLANICI_YONETIMI'] });
         return gruplar;
     }
@@ -442,7 +462,9 @@
         /* konfeksiyon: ekran sekmesi (boş = ekranın ilk sekmesi), kalite "tüm aktif siparişler", planlama yer / planlılar, fason süzgeçleri */
         kfSekme: '', kfTumu: '', kpYer: 'HEPSI', kpPlanli: '', kfDurum: 'AKTIF', kfIs: 'HEPSI',
         /* planlama sekmesi + açık bekleyen kutusu, sevkiyat süzgeci, yapılacaklar durumu, rapor sekmesi */
-        plSekme: 'OZET', plDetay: '', svTip: 'TUMU', ydDurum: 'ACIK', rpSekme: 'YR_OZET',
+        plSekme: 'OZET', plDetay: '', svTur: 'MAMUL', svGun: '7', ydDurum: 'ACIK', rpSekme: 'YR_OZET',
+        /* fişler ve sevkiyat gün süzgeci (GUN_CIP) */
+        gun: 'HEPSI',
         /* terbiye tür / görünüm / durum / boyahane, numune tür / durum, kart grubu */
         tbTur: 'BOBIN', tbGor: 'IS', tbDurum: 'ACIK', tbFirma: 'HEPSI', nmTur: 'KUMAS', nmDurum: 'ACIK', kSekme: 'IPLIK',
         /* günlük işlemler gün / kişi / tür, sayım tipi / ekran, fason defter türü, konfeksiyon fason görünümü */
@@ -654,16 +676,26 @@
             <div class="liste-kutu">${sevkHtml}${sevkler.length > 40 ? `<div class="bos">İlk 40 satır gösteriliyor.</div>` : ''}</div>` : ''}`;
     }
 
+    /* Gün süzgeci (fişler + sevkiyat): Bugün / son 7 gün / son 30 gün / hepsi (yüklenen 120 gün) → { bas, bit } */
+    const GUN_CIP = [['BUGUN', 'Bugün'], ['7', '7 gün'], ['30', '30 gün'], ['HEPSI', 'Hepsi']];
+    function gunAraligi(kod) {
+        if (!kod || kod === 'HEPSI') return { bas: '', bit: '' };
+        const d = new Date();
+        d.setDate(d.getDate() - (kod === 'BUGUN' ? 0 : parseInt(kod, 10) - 1));
+        return { bas: erpYerelGun(d), bit: erpYerelGun() };
+    }
+
     /* Sevkiyat fişleri: ana programın fişleri (hareketlerden türer) */
     function fisEkran() {
         if (!D.fis.liste && !D.fis.yukleniyor && !D.fis.hata) setTimeout(() => fisYukle(false), 0);
         const tipler = [['HEPSİ', 'Hepsi'], ['MAMUL', 'Mamül'], ['KUMAS', 'Kumaş'], ['DOKUMA', 'Dokuma depo'], ['IPLIK', 'İplik']];
-        return stokEkranBas(modAd('MUHASEBE_FIS'), 'Fiş no, müşteri, plaka, ürün…', [tipler.map(([k, a]) => cip('st-tip', k, a, D.st.tip === k)).join('')], fisGovde());
+        return stokEkranBas(modAd('MUHASEBE_FIS'), 'Fiş no, müşteri, plaka, ürün…', [tipler.map(([k, a]) => cip('st-tip', k, a, D.st.tip === k)).join(''),
+            GUN_CIP.map(([k, a]) => cip('dk-set', 'gun=' + k, a, (D.st.gun || 'HEPSI') === k)).join('')], fisGovde());
     }
     function fisGovde() {
         if (D.fis.hata) return `<div class="kartlar"><div class="sip-kart"><div class="bos" style="color:#B42318">${esc(D.fis.hata)}</div></div></div>`;
         if (!D.fis.liste) return '<div class="kartlar"><div class="sip-kart"><div class="bos">Fişler okunuyor…</div></div></div>';
-        const l = muhasebeFisFiltreUygula(D.fis.liste, { q: D.st.ara, tip: D.st.tip, bas: '', bit: '' });
+        const l = muhasebeFisFiltreUygula(D.fis.liste, Object.assign({ q: D.st.ara, tip: D.st.tip }, gunAraligi(D.st.gun)));
         const kartlar = l.slice(0, D.st.limit).map(f => {
             const acik = D.st.acik === 'F|' + f.id;
             const tip = muhasebeFisTipEtiket(f.depo_grup, f.kalemler);
@@ -1120,9 +1152,18 @@
             }).join('');
             govde = `<div class="liste-kutu" style="margin:0">${govde || '<div class="bos">Kayıt yok.</div>'}</div>${dahaDugme(l.length)}`;
         } else if (s.kfSekme === 'FIS') {
-            const l = kfAra(_konfYikamaFisGecmisCache || [], f => [f.fis_no, f.firma, f.siparis_sno, f.user, f.not]);
-            govde = l.slice(0, s.limit).map(f => urunSatiri(`${f.fis_no} · ${f.firma}`, [f.siparis_sno, f.user, f.not].filter(Boolean).join(' · '),
-                `${fmt(f.toplam_ad)} ad · ${f.kalem_say} kalem`, f.tarih ? new Date(f.tarih).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')).join('');
+            const l = kfAra(_konfYikamaFisGecmisCache || [], f => [f.fis_no, f.firma, f.siparis_sno, f.user, f.not,
+                ...(f.satirlar || []).map(x => [x.siparis_sno, x.firma, x.desen, x.renk, x.ebat].join(' '))]);
+            /* fişe dokununca içeriği (kullanıcı 23.10.2026): fişin satırları — sipariş, ürün, renk, ebat, adet (04 konfYikamaFisGecmisSatirFromRaw) */
+            govde = l.slice(0, s.limit).map(f => {
+                const acik = s.acik === 'Y|' + f.id;
+                const satirlar = (f.satirlar || []).map(x => `<div class="bilgi-satir"><span><span style="font-weight:500">${esc([x.siparis_sno, x.desen].filter(Boolean).join(' · ') || '—')}</span>
+                    <span class="soluk"> ${esc([x.renk, x.ebat, x.firma].filter(Boolean).join(' · '))}</span></span><span class="d">${esc(fmt(parseInt(x.adet, 10) || 0))} ad</span></div>`).join('');
+                return `<div style="border-bottom:1px solid var(--cizgi)"><button style="display:block;width:100%;text-align:left" data-is="st-ac" data-d="${esc('Y|' + f.id)}">
+                    ${urunSatiri(`${f.fis_no} · ${f.firma}`, [f.siparis_sno, f.user, f.not].filter(Boolean).join(' · '),
+                        `${fmt(f.toplam_ad)} ad · ${f.kalem_say} kalem`, f.tarih ? new Date(f.tarih).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')}</button>
+                    ${acik ? `<div style="padding:0 14px 10px">${satirlar || '<div class="bos">Fişte satır yok.</div>'}</div>` : ''}</div>`;
+            }).join('');
             govde = `<div class="liste-kutu" style="margin:0">${govde || '<div class="bos">Yıkama fişi yok.</div>'}</div>${dahaDugme(l.length)}`;
         } else {
             const l = kfAra(m.yikamadaGruplar, g => [g.siparis_sno, g.firma, g.urun, g.renk, g.ebat]);
@@ -1225,26 +1266,16 @@
 
     /* ════ PLANLAMA · SEVKİYAT · RAPORLAR · YAPILACAKLAR (22.10.2026) — sayılar ana programın fonksiyonlarından:
        Planlama     planlamaModeli / planlamaAlanSatirlari / planlamaSiparisTopla / planlamaDetayRowsByKod (04)
-       Sevkiyat     planlamaIhtiyacSatirlariGetir / sevkiyatOzetModeli / sevkiyatSatirEslesir / sevkiyatSatirTipEslesir /
-                    sevkiyatSatirSirala / sevkiyatSatirSayilari (04) — sevk girişi (Yüklenen +) ve sevkiyat formları ana programda
+       Sevkiyat     sevkiyat fişlerinin kalemleri (assets/muhasebe-fis.js muhasebeFisFiltreUygula / muhasebeFisFisMiktarYazi) — 23.10.2026
+                    kullanıcı isteğiyle sipariş bazlı tablo yerine kalem kalem sevkler; sevk girişi ve sevkiyat formları ana programda
        Raporlar     raporVeriYukle + sekmenin dışa aktarım paketi (raporOzetDisaPaket …: ekran, Excel ve PDF aynı modelden — 10);
                     süzgeçler ana programın kendi ayar fonksiyonlarıyla (raporDonemTip, raporUretimAyar …)
        Yapılacaklar planlamaTodoYukle / planlamaTodoListeModeli / planlamaTodoSatirModeli (04) — ekleme / bitirme / silme ana programda ════ */
     const PLAN_EKRANLAR = ['PLANLAMA', 'SEVKIYAT', 'RAPORLAR', 'YAPILACAKLAR'];
-    Object.assign(D.dk, { pl: null, plOku: false, plOkuYuk: false, sv: false, svYuk: false, yd: false, ydYuk: false, rp: false, rpYuk: false });
+    Object.assign(D.dk, { pl: null, plOku: false, plOkuYuk: false, yd: false, ydYuk: false, rp: false, rpYuk: false });
     const plYukle = (zorla) => dkYukle('plOku', async () => {
         if (zorla) { _planlamaPerfCache.aylikTs = 0; _planlamaPerfCache.bugunTs = 0; }
         D.dk.pl = await planlamaModeli();
-    });
-    /* Sevkiyat: ekranın kendi okuması gibi (renderSevkiyat) — açık siparişlerin KD konfeksiyon + dokuma kapları, Kesim önü sevkleri */
-    const svYukle = (zorla) => dkYukle('sv', async () => {
-        const ttl = zorla ? 0 : (typeof KD_SOFT_TTL_MS === 'number' ? KD_SOFT_TTL_MS : 90000);
-        const aktif = siparisler().filter(s => !siparisKapaliMi(s));
-        const konf = aktif.filter(s => kdCacheStaleMi(s.id, 'KD_KONFEKSIYON', ttl)).map(s => s.id);
-        const dok = aktif.filter(s => kdCacheStaleMi(s.id, 'KD_DOKUMA', ttl)).map(s => s.id);
-        await Promise.all([konf.length ? sbKdGetMany(konf, 'KD_KONFEKSIYON', { force: true }) : null, dok.length ? sbKdGetMany(dok, 'KD_DOKUMA', { force: true }) : null]);
-        await konfLoadGlobalKumasGelis({ force: !!zorla, skipUa: true });
-        planlamaIhtiyacSatirCacheInvalidate();
     });
     const ydYukle = (zorla) => dkYukle('yd', () => planlamaTodoYukle(!!zorla));
     const rpYukle = (zorla) => dkYukle('rp', async () => {
@@ -1262,9 +1293,10 @@
         if (D.ekran === 'PLANLAMA') {
             satirlar.push(sekmeCip('plSekme', [['OZET', 'Özet'], ['UYARI', 'Akış uyarıları', D.dk.pl ? D.dk.pl.globalWarnings.length : null], ['SIMTEKS_KONF', 'Simteks konf.'], ['FASON_KONF', 'Fason konf.'], ['DOGRUDAN_SEVK', 'Doğrudan sevk']]));
         } else if (D.ekran === 'SEVKIYAT') {
-            const say = D.dk.sv ? sevkiyatOzetModeli(planlamaIhtiyacSatirlariGetir()).tipSay : {};
-            satirlar.push(sekmeCip('svTip', [['TUMU', 'Tümü', say.TUMU], ['HAZIR', 'Hazır', say.HAZIR], ['KALAN', 'Sipariş kalan', say.KALAN], ['KUMAS', 'Kumaş', say.KUMAS], ['URUN', 'Ürün', say.URUN]]));
-            ipucu = 'Sipariş no, müşteri, ürün, kod, renk…';
+            const say = D.fis.liste ? Object.fromEntries(SV_TURLER.map(([k]) => [k, svSatirlari(k).length])) : {};
+            satirlar.push(sekmeCip('svTur', SV_TURLER.map(([k, a]) => [k, a, say[k]])));
+            satirlar.push(sekmeCip('svGun', GUN_CIP));
+            ipucu = 'Ürün, müşteri, sipariş no, fiş no…';
         } else if (D.ekran === 'YAPILACAKLAR') {
             satirlar.push(sekmeCip('ydDurum', [['ACIK', 'Açık'], ['BITTI', 'Tamamlanan'], ['HEPSI', 'Hepsi']]));
             ipucu = 'Görev, sipariş, kişi…';
@@ -1272,7 +1304,8 @@
             satirlar.push(...rpCipler());
             ipucu = { YR_STOK: 'Stok kodu, ad ara…', YR_URETIM: 'Sipariş, müşteri, ürün, kişi ara…' }[s.rpSekme] || 'Sipariş, müşteri, ürün ara…';
         }
-        return stokEkranBas(modAd(D.ekran), ipucu, satirlar, planGovde());
+        /* Sevkiyat mobilde bütün türlerin sevkini gösterir — ana programdaki "(mamul)" eki yok */
+        return stokEkranBas(D.ekran === 'SEVKIYAT' ? 'Sevkiyat' : modAd(D.ekran), ipucu, satirlar, planGovde());
     }
     function planGovde() {
         if (D.ekran === 'PLANLAMA') return plGovde();
@@ -1345,38 +1378,38 @@
     }
 
     /* ── Sevkiyat ── */
+    /* ── Sevkiyat (kullanıcı 23.10.2026: "mamül, kumaş ve iplik olmak üzere kalem kalem sevkler yazılsın, siparişler
+       yazılmasın"): sevkiyat fişlerinin (assets/muhasebe-fis.js — hareketlerden türer) kalemleri tek tek, türe ve güne
+       göre. Tür süzgeci fiş ekranıyla aynı (muhasebeFisFiltreUygula); miktar fişteki gibi (muhasebeFisFisMiktarYazi).
+       Satıra dokununca fişi açılır. Ana programdaki sipariş bazlı Sevkiyat ekranı mobilde gösterilmez. ── */
+    const SV_TURLER = [['MAMUL', 'Mamül'], ['KUMAS', 'Kumaş'], ['IPLIK', 'İplik'], ['DOKUMA', 'Dokuma depo']];
+    function svSatirlari(tur) {
+        const fisler = muhasebeFisFiltreUygula(D.fis.liste || [], Object.assign({ q: '', tip: tur }, gunAraligi(D.st.svGun)));
+        return fisler.flatMap(f => (f.kalemler || []).map(k => ({ f, k })))
+            .sort((a, b) => String(b.f.created_at || '').localeCompare(String(a.f.created_at || '')));
+    }
     function svGovde() {
         const s = D.st;
-        if (!D.dk.sv) {
-            if (!D.dk.svYuk) setTimeout(() => svYukle(false), 0);
-            return dkHata() || dkBekliyor('Sevkiyat: kalem sayıları okunuyor…');
+        if (D.fis.hata) return dkBekliyor(D.fis.hata);
+        if (!D.fis.liste) {
+            if (!D.fis.yukleniyor) setTimeout(() => fisYukle(false), 0);
+            return dkBekliyor('Sevkiyat fişleri okunuyor…');
         }
-        const satirlar = planlamaIhtiyacSatirlariGetir();
-        const o = sevkiyatOzetModeli(satirlar);
-        const l = sevkiyatSatirSirala(satirlar.filter(r => sevkiyatSatirEslesir(r, s.ara) && sevkiyatSatirTipEslesir(r, s.svTip)));
-        const ozet = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px 16px 0">${[
-            ['Satır', `${fmt(o.kalemAdedi)} kalem<br><span class="soluk" style="font-weight:400">${fmt(o.cesitAdedi)} çeşit</span>`, '#101828'],
-            ['Sipariş', coklu(o.sipMt, o.sipAd, o.sipKg), '#101828'], ['Dokunan', coklu(o.dokMt, o.dokAd, o.dokKg), '#0E7C70'],
-            ['Sevk edilen', coklu(o.yukMt, o.yukAd, o.yukKg), '#067647'], ['Sipariş kalan', coklu(o.kalanSipMt, o.kalanSipAd, o.kalanSipKg), '#B42318'],
-            ['Depoda hazır', coklu(o.depoMt, o.depoAd, o.depoKg), '#B54708']
-        ].map(([a, v, renk]) => `<div class="kpi" style="flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px"><span class="kpi-ad">${a}</span><span style="font-size:13px;font-weight:700;line-height:1.35;color:${renk}">${v}</span></div>`).join('')}</div>`;
-        const ek = (m) => m ? `<span style="display:block;font-size:11px;color:#4A5FC1">${esc(m)}</span>` : '';
-        const kartlar = l.slice(0, s.limit).map(r => {
-            const x = sevkiyatSatirSayilari(r);
-            const b = x.birimLbl;
-            return `<div class="sip-kart"><span class="sip-ust"><span class="satir-orta"><span class="sip-no">${esc(r.sno)} · ${esc(r.urun)}</span>
-                    <span class="alt tek-satir">${esc([r.musteri, r.kod, r.renk, r.ebat].filter(Boolean).join(' · '))}</span></span>
-                    <span class="hap" style="background:${x.hazir > 0 ? '#FEF4E6' : '#F2F4F7'};color:${x.hazir > 0 ? '#B54708' : '#98A2B3'}">hazır ${esc(planlamaIhtiyacAdetYazi(x.hazir))} ${b}</span></span>
-                <span style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;font-size:12px">
-                    <span><span class="soluk" style="display:block;font-size:11px">Sipariş</span><b>${esc(planlamaIhtiyacMiktarYazi(r.miktar, r.birim))}</b></span>
-                    <span><span class="soluk" style="display:block;font-size:11px">Dokunan</span><b>${esc(planlamaIhtiyacAdetYazi(x.dok))} ${b}</b>${ek(r.ekDokunanMetin)}</span>
-                    <span><span class="soluk" style="display:block;font-size:11px">Sevk</span><b style="color:#067647">${esc(planlamaIhtiyacAdetYazi(x.yuk))} ${b}</b>${ek(r.ekYuklemeMetin)}</span>
-                    <span><span class="soluk" style="display:block;font-size:11px">Kalan</span><b style="color:${x.sipKalan > 0 ? '#B42318' : '#067647'}">${esc(planlamaIhtiyacAdetYazi(x.sipKalan))}</b>${ek(r.ekHazirMetin ? 'hazır ' + r.ekHazirMetin : '')}</span></span></div>`;
-        }).join('');
-        return `${ozet}<div class="kartlar"><div class="soluk" style="padding:0 4px">${fmt(l.length)} / ${fmt(satirlar.length)} satır · Hazır = Dokunan − Sevk · sevk girişi ana programda</div>
-            ${kartlar || `<div class="sip-kart"><div class="bos">${satirlar.length ? 'Aramaya / süzgece uyan satır yok.' : 'Aktif siparişte kalem yok.'}</div></div>`}${dahaDugme(l.length)}</div>`;
+        const hepsi = svSatirlari(s.svTur);
+        const q = s.ara.trim().toLocaleLowerCase('tr-TR');
+        const l = !q ? hepsi : hepsi.filter(({ f, k }) => [k.urun_adi, k.stok_kodu, k.renk, k.ebat, k.siparis_no, f.musteri, muhasebeFisGorunenNo(f)]
+            .join(' ').toLocaleLowerCase('tr-TR').includes(q));
+        const fisSay = new Set(l.map(x => x.f.id)).size;
+        const grup = s.svTur === 'DOKUMA' ? 'KUMAS' : s.svTur;
+        const toplam = l.length ? muhasebeFisKalemToplamYazi(l.map(x => x.k), grup) : '—';
+        const kartlar = l.slice(0, s.limit).map(({ f, k }) => `<button class="sip-kart" style="gap:4px;text-align:left" data-is="sv-fis" data-d="${esc(f.id + '|' + muhasebeFisGorunenNo(f))}">
+                <span style="display:flex;justify-content:space-between;gap:8px;width:100%"><span class="tek-satir" style="font-weight:600">${esc(k.urun_adi || k.stok_kodu || '—')}</span>
+                    <span style="font-weight:700;flex:none;color:#067647">${esc(muhasebeFisFisMiktarYazi(k))}</span></span>
+                <span class="alt tek-satir">${esc([k.stok_kodu !== k.urun_adi ? k.stok_kodu : '', k.renk, k.ebat, k.siparis_no].filter(Boolean).join(' · ') || '—')}</span>
+                <span class="soluk tek-satir">${esc([f.musteri || '—', muhasebeFisGorunenNo(f), tarihSaat(f.created_at)].join(' · '))}</span></button>`).join('');
+        return `${ozetSatir([['Kalem', fmt(l.length)], ['Fiş', fmt(fisSay)], ['Toplam', toplam]])}<div class="kartlar">
+            ${kartlar || `<div class="sip-kart"><div class="bos">${hepsi.length ? 'Aramaya uyan sevk yok.' : 'Bu süzgeçte sevk yok.'}</div></div>`}${dahaDugme(l.length)}</div>`;
     }
-
     /* ── Yapılacaklar (kişinin kendi görevleri; salt okunur) ── */
     function ydGovde() {
         const s = D.st;
@@ -2207,7 +2240,7 @@
         const l = listeSiparisleri();
         const kap = document.getElementById('ym-kartlar'); if (kap) kap.innerHTML = kartlarHtml(l);
         const say = document.getElementById('ym-sayi'); if (say) say.textContent = `${l.length} sipariş`;
-        document.querySelectorAll('.cip[data-is="suzgec"]').forEach(c => c.classList.toggle('secili', !D.arama && c.dataset.d === D.suzgec));
+        document.querySelectorAll('.cip[data-is="suzgec"]').forEach(c => c.classList.toggle('secili', D.arama ? c.dataset.d === aramaKapsami() : c.dataset.d === D.suzgec));
     }
 
     function tikla(e) {
@@ -2246,6 +2279,12 @@
             case 'st-grup': D.st.grup = d; D.st.limit = LISTE_ADIM; break;
             case 'st-durum': D.st.durum = d; D.st.limit = LISTE_ADIM; break;
             case 'st-ac': D.st.acik = D.st.acik === d ? null : d; break;
+            case 'fis-bugun':   /* ana ekran "Bugün sevk edilen" → bugünün sevkiyat fişleri (23.10.2026) */
+                D.detay = null; D.ekran = 'MUHASEBE_FIS'; D.st = stBos(); D.st.gun = 'BUGUN'; break;
+            case 'sv-fis': {   /* Sevkiyat satırı → o satırın fişi açık */
+                const i = d.indexOf('|');
+                D.ekran = 'MUHASEBE_FIS'; D.st = stBos(); D.st.ara = d.slice(i + 1); D.st.acik = 'F|' + d.slice(0, i); break;
+            }
             case 'st-daha': D.st.limit += LISTE_ADIM; break;
             case 'st-hareket': {   /* kalemin hareketleri: depo defteri o kanal + stok koduyla aranmış açılır */
                 const i = d.indexOf('|');
@@ -2306,7 +2345,7 @@
                 else if (D.ekran === 'KONFEKSIYON_PLANLAMA') { D.dk.kpOku = false; kpYukle(); }
                 else if (D.ekran === 'FASON_TAKIP') { D.dk.kfs = false; kfsYukle(true); }
                 else if (D.ekran === 'PLANLAMA') { D.dk.plOku = false; plYukle(true); }
-                else if (D.ekran === 'SEVKIYAT') { D.dk.sv = false; svYukle(true); }
+                else if (D.ekran === 'SEVKIYAT') fisYukle(true);
                 else if (D.ekran === 'YAPILACAKLAR') { D.dk.yd = false; ydYukle(true); }
                 else if (D.ekran === 'RAPORLAR') { D.dk.rp = false; rpYukle(true); }
                 else if (D.ekran === 'BOYAHANE_URETIM') { D.dk.tb = false; tbYukle(true); }
@@ -2366,7 +2405,7 @@
        Tezgah Planlama yalnız ilgili değişiklikte okur (04 erpLiveEkranIlgiliMi), sayım oturumu sürerken sayım çizilmez.
        Kendi önbelleği olan ekranın okuyucusu sessizce yeniden çalışır (eski görüntü yerinde kalır, yükleniyor yazmaz). */
     const YM_CANLI_OKU = {
-        PLANLAMA: () => plYukle(false), SEVKIYAT: () => svYukle(false), YAPILACAKLAR: () => ydYukle(false),
+        PLANLAMA: () => plYukle(false), SEVKIYAT: () => YM_CANLI_OKU.MUHASEBE_FIS(), YAPILACAKLAR: () => ydYukle(false),
         RAPORLAR: () => rpYukle(false), KONFEKSIYON_PLANLAMA: () => kpYukle(), NUMUNE: () => nmYukle(false),
         DOKUMA_DEPO: () => erpLiveEkranIlgiliMi('DOKUMA_DEPO') ? ddYukle(true) : 'atla',
         TEZGAH_PLANLAMA: () => erpLiveEkranIlgiliMi('TEZGAH_PLANLAMA') ? dkTpYukle(true) : 'atla',

@@ -578,7 +578,11 @@ async function erpAkisEkle(satirHam, etiket) {
         try {
             if (d > 0 && gid && await erpAkisGidVarMi(satir, gid)) return { ok: true };
             const { error } = await sb.from('siparis_akis').insert([satir]);
-            if (!error) return { ok: true };
+            if (!error) {
+                /* kalite kaydı: açık siparişin kalite sayısı kayıtlardan (04 konfKaliteKayitTazele) — ekran hemen görsün */
+                if (typeof konfKaliteKayitTazele === 'function' && ortakKaliteKayitIslemleri().includes(String(satir.islem || ''))) konfKaliteKayitTazele(satir.siparis_id);
+                return { ok: true };
+            }
             son = error;
         } catch (e) { son = e; }
         if (!erpAgHatasiMi(son)) break;
@@ -7434,6 +7438,8 @@ function erpLiveApplyPayloadYap(table, payload) {
                 erpLiveKumasGelisTazele(satir.siparis_id);
             }
             if (!kendiAkis) erpLiveAkisOnbellek(satir);
+            /* Kalite kaydı (eklenen / iptal edilen, kendi yazması da): açık siparişin kalite sayısı bu kayıtlardan */
+            if (ortakKaliteKayitIslemleri().includes(String(satir.islem || ''))) konfKaliteKayitTazele(satir.siparis_id);
             /* Geri alınan sevk (silme olayında yalnız id gelir): önbellekteki sevk satırıysa düşür — istek atılmaz */
             if (String(payload?.eventType || payload?.event || '').toUpperCase() === 'DELETE' && payload?.old?.id != null && _konfGlobalKumasGelisAt
                 && (_konfGlobalKumasGelisCache || []).some(r => String(r.akis_id) === String(payload.old.id))) {
@@ -8204,16 +8210,15 @@ function dashboardUretimOzetHesapla(aktifSiparisler) {
             const u = (kdD.urunler || {})[i] || {};
             const dokOzet = typeof dokumaUrunIkinciOzet === 'function' ? dokumaUrunIkinciOzet(u, k) : { ikinci: 0 };
             const dokAdet = dokOzet.ikinci || 0;
-            const kes = parseInt(rowK.kesilen, 10) || 0;
-            const dik = parseInt(rowK.dikilen, 10) || 0;
-            const kk = parseInt(rowK.kk_gecen, 10) || 0;
-            const kol = parseInt(rowK.kolide, 10) || 0;
+            /* tek kural (açık siparişte kayıtların toplamı — 23.10.2026) */
+            const say = konfKalemUretimSayilari(s.id, i);
+            const kes = say.kesim, dik = say.dikim, kk = say.kalite, kol = say.koli;
             const pay = sipAdet > 0 ? hedef / sipAdet : 0;
             const ySevk = parseInt(kdK.panel_yikama_sevk, 10) || 0;
             const yGel = parseInt(kdK.panel_yikama_gelen, 10) || 0;
             const sipSevk = parseInt(kdK.panel_sevk_toplam, 10) || 0;
             const yBek = yikKalemde
-                ? Math.max(0, (parseInt(rowK.yikama_sevk, 10) || 0) - (parseInt(rowK.yikama_gelen, 10) || 0))
+                ? Math.max(0, say.yikSevk - say.yikGel)
                 : Math.max(0, Math.round((ySevk - yGel) * pay));
             const sevkPr = Math.round(sipSevk * pay);
             const kesBek = Math.max(0, Math.round(dokAdet) - kes);
@@ -11050,7 +11055,7 @@ function planlamaIhtiyacSatirlariGetir() {
                 dok = dokAd;
                 dokBirim = 'ADET';
             }
-            const kalite = parseInt(rowK.kk_gecen, 10) || 0;
+            const kalite = konfKalemUretimSayilari(s.id, i).kalite;   /* tek kural (açık siparişte kalite kayıtları) */
             const sevkToplam = planlamaIhtiyacSevkGoster(s.id, i, rowK);
             const yukleme = sevkToplam;
             const siparisKalan = Math.max(0, Math.round(miktar - yukleme));
@@ -11587,14 +11592,13 @@ async function planlamaModeli() {
             const dokAdet = dokOzet.ikinci;
             const dokM = dokOzet.metre;
             const dokIkinciTip = dokOzet.tip;
-            const kes = parseInt(rowK.kesilen, 10) || 0;
-            const dik = parseInt(rowK.dikilen, 10) || 0;
-            const kk = parseInt(rowK.kk_gecen, 10) || 0;
-            const kol = parseInt(rowK.kolide, 10) || 0;
+            /* tek kural (açık siparişte kayıtların toplamı — 23.10.2026) */
+            const say = konfKalemUretimSayilari(s.id, i);
+            const kes = say.kesim, dik = say.dikim, kk = say.kalite, kol = say.koli;
             const pay = sipAdet > 0 ? hedef / sipAdet : 0;
             const sevkPr = Math.round(sipSevk * pay);
-            const ySevkPr = yikKalemde ? (parseInt(rowK.yikama_sevk, 10) || 0) : Math.round(ySevk * pay);
-            const yGelPr = yikKalemde ? (parseInt(rowK.yikama_gelen, 10) || 0) : Math.round(yGel * pay);
+            const ySevkPr = yikKalemde ? say.yikSevk : Math.round(ySevk * pay);
+            const yGelPr = yikKalemde ? say.yikGel : Math.round(yGel * pay);
             const yBek = yikKalemde ? Math.max(0, ySevkPr - yGelPr) : Math.max(0, Math.round((ySevk - yGel) * pay));
             yikBekUrunTop += yBek;
             const sevkYuzde = planlamaSevkTamamlanma(hedef, sevkPr);
@@ -13626,6 +13630,7 @@ async function konfLoadKesimGecmis(opts = {}) {
             await konfKyRotalariUaIleDuzelt();
             _konfKyRotaDuzeltildi = true;
         }
+        await konfKaliteKayitlariYukle();
         return _konfKesimGecmisCache;
     }
     try {
@@ -13677,6 +13682,7 @@ async function konfLoadKesimGecmis(opts = {}) {
         console.warn('konfLoadKesimGecmis', e);
         if (!_konfKesimGecmisCache.length) _konfKesimGecmisCache = [];
     }
+    await konfKaliteKayitlariYukle();   /* açık siparişin kalite sayısı kayıtlardan — tabloyla birlikte (kendi süresi 10 dk) */
     return _konfKesimGecmisCache;
 }
 
@@ -16843,9 +16849,16 @@ function konfManuelKaliteKalemOzet(siparisId, kalemIdx) {
         havuz += o.havuz;
     });
     const kd = (_kdCache[`KD_KONFEKSIYON_${siparisId}`] || {})[`kalem_${kalemIdx}`] || {};
-    kk = Math.max(kk, parseInt(kd.kk_gecen || 0, 10) || 0);
     sevk = Math.max(sevk, parseInt(kd.sevk_edilen || kd.sevk_adet || 0, 10) || 0);
-    kes = Math.max(kes, parseInt(kd.kesilen || 0, 10) || 0);
+    if (konfKalemKayitlari(siparisId, kalemIdx)) {
+        /* açık sipariş: tek kural — kalite kayıtları, kesim tablosu (23.10.2026) */
+        const say = konfKalemUretimSayilari(siparisId, kalemIdx);
+        kk = say.kalite;
+        kes = say.kesim;
+    } else {
+        kk = Math.max(kk, parseInt(kd.kk_gecen || 0, 10) || 0);
+        kes = Math.max(kes, parseInt(kd.kesilen || 0, 10) || 0);
+    }
     havuz = Math.max(havuz, kes, kk);
     return { kk, sevk, kes, havuz, row: rows[0] || null };
 }
@@ -17609,9 +17622,16 @@ function konfManuelSevkKalemOzet(siparisId, kalemIdx) {
         });
     }
     const kd = (_kdCache[`KD_KONFEKSIYON_${siparisId}`] || {})[`kalem_${kalemIdx}`] || {};
-    kk = Math.max(kk, parseInt(kd.kk_gecen || 0, 10) || 0);
     sevk = Math.max(sevk, parseInt(kd.sevk_edilen || kd.sevk_adet || 0, 10) || 0);
-    kes = Math.max(kes, parseInt(kd.kesilen || 0, 10) || 0);
+    if (konfKalemKayitlari(siparisId, kalemIdx)) {
+        /* açık sipariş: tek kural — kalite kayıtları, kesim tablosu (23.10.2026) */
+        const say = konfKalemUretimSayilari(siparisId, kalemIdx);
+        kk = say.kalite;
+        kes = say.kesim;
+    } else {
+        kk = Math.max(kk, parseInt(kd.kk_gecen || 0, 10) || 0);
+        kes = Math.max(kes, parseInt(kd.kesilen || 0, 10) || 0);
+    }
     return { kk, sevk, kes, kalan: Math.max(0, kk - sevk), row: null };
 }
 
@@ -18612,20 +18632,104 @@ function konfGetKdForSiparis(siparisId) {
     return degisti ? merged : base;
 }
 
+/* ── AÇIK SİPARİŞLERİN KALİTE KAYITLARI (23.10.2026, kullanıcı: "ne girildiyse o, sisteme ne yazılmışsa o") ──
+   Açık siparişte kalite = kalite kayıtlarının toplamı (30 ortakKonfKalemKayitSayilari). Yalnız AÇIK siparişlerin satırları
+   okunur (23.10 ölçüm: 600 satır); kesim tablosu okunurken birlikte (konfLoadKesimGecmis), tamamı 10 dk'da bir. Canlı
+   değişiklikte (başka cihaz ya da kendi yazması) yalnız o siparişin satırları yeniden okunur — konfKaliteKayitTazele. */
+const _konfKaliteKayit = { map: null, at: 0, yuk: null };
+const KONF_KALITE_KAYIT_TAM_MS = 10 * 60000;
+function konfKaliteKayitSatir(r) {
+    let j = {};
+    try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
+    return { id: r.id, sid: String(r.siparis_id), ki: ortakKaliteKayitKalemi(j), islem: r.islem, miktar: r.miktar, not: j };
+}
+async function konfKaliteKayitOku(sidler) {
+    const out = [];
+    for (let i = 0; i < sidler.length; i += 150) {
+        const { data, error } = await sbTumSatirlar(() => sb.from('siparis_akis').select('id,siparis_id,islem,kalem_ad,miktar,notlar')
+            .in('siparis_id', sidler.slice(i, i + 150)).in('islem', ortakKaliteKayitIslemleri()).order('id', { ascending: true }));
+        if (error) throw error;
+        out.push(...(data || []));
+    }
+    return out.map(konfKaliteKayitSatir);
+}
+async function konfKaliteKayitlariYukle(force) {
+    if (_konfKaliteKayit.yuk) return _konfKaliteKayit.yuk;
+    if (!force && _konfKaliteKayit.map && Date.now() - _konfKaliteKayit.at < KONF_KALITE_KAYIT_TAM_MS) return _konfKaliteKayit.map;
+    const acik = ((typeof dataCache !== 'undefined' && dataCache.siparisler) || []).filter((s) => !ortakSiparisKapaliMi(s.durum)).map((s) => String(s.id));
+    if (!acik.length || typeof sb === 'undefined' || !sb) return _konfKaliteKayit.map;
+    _konfKaliteKayit.yuk = (async () => {
+        try {
+            const satirlar = await konfKaliteKayitOku(acik);
+            const map = new Map(acik.map((sid) => [sid, []]));
+            satirlar.forEach((r) => { if (map.has(r.sid)) map.get(r.sid).push(r); });
+            _konfKaliteKayit.map = map;
+            _konfKaliteKayit.at = Date.now();
+        } catch (e) {
+            console.warn('kalite kayıtları okunamadı:', e?.message || e);
+        } finally {
+            _konfKaliteKayit.yuk = null;
+        }
+        return _konfKaliteKayit.map;
+    })();
+    return _konfKaliteKayit.yuk;
+}
+const _konfKaliteBekleyen = new Set();
+let _konfKaliteZ = null;
+function konfKaliteKayitTazele(sid) {
+    if (!_konfKaliteKayit.map || sid == null || sid === '') return;
+    _konfKaliteBekleyen.add(String(sid));
+    if (_konfKaliteZ) return;
+    _konfKaliteZ = setTimeout(async () => {
+        _konfKaliteZ = null;
+        const sidler = [..._konfKaliteBekleyen];
+        _konfKaliteBekleyen.clear();
+        try {
+            const satirlar = await konfKaliteKayitOku(sidler);
+            sidler.forEach((sid) => _konfKaliteKayit.map.set(sid, satirlar.filter((r) => r.sid === sid)));
+            erpLiveIzYaz('siparis_akis', { islem: 'KALİTE KONTROL' });
+            erpLiveScheduleUi('realtime');
+        } catch (e) {
+            _konfKaliteKayit.at = 0;   /* sonraki yüklemede tamamı */
+        }
+    }, 400);
+}
+/** Sipariş kapalıysa (eski kural geçer) ya da açık siparişin kalite kayıtları okunmuşsa true. */
+function konfKaliteKayitHazirMi(siparisId) {
+    const s = ((typeof dataCache !== 'undefined' && dataCache.siparisler) || []).find((x) => String(x.id) === String(siparisId));
+    return !s || ortakSiparisKapaliMi(s.durum) || !!(_konfKaliteKayit.map && _konfKaliteKayit.map.has(String(siparisId)));
+}
+/** Açık siparişin kalem kayıtları { ky, kalite } — sipariş kapalıysa ya da kayıtlar okunmamışsa null (eski kural). */
+function konfKalemKayitlari(siparisId, kalemIdx) {
+    const sid = String(siparisId);
+    const kalite = _konfKaliteKayit.map && _konfKaliteKayit.map.get(sid);
+    if (!kalite || !_konfKesimGecmisAt) return null;
+    const s = ((typeof dataCache !== 'undefined' && dataCache.siparisler) || []).find((x) => String(x.id) === sid);
+    if (!s || ortakSiparisKapaliMi(s.durum)) return null;
+    const ki = Number(kalemIdx);
+    const ky = (konfSiparisSatirDizini(_konfSidDizinKy, _konfKesimGecmisCache || []).get(sid) || []).filter((k) => {
+        let i = parseInt(k.kalem_idx, 10);
+        if (!Number.isFinite(i) || i < 0) i = typeof konfUaKalemIdxCoz === 'function' ? konfUaKalemIdxCoz(siparisId, k.kalem_idx, k.desen) : -1;
+        return i === ki;
+    });
+    return { ky, kalite: kalite.filter((r) => r.ki === ki) };
+}
+
 /**
  * TEK KURAL — bir kalemin üretim sayıları. Konfeksiyon Panel, mobil ve ana program aynı sayıyı gösterir.
- * Kaynaklar: KD_KONFEKSIYON (Veri Girişi) + konf_kesim_yikama tablosu (Ürün Ara kesim, yıkama fişi)
- * + KUMAS_GELIS pipeline (ana program manuel girişleri); her alan için en büyüğü.
- * siparis_akis günlüğü İZ kaydıdır, toplama GİRMEZ: günlük toplamı şişebiliyor
- * (SP391 günlük 673 / panel 161) ya da eksik kalabiliyor. Doğruluk referansı panel (kullanıcı, 19.09.2026).
+ * AÇIK sipariş (23.10.2026): sayı = kayıtların toplamı — kesim / yıkama konf_kesim_yikama satırları, kalite kalite kayıtları
+ * (30 ortakKonfKalemKayitSayilari). KAPANMIŞ sipariş (ya da kayıtlar henüz okunmadıysa) eski kural: KD_KONFEKSIYON +
+ * konf_kesim_yikama + KUMAS_GELIS sayaçları, her alan için en büyüğü (kayıt tutulmadan önceki dönemde sayı yalnız kaptaydı).
  * kdKonf verilirse (ör. fason birleştirilmiş KD) onun satırı da hesaba katılır.
  */
 function konfKalemUretimSayilari(siparisId, kalemIdx, kdKonf) {
-    /* Hesap ORTAK kuralda (30-ortak-kurallar.js) — Konfeksiyon Panel aynı fonksiyonu çağırır */
-    return ortakKonfKalemSayilari([
+    /* Hesap ORTAK kuralda (30-ortak-kurallar.js) — Konfeksiyon Panel aynı fonksiyonları çağırır */
+    const kap = [
         (kdKonf || {})[`kalem_${kalemIdx}`],
         (konfGetKdForSiparis(siparisId) || {})[`kalem_${kalemIdx}`]
-    ]);
+    ];
+    const kayit = konfKalemKayitlari(siparisId, kalemIdx);
+    return kayit ? ortakKonfKalemKayitSayilari(kap, kayit.ky, kayit.kalite) : ortakKonfKalemSayilari(kap);
 }
 
 /** Sipariş toplamı = kalemlerin konfKalemUretimSayilari toplamı (aynı tek kural). */
@@ -53908,6 +54012,55 @@ function ortakKonfKalemSayilari(kalemSatirlari) {
     };
 }
 
+/* ── AÇIK SİPARİŞ: sayı = kayıtların toplamı (23.10.2026, kullanıcı: "büyük olanı alma olayı tamamen yanlış — ne
+   girildiyse o, sisteme ne yazılmışsa o") ── Kapanmış sipariş bugünkü sayısıyla kalır (ortakKonfKalemSayilari; kayıt
+   tutulmadan önceki dönemde sayı yalnız kaptaydı). Hangi kuralın geçeceğini çağıran seçer: sipariş açık + kayıtlar
+   yüklüyse bu, değilse eski kural. */
+
+/** Kalite kaydı sayılan işlemler: Konfeksiyon Panel 'KALİTE KONTROL', ana program Kalite ekranı 'KK_GECEN', sipariş
+ *  penceresi (eski) 'KALITE', düzeltme 'KALITE_DUZELTME'. */
+function ortakKaliteKayitIslemleri() {
+    return ['KALİTE KONTROL', 'KALITE KONTROL', 'KALİTE', 'KALITE', 'KK_GECEN', 'KALITE_DUZELTME'];
+}
+
+/** Sipariş kapalı mı — ana programın 02 siparisKapaliMi ile aynı: TAMAMLANDI ya da İPTAL (İ / ı yazımı fark etmez);
+ *  boş durum açık. Yeni kuralın hangi siparişte geçeceğini üç program bununla seçer. */
+function ortakSiparisKapaliMi(durum) {
+    const d = String(durum || '').trim().toUpperCase().replace(/İ/g, 'I').replace(/ı/g, 'I');
+    return d === 'TAMAMLANDI' || d === 'IPTAL';
+}
+
+/** Kalite kaydının kalemi: notlardaki kalem_idx (23.10 ölçüm: açık siparişlerin 600 kaydının hepsinde var); yoksa -1. */
+function ortakKaliteKayitKalemi(not) {
+    const ki = parseInt(not && not.kalem_idx, 10);
+    return Number.isInteger(ki) && ki >= 0 ? ki : -1;
+}
+
+/** Bir kalemin kalite kayıtlarının toplamı. Satır: { islem, miktar, not } (not = notlar JSON'u, nesne). İptal / silinen
+ *  satır sayılmaz; kaydın adedi Konfeksiyon Panel Girişler listesindeki gibi not.kk_gecen ?? not.gecen_adet ?? miktar
+ *  (panelde düzeltilen kayıtta yeni adet notta, miktar sütunu eski kalır); düzeltme satırında yalnız 1. kalite payı
+ *  (not.duzeltme.kk, eksi) düşer. Toplam eksiye inmez. */
+function ortakKaliteKayitToplam(kayitlar) {
+    let t = 0;
+    (kayitlar || []).forEach((r) => {
+        const j = (r && r.not) || {};
+        if (!r || j.panel_silindi || j.silindi || j.iptal) return;
+        const islem = String(r.islem || '');
+        if (islem === 'KALITE_DUZELTME') t += Number((j.duzeltme || {}).kk) || 0;
+        else if (ortakKaliteKayitIslemleri().includes(islem)) t += Number(j.kk_gecen ?? j.gecen_adet ?? r.miktar) || 0;
+    });
+    return Math.max(0, Math.round(t));
+}
+
+/** AÇIK SİPARİŞİN kalem sayıları: kesim / yıkamaya giden / yıkamadan gelen = kesim-yıkama tablosunun satırları,
+ *  kalite = kalite kayıtları. Ayrı kaydı olmayan alanlar (dikim, koli, 2. kalite, tamir, imha, fire) kaptaki değer.
+ *  Kap ve KUMAS_GELIS sayaçları bu sayılar için KAYNAK DEĞİL (yalnız kopya). */
+function ortakKonfKalemKayitSayilari(kapSatirlari, kyRows, kaliteKayitlari) {
+    const kap = ortakKonfKalemSayilari(kapSatirlari);
+    const t = ortakKonfTabloToplam(kyRows);
+    return Object.assign(kap, { kesim: t.kesilen, yikSevk: t.yikSevk, yikGel: t.yikGel, kalite: ortakKaliteKayitToplam(kaliteKayitlari) });
+}
+
 /* ── Dokuma Depo ─────────────────────────────────────────────────────── */
 
 /** "12.10.2026 09:30:00" (TR), ISO metni, Date ya da milisaniye → Date | null. */
@@ -58073,7 +58226,9 @@ function erpYapiUretimEskiler(sid, k, u, out) {
         e.dokuma_ham_adet = d.adet;
     }
     if (out && !out.kumas && ortakKalemBirim(k) === 'ADET' && yuklu(`KD_KONFEKSIYON_${sid}`)
-        && typeof _konfKesimGecmisAt !== 'undefined' && _konfKesimGecmisAt && typeof _konfGlobalKumasGelisAt !== 'undefined' && _konfGlobalKumasGelisAt) {
+        && typeof _konfKesimGecmisAt !== 'undefined' && _konfKesimGecmisAt && typeof _konfGlobalKumasGelisAt !== 'undefined' && _konfGlobalKumasGelisAt
+        /* açık siparişte kalite kayıtlardan (23.10.2026): kayıtlar okunmadan gösterilen sayı eski kuraldandır */
+        && (typeof konfKaliteKayitHazirMi !== 'function' || konfKaliteKayitHazirMi(sid))) {
         Object.assign(e, { kesim: out.kesim, yik_sevk: out.yikSevk, yik_gel: out.yikGel, dikim: out.dikim, kalite: out.kalite,
             koli: out.koli, iki_kalite: out.ikiKalite, tamir: out.tamir, imha: out.imha });
     }
