@@ -218,7 +218,9 @@ function mamulTopluSiparisOzetHesapla(row) {
         ? (_kdCache[`KD_KONFEKSIYON_${sid}`][`kalem_${ki}`] || {})
         : {};
     let yukleme = 0;
-    if (typeof planlamaIhtiyacSevkAdet === 'function') {
+    if (typeof planlamaIhtiyacSevkGoster === 'function') {   /* M1: YENI'de yeni sevk sayısı (04) */
+        yukleme = Math.round(planlamaIhtiyacSevkGoster(sid, ki, rowK) || 0);
+    } else if (typeof planlamaIhtiyacSevkAdet === 'function') {
         yukleme = Math.round(planlamaIhtiyacSevkAdet(sid, ki, rowK) || 0);
     } else {
         yukleme = Math.max(

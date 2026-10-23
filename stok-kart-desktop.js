@@ -2532,10 +2532,9 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.kumasKartListeyeVaryantEkle = kumasKartListeyeVaryantEkle;
 
-    function kumasKartListeGrupSatirHtml(grup) {
-        const esc = (x) => (typeof pdfEsc === 'function' ? pdfEsc(x) : String(x ?? ''));
+    /** Kumaş kart listesi satırının alanları (ekran yok; ana program + mobil). */
+    function kumasKartListeSatirModeli(grup) {
         const parent = grup.parent?.record;
-        const idx = grup.parent?.idx ?? 0;
         const d = typeof kumasDokumaAlanlariOku === 'function' ? kumasDokumaAlanlariOku(parent) : {};
         const varyantlar = kumasKartListeVaryantVerisiOlustur(grup);
         const vSayToplam = typeof kumasKartListeVaryantSayisi === 'function'
@@ -2544,16 +2543,24 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         /* Tek varyantlı kart da açılır + "1 varyant" rozeti (07.10.2026): eskiden ≥2 idi, SM-0039-1 gibi
            tek varyant listede hiç görünmüyordu. Varyantsız kartta terbiye sütunu kartın kendi terbiyesi. */
         const cokluVaryant = vSayToplam >= 1;
-        const expanded = cokluVaryant && window._kumasKartExpanded.has(grup.anaKod);
-        const anaEsc = typeof erpAttr === 'function' ? erpAttr(grup.anaKod) : grup.anaKod;
         const hucre0 = !cokluVaryant ? (kumasVaryantAileVerisiOku(grup.anaKod)[0] || null) : null;
         const toplamMt = typeof kumasAileCanliStokMt === 'function'
             ? kumasAileCanliStokMt(grup.anaKod)
             : (parseFloat(parent?.miktar_mt) || 0);
+        const terbiye = cokluVaryant ? '' : (hucre0?.terbiye || d.terbiye || '—');
+        return { anaKod: grup.anaKod, parent, d, varyantlar, vSayToplam, cokluVaryant, terbiye, toplamMt };
+    }
+    window.kumasKartListeSatirModeli = kumasKartListeSatirModeli;
+    function kumasKartListeGrupSatirHtml(grup) {
+        const esc = (x) => (typeof pdfEsc === 'function' ? pdfEsc(x) : String(x ?? ''));
+        const idx = grup.parent?.idx ?? 0;
+        const { d, vSayToplam, cokluVaryant, terbiye, toplamMt } = kumasKartListeSatirModeli(grup);
+        const expanded = cokluVaryant && window._kumasKartExpanded.has(grup.anaKod);
+        const anaEsc = typeof erpAttr === 'function' ? erpAttr(grup.anaKod) : grup.anaKod;
         const mtClr = toplamMt > 0 ? 'var(--emerald-c)' : (toplamMt < 0 ? 'var(--rose-c)' : 'var(--text3)');
         const terbiyeOzet = cokluVaryant
             ? `<span class="sk-kart-badge">${vSayToplam} varyant</span>`
-            : esc(hucre0?.terbiye || d.terbiye || '—');
+            : esc(terbiye);
         const stokMetin = `${toplamMt.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} mt`;
         /* Tarak eni / mamül en (07.10.2026): aynı adlı kartlar çoğu zaman yalnız enle ayrılıyor —
            listede görünsün. Telefonda sütunlar gizli; desen adının yanına kısa "180 / 155" eklenir. */
@@ -3785,16 +3792,23 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.mamulStokListeTabloKapatHtml = mamulStokListeTabloKapatHtml;
 
-    function mamulStokListeGrupSatirHtml(grup) {
+    /** Mamül kart listesi satırının alanları (ekran yok; ana program + mobil). */
+    function mamulKartListeSatirModeli(grup) {
         const parent = grup.parent?.record;
-        const idx = grup.parent?.idx ?? 0;
         const d = stokKartDokumaAlanlariOku(parent);
-        const expanded = window._mamulKartExpanded.has(grup.anaKod);
-        const varyantSayisi = mamulListeVaryantVerisiOlustur(grup).length;
+        const varyantlar = mamulListeVaryantVerisiOlustur(grup);
+        const varyantSayisi = varyantlar.length;
         const toplamStok = mamulStokBakiyeToplamText(
             (grup.children.length ? grup.children.map(x => x.record?.desen_kodu) : [grup.anaKod]).filter(Boolean)
         );
         const renkOzet = varyantSayisi ? `${varyantSayisi} renk varyantı` : (d.renk_varyant || '—');
+        return { anaKod: grup.anaKod, parent, d, varyantlar, varyantSayisi, toplamStok, renkOzet };
+    }
+    window.mamulKartListeSatirModeli = mamulKartListeSatirModeli;
+    function mamulStokListeGrupSatirHtml(grup) {
+        const idx = grup.parent?.idx ?? 0;
+        const expanded = window._mamulKartExpanded.has(grup.anaKod);
+        const { d, toplamStok, renkOzet } = mamulKartListeSatirModeli(grup);
         const anaEsc = typeof erpAttr === 'function' ? erpAttr(grup.anaKod) : grup.anaKod;
         const row = `<div class="sk-kart-row${expanded ? ' is-expanded' : ''}"><div class="mamul-stok-liste-grid mamul-stok-liste-grid--row${expanded ? ' mamul-stok-liste-grid--expanded' : ''}" onclick="if(!event.target.closest('button'))showDetail(${idx})" title="Detaylı üretim kartını aç">
             <button type="button" class="mamul-stok-grid__expand" onclick="mamulKartListeToggle('${anaEsc}', event)" title="Renk / atkı varyantlarını aç-kapat">${expanded ? '▼' : '▶'}</button>
@@ -3817,21 +3831,43 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.mamulStokListeGrupSatirHtml = mamulStokListeGrupSatirHtml;
 
+    /** Kart sayıları (Stok kartları üst kutuları): q boşsa hepsi (ana program + mobil). */
+    function stokKartListeSayilari(q) {
+        const lib = dataCache.kumas_kutuphanesi || [];
+        const uy = (i) => !q || stokKartAramaEslesir(i, q);
+        const iplik = iplikKartlariListe().filter(uy).length;
+        const kumas = kumasKartListeGruplariOlustur(
+            lib.filter(i => stokKartGrupEslesir(i, 'KUMAS', { ignoreTipFiltre: true }) && uy(i))
+                .filter(i => typeof kumasKartListeGosterilebilirMi !== 'function' || kumasKartListeGosterilebilirMi(i))
+        ).length;
+        const mamul = mamulKartListeGruplariOlustur(lib.filter(i => stokKartGrupEslesir(i, 'MAMUL') && uy(i))).length;
+        return { iplik, kumas, mamul, toplam: iplik + kumas + mamul };
+    }
+    window.stokKartListeSayilari = stokKartListeSayilari;
+    /** "Tümü" görünümünün kartları: aramaya uyan iplik kartları + kumaş / mamül satırları (yeni önce) (ana program + mobil). */
+    function stokKartTumuSatirlari(sLower) {
+        const iplikRows = (typeof iplikKartlariListe === 'function' ? iplikKartlariListe() : []).filter(i => stokKartAramaEslesir(i, sLower));
+        const lib = dataCache.kumas_kutuphanesi || [];
+        const kumasRows = lib.filter(i => stokKartGrupEslesir(i, 'KUMAS') && stokKartAramaEslesir(i, sLower))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const mamulRows = lib.filter(i => stokKartGrupEslesir(i, 'MAMUL') && stokKartAramaEslesir(i, sLower))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        return { iplikRows, kumasRows, mamulRows };
+    }
+    window.stokKartTumuSatirlari = stokKartTumuSatirlari;
+    /** Kumaş satırlarını listede görünecek ana kart + varyant gruplarına toplar (ana program + mobil). */
+    function stokKartKumasGruplari(kumasRows) {
+        return kumasKartListeGruplariOlustur(
+            kumasRows.filter(i => typeof kumasKartListeGosterilebilirMi !== 'function' || kumasKartListeGosterilebilirMi(i))
+        );
+    }
+    window.stokKartKumasGruplari = stokKartKumasGruplari;
     function stokKartListeOzetHtml() {
         if (appMode !== 'KART_LISTE') return '';
         try {
             const lib = dataCache.kumas_kutuphanesi || [];
             const q = stokKartAktifArama();
-            const say = (araIle) => {
-                const uy = (i) => !araIle || stokKartAramaEslesir(i, q);
-                const iplik = iplikKartlariListe().filter(uy).length;
-                const kumas = kumasKartListeGruplariOlustur(
-                    lib.filter(i => stokKartGrupEslesir(i, 'KUMAS', { ignoreTipFiltre: true }) && uy(i))
-                        .filter(i => typeof kumasKartListeGosterilebilirMi !== 'function' || kumasKartListeGosterilebilirMi(i))
-                ).length;
-                const mamul = mamulKartListeGruplariOlustur(lib.filter(i => stokKartGrupEslesir(i, 'MAMUL') && uy(i))).length;
-                return { iplik, kumas, mamul, toplam: iplik + kumas + mamul };
-            };
+            const say = (araIle) => stokKartListeSayilari(araIle ? q : '');
             const hepsi = say(false);
             const bulunan = q ? say(true) : hepsi;
             const { iplik, kumas, mamul, toplam } = bulunan;
@@ -3939,9 +3975,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 html += stokKartListeTabloShellKapatHtml({ shell: false });
             } else if (b.id === 'KUMAS') {
                 html += kumasKartListeTabloBaslikHtml();
-                const kumasGruplar = kumasKartListeGruplariOlustur(
-                    b.satirlar.filter(i => typeof kumasKartListeGosterilebilirMi !== 'function' || kumasKartListeGosterilebilirMi(i))
-                );
+                const kumasGruplar = stokKartKumasGruplari(b.satirlar);
                 kumasKartListeGruplarIdxAyarla(kumasGruplar);
                 kumasGruplar.forEach(grup => {
                     merged.push(grup.parent.record);
@@ -6113,11 +6147,18 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.iplikKartListeToggle = iplikKartListeToggle;
 
-    function iplikKartListeSatirHtml(i, idx) {
-        const esc = (x) => (typeof pdfEsc === 'function' ? pdfEsc(x) : String(x ?? ''));
+    /** İplik kart listesi satırı: canlı lotlar + toplam kg (ana program + mobil). */
+    function iplikKartListeSatirModeli(i) {
         const lots = typeof iplikKartLotlariCanliAl === 'function' ? iplikKartLotlariCanliAl(i) : iplikKartLotlariAl(i);
         const bak = typeof depoIplikBakiyeHesapla === 'function' ? depoIplikBakiyeHesapla(i.stok_kodu) : null;
         const tot = bak ? (parseFloat(bak.kg) || 0) : iplikKartLotToplamKg(lots);
+        const cuval = lots.reduce((a, l) => a + (parseInt(l.cuval_sayisi, 10) || 0), 0);
+        return { lots, tot, cuval };
+    }
+    window.iplikKartListeSatirModeli = iplikKartListeSatirModeli;
+    function iplikKartListeSatirHtml(i, idx) {
+        const esc = (x) => (typeof pdfEsc === 'function' ? pdfEsc(x) : String(x ?? ''));
+        const { lots, tot } = iplikKartListeSatirModeli(i);
         const lotOzet = lots.length
             ? lots.map(l => (l.lot_no || '—') + ' · ' + (parseFloat(l.miktar_kg) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' kg').join(' | ')
             : '—';
@@ -7783,7 +7824,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
             };
         }
         const siparis = Math.round(parseFloat(row.siparis_miktar || kalem.miktar) || 0);
-        const sevk = typeof planlamaIhtiyacSevkAdet === 'function' ? Math.round(planlamaIhtiyacSevkAdet(sid, ki, rowK) || 0) : 0;
+        const sevk = typeof planlamaIhtiyacSevkGoster === 'function' ? Math.round(planlamaIhtiyacSevkGoster(sid, ki, rowK) || 0)   /* M1: YENI'de yeni sevk (04) */
+            : (typeof planlamaIhtiyacSevkAdet === 'function' ? Math.round(planlamaIhtiyacSevkAdet(sid, ki, rowK) || 0) : 0);
         return { siparis, sevk, dokunan: 0, sevkEdilebilir: Math.max(0, siparis - sevk), kapanis: Math.max(0, siparis - sevk), birimLbl: 'mt' };
     }
 

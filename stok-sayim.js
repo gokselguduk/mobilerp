@@ -602,8 +602,7 @@ function sayimChipBarHtml(allRows, gorunenN) {
         { id: 'SAYILAN', lbl: 'Sayılan' },
         { id: 'TUMU', lbl: 'Tümü' }
     ];
-    const sayilanN = (allRows || []).filter(r => sayimKayitliMi(r.stok_kodu)).length;
-    const sayilacakN = (allRows || []).filter(r => !sayimKayitliMi(r.stok_kodu) && Number(r.mevcut) !== 0).length;
+    const { sayilanN, sayilacakN } = sayimMobilSayilari(allRows);
     const ozet = _sayimMobilFiltre === 'SAYILAN'
         ? `${sayilanN} sayıldı`
         : _sayimMobilFiltre === 'TUMU'
@@ -886,6 +885,40 @@ function sayimSatirToplamYaz(kod) {
     _sayimGirisler[key] = String(sayimParcaToplam(key));
 }
 
+/** Satırın sayısını yazar (ekran yok): { ok, mesaj } — masaüstü kutusu ve yeni mobil bunu çağırır. */
+function stokSayimSayiYaz(kod, raw) {
+    if (!sayimOturumAktifMi()) return { ok: false, mesaj: _sayimDurum === 'DURAKLATILDI' ? 'Sayım duraklatıldı. Devam için Sayım başlasın.' : 'Önce sayımı başlatın.' };
+    kod = String(kod || '').trim();
+    if (!kod) return { ok: false, mesaj: '' };
+    if (String(raw == null ? '' : raw).trim() === '') return { ok: false, mesaj: 'Sayılan adeti girin.', odak: true };
+    const n = sayimParseSayi(raw);
+    if (!Number.isFinite(n) || n < 0) return { ok: false, mesaj: 'Geçerli bir adet girin.', odak: true };
+    _sayimParcalar[kod] = [sayimYuvarla(n, _sayimTip === 'MAMUL')];
+    sayimSatirToplamYaz(kod);
+    sayimOturumKaydet();
+    return { ok: true, mesaj: 'Ürün sayıma eklendi. Rapor henüz oluşmadı.' };
+}
+/** Sayılmış satıra ek parça ekler (ekran yok): { ok, mesaj } */
+function stokSayimSayiEkle(kod, raw) {
+    if (!sayimOturumAktifMi()) return { ok: false, mesaj: 'Ekstra eklemek için sayımın açık olması gerekir.' };
+    kod = String(kod || '').trim();
+    if (!kod) return { ok: false, mesaj: '' };
+    const n = sayimParseSayi(raw);
+    if (!Number.isFinite(n) || n <= 0) return { ok: false, mesaj: 'Eklenecek adeti girin.', odak: true };
+    const parcalar = sayimParcalarAl(kod);
+    parcalar.push(sayimYuvarla(n, _sayimTip === 'MAMUL'));
+    _sayimParcalar[kod] = parcalar;
+    sayimSatirToplamYaz(kod);
+    sayimOturumKaydet();
+    return { ok: true, mesaj: '' };
+}
+/** Telefon süzgeç sayıları: sayılan / sayılacak (stoğu sıfır olmayan, sayılmamış) */
+function sayimMobilSayilari(allRows) {
+    return {
+        sayilanN: (allRows || []).filter(r => sayimKayitliMi(r.stok_kodu)).length,
+        sayilacakN: (allRows || []).filter(r => !sayimKayitliMi(r.stok_kodu) && Number(r.mevcut) !== 0).length
+    };
+}
 function stokSayimSatirKaydet(el) {
     try {
         if (!sayimOturumAktifMi()) {
@@ -898,23 +931,13 @@ function stokSayimSatirKaydet(el) {
         const inp = (kart && kart.querySelector('.sayim-inp')) || (node.classList && node.classList.contains('sayim-inp') ? node : null);
         const kod = String((kart && kart.dataset.kod) || (inp && inp.dataset.kod) || '').trim();
         if (!kod || !inp) return;
-        const raw = String(inp.value || '').trim();
-        if (raw === '') {
-            if (typeof erpToast === 'function') erpToast('Sayılan adeti girin.', 'info');
-            try { inp.focus(); } catch (e) {}
+        const s = stokSayimSayiYaz(kod, inp.value);
+        if (!s.ok) {
+            if (s.mesaj && typeof erpToast === 'function') erpToast(s.mesaj, 'info');
+            if (s.odak) { try { inp.focus(); } catch (e) {} }
             return;
         }
-        const n = sayimParseSayi(raw);
-        if (!Number.isFinite(n) || n < 0) {
-            if (typeof erpToast === 'function') erpToast('Geçerli bir adet girin.', 'info');
-            try { inp.focus(); } catch (e) {}
-            return;
-        }
-        const yuvar = sayimYuvarla(n, _sayimTip === 'MAMUL');
-        _sayimParcalar[kod] = [yuvar];
-        sayimSatirToplamYaz(kod);
-        sayimOturumKaydet();
-        if (typeof erpToast === 'function') erpToast('Ürün sayıma eklendi. Rapor henüz oluşmadı.', 'success');
+        if (typeof erpToast === 'function') erpToast(s.mesaj, 'success');
         sayimListeYenile();
     } catch (e) {
         console.error('stokSayimSatirKaydet', e);
@@ -953,17 +976,12 @@ function stokSayimEkleUygula(el) {
         const kod = String((kart && kart.dataset.kod) || '').trim();
         const inp = (kart && kart.querySelector('.sayim-ekle-inp')) || (node.classList && node.classList.contains('sayim-ekle-inp') ? node : null);
         if (!kod || !inp) return;
-        const n = sayimParseSayi(inp.value);
-        if (!Number.isFinite(n) || n <= 0) {
-            if (typeof erpToast === 'function') erpToast('Eklenecek adeti girin.', 'info');
-            try { inp.focus(); } catch (e) {}
+        const s = stokSayimSayiEkle(kod, inp.value);
+        if (!s.ok) {
+            if (s.mesaj && typeof erpToast === 'function') erpToast(s.mesaj, 'info');
+            if (s.odak) { try { inp.focus(); } catch (e) {} }
             return;
         }
-        const parcalar = sayimParcalarAl(kod);
-        parcalar.push(sayimYuvarla(n, _sayimTip === 'MAMUL'));
-        _sayimParcalar[kod] = parcalar;
-        sayimSatirToplamYaz(kod);
-        sayimOturumKaydet();
         sayimListeYenile();
     } catch (e) {
         console.error('stokSayimEkleUygula', e);
@@ -1706,4 +1724,7 @@ async function stokSayimKaydet() {
     }
 }
 window.stokSayimKaydet = stokSayimKaydet;
+window.stokSayimSayiYaz = stokSayimSayiYaz;
+window.stokSayimSayiEkle = stokSayimSayiEkle;
+window.sayimMobilSayilari = sayimMobilSayilari;
 window.renderStokSayim = renderStokSayim;

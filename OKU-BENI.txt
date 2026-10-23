@@ -23,6 +23,12 @@ Bu surum (2026-09-07):
     fazla musteri/varyant varsa artik hepsi listeleniyor (ornek: "baklava"
     aramasi once sadece 1 sonuc getiriyordu, simdi tum musterileri gosteriyor).
 
+YENI MOBIL (22.10.2026, deneme — eski mobil yaninda calisir):
+  Adres: ayni sitenin sonuna  yeni-mobil.html
+  Dosyalari: yeni-mobil.html, yeni-mobil.js, yeni-mobil.css, erp-runtime-helpers.js
+  + ortak cekirdek erp-core.js (eski mobille AYNI dosya; ikisi birlikte yuklenir).
+  Kaynagi: mobil-yeni/ klasoru — npm run sync:mobil buraya yazar, ELLE DEGISTIRMEYIN.
+
 Dosyalar (hepsi ayni klasorde):
   mobil-erp.html
   mobil-app.js          (~2 MB)

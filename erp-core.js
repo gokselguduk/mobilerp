@@ -349,6 +349,9 @@ function erpEkranSiparisListesiKullanir() {
 /** Döner: true = açık ekran yeniden çizildi (canlı "veri güncellendi" bildirimi yalnız o zaman — 04 erpLiveScheduleUi);
     ertelendiyse ya da bu ekranın canlı yenilemesi yoksa boş. */
 async function erpRefreshCurrentScreen(opts = {}) {
+    /* Yeni mobil (mobil-yeni/app.js) kendi ekranını kendisi çizer: canlı senkron önbelleği günceller, çizimi ona bırakır.
+       Masaüstü ekranları orada yok — appMode'a göre masaüstü çizimi çalışmasın (22.10.2026). */
+    if (typeof window.erpEkranTazeleKanca === 'function') return window.erpEkranTazeleKanca(opts);
     const force = !!opts.force;
     const mode = appMode;
     if (!force && erpIsDetailModalOpen()) {
@@ -1169,7 +1172,9 @@ function erpModeAcikMi(mode, modes, isAdmin) {
     if (mode === 'FASON_TAKIP') {
         return modes.includes('FASON_TAKIP') || modes.includes('KONFEKSIYON');
     }
-    if (mode === 'DOKUMA_FASON_TAKIP') {
+    /* DOKUMA_SIPARIS_GIRIS = Dokuma Fason ekranının alt formu (yetki listesinde kodu yok) — Dokuma fason açıksa açık
+       (22.10.2026: kendi kodu sorulduğu için yönetici olmayan herkes formdan Anasayfaya düşüyordu). Kayıt kapısı 06 dokumaSiparisKaydet → 12 fasonYazabilir("DOKUMA"). */
+    if (mode === 'DOKUMA_FASON_TAKIP' || mode === 'DOKUMA_SIPARIS_GIRIS') {
         return modes.includes('DOKUMA_FASON_TAKIP') || modes.includes('DOKUMA_TAKIP');
     }
     if (mode === 'DOKUMA_DEPO') {
@@ -1279,6 +1284,8 @@ function erpUpdateSidebarUser() {
     if (typeof erpKademeYukle === 'function') erpKademeYukle();
     /* Satış fiyatı yetkisi de oturumdan (34-satis-fiyat.js; yetkiyi sunucu söyler, 5 dk geçerli) */
     if (typeof satisFiyatDurumYukle === 'function') satisFiyatDurumYukle();
+    /* Fason fiyatı yetkisi de (40-fason-fiyat.js; SQL kurulu değilse oturum başına tek soru) */
+    if (typeof fasonFiyatDurumYukle === 'function') fasonFiyatDurumYukle();
     if (rl) rl.textContent = (typeof erpUstAdminMi === 'function' && erpUstAdminMi()) ? 'Admin' : (erpCurrentUser.role === 'admin' ? 'Yönetici' : 'Kullanıcı');
 }
 
@@ -1482,6 +1489,7 @@ function erpYetkiBumpBanaMi(payload) {
 function erpYetkiBumpGeldi() {
     erpYetkiSenkTick(true);
     if (typeof satisFiyatDurumYukle === 'function') satisFiyatDurumYukle(true);
+    if (typeof fasonFiyatDurumYukle === 'function') fasonFiyatDurumYukle(true);
 }
 
 function erpNavGrupAc(prefix) {
@@ -4344,22 +4352,16 @@ function depoHareketDefterBolumHtml(baslik, rows, cls, hideKanal) {
       <div class="depo-defter-section-body">${bodyContent}</div>
     </div>`;
 }
-function renderDepoHareketDefteri(opts) {
-    opts = opts || {};
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const fPrev = depoHareketDefterFiltre || { q: '', tip: 'HEPSİ', bas: '', bit: '' };
-    const fTipLive = document.getElementById('depo-defter-f-tip')?.value;
-    const fAraLive = document.getElementById('depo-defter-f-ara')?.value;
-    const fBasLive = document.getElementById('depo-defter-f-bas')?.value;
-    const fBitLive = document.getElementById('depo-defter-f-bit')?.value;
-    const fTip = fTipLive != null ? fTipLive : (fPrev.tip || 'HEPSİ');
-    const fAra = String(fAraLive != null ? fAraLive : (fPrev.q || '')).toLowerCase().trim();
-    const fBas = fBasLive != null ? fBasLive : (fPrev.bas || '');
-    const fBit = fBitLive != null ? fBitLive : (fPrev.bit || '');
-    depoHareketDefterFiltre = { q: fAraLive != null ? String(fAraLive).trim() : (fPrev.q || ''), tip: fTip, bas: fBas, bit: fBit };
-    saveUiState({ depoHareketDefterFiltre });
-    const fGrup = depoHareketDefterGrup || 'HEPSİ';
+
+/** Depo hareket defterinin satırları (yeniden eskiye) + giriş / çıkış özeti — ekrana dokunmaz.
+    Masaüstü ekranı ve yeni mobil (mobil-yeni/) AYNI fonksiyonu kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı").
+    f = { q: arama, tip: HEPSİ | GİRİŞ | ÇIKIŞ, bas, bit: 'YYYY-AA-GG' }, fGrup = kanal kodu ya da HEPSİ */
+function depoHareketDefterSatirlari(f, fGrup) {
+    const fAra = String((f && f.q) || '').toLowerCase().trim();
+    const fTip = (f && f.tip) || 'HEPSİ';
+    const fBas = (f && f.bas) || '';
+    const fBit = (f && f.bit) || '';
+    fGrup = fGrup || 'HEPSİ';
 
     const iplikHam = (typeof iplikDepoStokHareketleriHazirla === 'function')
         ? iplikDepoStokHareketleriHazirla(dataCache.iplik_stok || [])
@@ -4398,8 +4400,6 @@ function renderDepoHareketDefteri(opts) {
 
     const rows = raw.filter(filtreUygula).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-    currentData = rows;
-
     const ozet = rows.reduce((acc, row) => {
         const kg = parseFloat(row.miktar_kg) || 0;
         const mt = parseFloat(row.miktar_mt) || 0;
@@ -4413,6 +4413,28 @@ function renderDepoHareketDefteri(opts) {
         acc.tAd += ad;
         return acc;
     }, { gKg: 0, gMt: 0, cKg: 0, cMt: 0, gN: 0, cN: 0, dN: 0, gAd: 0, cAd: 0, tAd: 0 });
+    return { rows, ozet };
+}
+
+function renderDepoHareketDefteri(opts) {
+    opts = opts || {};
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const fPrev = depoHareketDefterFiltre || { q: '', tip: 'HEPSİ', bas: '', bit: '' };
+    const fTipLive = document.getElementById('depo-defter-f-tip')?.value;
+    const fAraLive = document.getElementById('depo-defter-f-ara')?.value;
+    const fBasLive = document.getElementById('depo-defter-f-bas')?.value;
+    const fBitLive = document.getElementById('depo-defter-f-bit')?.value;
+    const fTip = fTipLive != null ? fTipLive : (fPrev.tip || 'HEPSİ');
+    const fAra = String(fAraLive != null ? fAraLive : (fPrev.q || '')).toLowerCase().trim();
+    const fBas = fBasLive != null ? fBasLive : (fPrev.bas || '');
+    const fBit = fBitLive != null ? fBitLive : (fPrev.bit || '');
+    depoHareketDefterFiltre = { q: fAraLive != null ? String(fAraLive).trim() : (fPrev.q || ''), tip: fTip, bas: fBas, bit: fBit };
+    saveUiState({ depoHareketDefterFiltre });
+    const fGrup = depoHareketDefterGrup || 'HEPSİ';
+
+    const { rows, ozet } = depoHareketDefterSatirlari({ q: fAra, tip: fTip, bas: fBas, bit: fBit }, fGrup);
+    currentData = rows;
 
     const fmtN = (n) => Number(n || 0).toLocaleString('tr-TR');
     const ozetAlt = (adSatir, kg, mt) => {
@@ -5605,6 +5627,15 @@ function erpAdminSablon(sel) {
     erpAdminYetkiTazele(kok);
 }
 
+/** Kullanıcı listesi (yalnız okur; yetki sunucuda): { ok, users, err } — ana program + mobil. */
+async function erpAdminKullanicilariOku() {
+    const { data, error } = await sb.rpc('erp_admin_users_list', { p_token: erpGetToken() });
+    if (error || !data || !data.ok) return { ok: false, users: [], err: error?.message || data?.err || 'bilinmiyor' };
+    let users = data.users;
+    if (typeof users === 'string') { try { users = JSON.parse(users); } catch (e) { users = []; } }
+    return { ok: true, users: Array.isArray(users) ? users : [], err: '' };
+}
+
 // ── Çizim ──
 async function renderKullaniciYonetimi() {
     const list = document.getElementById('main-list');
@@ -5615,14 +5646,12 @@ async function renderKullaniciYonetimi() {
     }
     list.innerHTML = '<div style="padding:2rem;color:var(--text3);font-size:12px">Yükleniyor…</div>';
 
-    const { data, error } = await sb.rpc('erp_admin_users_list', { p_token: erpGetToken() });
-    if (error || !data || !data.ok) {
-        list.innerHTML = `<div class="panel-box" style="padding:1.25rem 1.5rem;color:#f87171">Liste alınamadı: ${erpEscapeHtml(error?.message || data?.err || 'bilinmiyor')}</div>`;
+    const sonuc = await erpAdminKullanicilariOku();
+    if (!sonuc.ok) {
+        list.innerHTML = `<div class="panel-box" style="padding:1.25rem 1.5rem;color:#f87171">Liste alınamadı: ${erpEscapeHtml(sonuc.err)}</div>`;
         return;
     }
-    let users = data.users;
-    if (typeof users === 'string') { try { users = JSON.parse(users); } catch (e) { users = []; } }
-    erpAdminDurum.kullanicilar = Array.isArray(users) ? users : [];
+    erpAdminDurum.kullanicilar = sonuc.users;
 
     if (!erpAdminKullaniciBul(erpAdminDurum.secili)) {
         erpAdminDurum.secili = erpAdminDurum.kullanicilar[0]?.username || '';
@@ -5654,38 +5683,44 @@ function erpAdminCiz() {
     erpAdminDetayCiz();
 }
 
-function erpAdminListeCiz() {
-    const kap = document.getElementById('kya-liste');
-    if (!kap) return;
-    const ara = erpAdminDurum.arama.trim().toLocaleLowerCase('tr-TR');
-    const liste = erpAdminDurum.kullanicilar.filter(u => {
+/** Kullanıcı listesi satırları (aramayla): { u, un, yonetici, pasif, modlar, ozet, acikSayi, rozet } (ana program + mobil). */
+function erpAdminListeModeli(kullanicilar, arama) {
+    const ara = String(arama || '').trim().toLocaleLowerCase('tr-TR');
+    return (kullanicilar || []).filter(u => {
         if (!ara) return true;
         return String(u.username || '').toLocaleLowerCase('tr-TR').includes(ara)
             || String(u.display_name || '').toLocaleLowerCase('tr-TR').includes(ara);
+    }).map(u => {
+        const yonetici = u.role === 'admin';
+        const modlar = erpNormalizeAllowedModes(u.allowed_modes);
+        return { u, un: u.username || '', yonetici, pasif: u.active === false, modlar,
+            ozet: yonetici ? 'Tüm ekranlar' : (erpAdminGrupOzeti(modlar).join(' · ') || 'Yetki verilmemiş'),
+            acikSayi: yonetici ? null : erpAdminAcikSayisi(modlar),
+            rozet: u.kurucu === true ? '👑 Admin' : yonetici ? 'Yönetici' : 'Kullanıcı' };
     });
+}
+function erpAdminListeCiz() {
+    const kap = document.getElementById('kya-liste');
+    if (!kap) return;
+    const liste = erpAdminListeModeli(erpAdminDurum.kullanicilar, erpAdminDurum.arama);
 
     if (!liste.length) {
         kap.innerHTML = '<div class="kya-bos">Eşleşen kullanıcı yok.</div>';
         return;
     }
 
-    kap.innerHTML = liste.map(u => {
-        const un = u.username || '';
-        const yonetici = u.role === 'admin';
-        const pasif = u.active === false;
-        const modlar = erpNormalizeAllowedModes(u.allowed_modes);
-        const ozet = yonetici ? 'Tüm ekranlar' : (erpAdminGrupOzeti(modlar).join(' · ') || 'Yetki verilmemiş');
+    kap.innerHTML = liste.map(({ u, un, yonetici, pasif, modlar, ozet, acikSayi, rozet }) => {
         const secili = String(erpAdminDurum.secili || '').toLowerCase() === un.toLowerCase();
         return `<div class="kya-row${secili ? ' kya-row--on' : ''}${pasif ? ' kya-row--pasif' : ''}" onclick="erpAdminSec('${erpJsStr(un)}')">
             <div class="kya-av">${erpEscapeHtml(erpAdminBasHarf(u))}</div>
             <div class="kya-row-main">
                 <div class="kya-row-name">${erpEscapeHtml(u.display_name || un)}</div>
-                <div class="kya-row-sub">${erpEscapeHtml(un)} · ${yonetici ? 'tümü' : erpAdminAcikSayisi(modlar) + ' ekran'}</div>
+                <div class="kya-row-sub">${erpEscapeHtml(un)} · ${yonetici ? 'tümü' : acikSayi + ' ekran'}</div>
                 <div class="kya-row-sub" style="color:var(--text3);opacity:.8">${erpEscapeHtml(ozet)}</div>
                 ${typeof erpAktifKyaHtml === 'function' ? erpAktifKyaHtml(un) : ''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-                <span class="kya-badge ${yonetici ? 'kya-badge--admin' : 'kya-badge--user'}">${u.kurucu === true ? '👑 Admin' : yonetici ? 'Yönetici' : 'Kullanıcı'}</span>
+                <span class="kya-badge ${yonetici ? 'kya-badge--admin' : 'kya-badge--user'}">${rozet}</span>
                 ${pasif ? '<span class="kya-badge kya-badge--pasif">Pasif</span>' : ''}
             </div>
         </div>`;
@@ -5789,6 +5824,7 @@ function erpAdminDetayCiz() {
         </div>`}
 
         ${typeof satisFiyatAdminHtml === 'function' ? satisFiyatAdminHtml(u) : '' /* satış fiyatı yetkisi — yalnız admin görür (34) */}
+        ${typeof fasonFiyatAdminHtml === 'function' ? fasonFiyatAdminHtml(u) : '' /* fason fiyatı yetkisi — ayrı liste, yalnız admin (40; SQL kurulu değilse boş) */}
 
         <div class="kya-alt">
             <span class="kya-canli"><span class="kya-canli__nokta"></span>${kilitli ? (kurucu ? 'Admin hesabı — değişiklik yapılamaz' : 'Yönetici hesabı — yalnız admin değiştirebilir') : 'Kaydettiğiniz an kullanıcının ekranına yansır'}</span>
@@ -7268,6 +7304,8 @@ function erpYazmaSonucuIzle(sorgu, tablo, yontem) {
             if (!sonuc || !sonuc.error) {
                 _erpKendiYazmaAt[tablo] = Date.now();
                 erpAnlikYayinla(tablo, silinen);
+                /* M1 YENI: bu programın depo yazması → gösterilen sevk tazelenir (39) */
+                if (tablo === 'kumas_stok' && typeof erpYapiSevkDepoDegisti === 'function') erpYapiSevkDepoDegisti(null);
             }
         } catch (e) {}
         return tamam ? tamam(sonuc) : sonuc;
@@ -7461,6 +7499,8 @@ let _erpLiveIz = { tablolar: new Set(), islemler: new Set(), bilinmeyen: false }
 let _erpLiveCizimIzi = null;   /* erpLiveScheduleUi ekranı çizerken: bu çizimi tetikleyen değişiklikler */
 function erpLiveIzYaz(table, satir) {
     _erpLiveIz.tablolar.add(table);
+    /* M1 YENI: başka programın depo hareketi → o siparişin gösterilen sevki tazelenir (39) */
+    if (table === 'kumas_stok' && typeof erpYapiSevkDepoDegisti === 'function') erpYapiSevkDepoDegisti(satir || null);
     if (table !== 'siparis_akis') return;
     const islem = String((satir && satir.islem) || '');
     if (islem) _erpLiveIz.islemler.add(islem); else _erpLiveIz.bilinmeyen = true;
@@ -9156,7 +9196,8 @@ async function renderYapilacaklar() {
     list.innerHTML = `<div id="planlama-todo-panel">${planlamaTodoPanelIcHtml()}</div>`;
 }
 
-function planlamaTodoSatirHtml(t) {
+/** Yapılacaklar satırının gösterilen alanları (ana program + mobil). */
+function planlamaTodoSatirModeli(t) {
     const bitti = String(t.status || "").toLocaleUpperCase("tr-TR") === "TAMAMLANDI";
     const sipEtiket = planlamaTodoSiparisEtiketOku(t.description);
     const not = planlamaTodoNotTemiz(t.description);
@@ -9166,6 +9207,20 @@ function planlamaTodoSatirHtml(t) {
     const gecerliTerm = term && !Number.isNaN(term.getTime());
     const gecikti = !bitti && gecerliTerm && term < bugun;
     const bugunMu = !bitti && gecerliTerm && term.getTime() === bugun.getTime();
+    return { bitti, sipEtiket, not, renk, term, gecerliTerm, gecikti, bugunMu };
+}
+
+/** Yapılacaklar listesi: kişinin görevleri sıralı, açık / biten, tarihi gelen sayısı. */
+function planlamaTodoListeModeli() {
+    const hepsi = planlamaTodoSirala(planlamaTodoBenimListem());
+    const acik = hepsi.filter(t => String(t.status || "").toLocaleUpperCase("tr-TR") !== "TAMAMLANDI");
+    const bitmis = hepsi.filter(t => String(t.status || "").toLocaleUpperCase("tr-TR") === "TAMAMLANDI");
+    const geciken = planlamaTodoVadesiGelenler().length;
+    return { hepsi, acik, bitmis, geciken };
+}
+
+function planlamaTodoSatirHtml(t) {
+    const { bitti, sipEtiket, not, renk, term, gecerliTerm, gecikti, bugunMu } = planlamaTodoSatirModeli(t);
 
     const etiketler = [
         `<span class="todo-etiket" style="background:${renk}1e;color:${renk}">${pdfEsc(t.priority || "NORMAL")}</span>`,
@@ -9190,11 +9245,8 @@ function planlamaTodoSatirHtml(t) {
 }
 
 function planlamaTodoPanelIcHtml() {
-    const hepsi = planlamaTodoSirala(planlamaTodoBenimListem());
-    const acik = hepsi.filter(t => String(t.status || "").toLocaleUpperCase("tr-TR") !== "TAMAMLANDI");
-    const bitmis = hepsi.filter(t => String(t.status || "").toLocaleUpperCase("tr-TR") === "TAMAMLANDI");
+    const { hepsi, acik, bitmis, geciken } = planlamaTodoListeModeli();
     const gorunen = _planlamaTodoTamamGoster ? hepsi : acik;
-    const geciken = planlamaTodoVadesiGelenler().length;
 
     const oncelikBtn = PLANLAMA_TODO_ONCELIK.map(o => {
         const secili = o === _planlamaTodoOncelik;
@@ -9796,25 +9848,19 @@ function sevkiyatKumasPayloadSiparisKalemCoz(p) {
             if (sip?.id != null) {
                 sid = String(sip.id);
                 if (!Number.isFinite(ki) || ki < 0) {
+                    /* Okuyan tarafla (sevkiyatSiparisKalemDepoHareketleri, kumaş kolu) AYNI kural: lot = sipariş no + kalemin adı =
+                       satırın ürün adı, o ad siparişin kumaş kalemlerinde tek. Kart koduyla / tek kalemli siparişe tahmin YOK
+                       (15.10 kararı "B" yazan tarafa da, 22.10 kullanıcı: fasona / boyahaneye giden kumaş sevk değil — SP763 2.603 m
+                       EMSA'ya fason dikime, SP701 100 m RATEKS'e giden stok çıkışı sayaca sevk diye ekleniyordu, depo saymıyordu). */
                     const kalemler = (typeof siparisListeKalemleriArr === 'function')
                         ? siparisListeKalemleriArr(sip)
                         : [];
-                    const kodN = stok.toUpperCase();
                     const adN = String(p.urun_adi || p.kumas_cinsi || '').trim().toUpperCase();
-                    let idx = kalemler.findIndex((k, i) => {
-                        const b = (typeof siparisKalemBirim === 'function' ? siparisKalemBirim(k) : k.birim || '').toUpperCase();
-                        if (b !== 'MT' && b !== 'KG') return false;
-                        const kk = String(k.kod || '').trim().toUpperCase();
-                        const ka = String(k.ad || '').trim().toUpperCase();
-                        if (kk && (kk === kodN || kodN.includes(kk))) return true;
-                        if (ka && adN && (ka === adN || adN.includes(ka) || ka.includes(adN.slice(0, 18)))) return true;
-                        return false;
+                    ki = !adN ? -1 : kalemler.findIndex((k, i) => {
+                        const b = (typeof siparisKalemBirim === 'function' ? siparisKalemBirim(k) : String(k.birim || 'ADET')).toUpperCase();
+                        if (b !== 'MT' && b !== 'KG' && b !== 'M' && b !== 'METRE') return false;
+                        return String(k.ad || '').trim().toUpperCase() === adN && sevkiyatSiparisKalemAdTekilMi(kalemler, i, true);
                     });
-                    if (idx < 0 && kalemler.length === 1) {
-                        const b = (typeof siparisKalemBirim === 'function' ? siparisKalemBirim(kalemler[0]) : '').toUpperCase();
-                        if (b === 'MT' || b === 'KG') idx = 0;
-                    }
-                    ki = idx;
                 }
             }
         }
@@ -9975,6 +10021,27 @@ function planlamaIhtiyacSevkAdet(siparisId, kalemIdx, rowK) {
     return sevk;
 }
 
+/** Ekranda GÖSTERİLEN sevk (Yapı geçişi M1 ekran geçişi, 21.10.2026): anahtar 'sevk' YENI'yken yeni sayı (38 yapiSevkGoster:
+    kaleme bağlı depo hareketi + devir), henüz okunmamışsa eski hesap (okuma bitince ekran yeniden çizilir). Sayı YAZAN yollar
+    (Yüklenen + / düzelt → planlamaIhtiyacSevkTaze), depo düzelt penceresinin sayaç farkı (11) ve veri bekçisinin sayaç ↔ depo
+    denetimi (26) eski hesapla kalır. ESKI / KARSILASTIR'da planlamaIhtiyacSevkAdet ile aynı. */
+function planlamaIhtiyacSevkGoster(siparisId, kalemIdx, rowK) {
+    const y = typeof yapiSevkGoster === 'function' ? yapiSevkGoster(siparisId, kalemIdx) : null;
+    return y != null ? y : planlamaIhtiyacSevkAdet(siparisId, kalemIdx, rowK);
+}
+
+/** Yazmadan önceki sevk (Sevkiyat Yüklenen + / düzelt): YENI'de ekranın gösterdiği yeni sayı TAZE okunur — fark depo hareketi
+    olarak yazıldığı için eski sayıyla hesaplanırsa yanlış hareket açılırdı (ekranda 10, sayaçta 20: 10 → 12 düzeltmesi −8 iade
+    olurdu). Okunamazsa hata fırlatır (yazılmaz). ESKI / KARSILASTIR'da eski hesap — yazım değişmez. */
+async function planlamaIhtiyacSevkTaze(siparisId, kalemIdx, rowK) {
+    if (typeof yapiYeniMi === 'function' && yapiYeniMi('sevk')) {
+        const y = typeof yapiYeniTazeOku === 'function' ? await yapiYeniTazeOku('sevk', siparisId, kalemIdx, 'sevk') : null;
+        if (y == null) throw new Error('Sevk sayısı okunamadı — bağlantıyı kontrol edip yeniden deneyin.');
+        return y;
+    }
+    return planlamaIhtiyacSevkAdet(siparisId, kalemIdx, rowK);
+}
+
 /** Sipariş yükleme oranı (0–1): kalem yüklemesi (planlamaIhtiyacSevkAdet) hedefiyle sınırlanır;
  *  tüm kalemler aynı birimdeyse miktar ağırlıklı, karışık birimde kalem oranlarının ortalaması. */
 const _siparisYuklemeOraniMemo = { imza: '', harita: new Map() };
@@ -10004,7 +10071,7 @@ function siparisYuklemeOrani(siparis) {
         const hedef = parseFloat(k.miktar) || 0;
         return {
             hedef,
-            yuk: Math.min(hedef, planlamaIhtiyacSevkAdet(sid, i, kd[`kalem_${i}`] || {})),
+            yuk: Math.min(hedef, planlamaIhtiyacSevkGoster(sid, i, kd[`kalem_${i}`] || {})),
             birim: String(siparisKalemBirim(k) || '').toUpperCase()
         };
     }).filter(x => x.hedef > 0);
@@ -10757,7 +10824,10 @@ async function planlamaIhtiyacSevkKaydet(siparisId, kalemIdx, el) {
         return;
     }
     const rowK = (_kdCache[`KD_KONFEKSIYON_${sid}`] || {})[`kalem_${ki}`] || {};
-    const onceki = planlamaIhtiyacSevkAdet(sid, ki, rowK);
+    const yeniMod = typeof yapiYeniMi === 'function' && yapiYeniMi('sevk');
+    let onceki;
+    try { onceki = await planlamaIhtiyacSevkTaze(sid, ki, rowK); }
+    catch (e) { if (typeof erpToast === 'function') erpToast(e.message || String(e), 'error', 6000); return; }
     const hedef = Math.max(0, onceki + eklenen);
     if (hedef === onceki) {
         if (typeof erpToast === 'function') erpToast(eklenen < 0 ? 'Yüklenen zaten 0 — daha fazla düşülemez.' : 'Değişiklik yok.', 'warn');
@@ -10779,11 +10849,17 @@ async function planlamaIhtiyacSevkKaydet(siparisId, kalemIdx, el) {
         sevkiyatYuklemeCacheYaz(sid, ki, yazilan);
         delete _planlamaIhtiyacSevkTaslak[tKey];
         if (el) el.value = '';
+        /* YENI'de ekran yeni sayıyı gösterir: yazılan depo hareketi okunup gösterilir (sayaç eski kuralın kaynağı) */
+        let gosterilen = yazilan;
+        if (yeniMod) {
+            try { const y = await yapiYeniTazeOku('sevk', sid, ki, 'sevk'); gosterilen = y != null ? y : hedef; } catch (e) { gosterilen = hedef; }
+            if (typeof planlamaIhtiyacSatirCacheInvalidate === 'function') planlamaIhtiyacSatirCacheInvalidate();
+        }
         if (typeof erpToast === 'function') {
             erpToast(
                 eklenen > 0
-                    ? `+${eklenen} eklendi — yüklenen: ${yazilan}`
-                    : `${isaret} düşüldü — yüklenen: ${yazilan}`,
+                    ? `+${eklenen} eklendi — yüklenen: ${gosterilen}`
+                    : `${isaret} düşüldü — yüklenen: ${gosterilen}`,
                 'success'
             );
         }
@@ -10828,7 +10904,10 @@ async function planlamaIhtiyacYuklemeDuzelt(siparisId, kalemIdx, el) {
         hedef = Math.round(n);
     }
     const rowK = (_kdCache[`KD_KONFEKSIYON_${sid}`] || {})[`kalem_${ki}`] || {};
-    const onceki = planlamaIhtiyacSevkAdet(sid, ki, rowK);
+    const yeniMod = typeof yapiYeniMi === 'function' && yapiYeniMi('sevk');
+    let onceki;
+    try { onceki = await planlamaIhtiyacSevkTaze(sid, ki, rowK); }
+    catch (e) { if (typeof erpToast === 'function') erpToast(e.message || String(e), 'error', 6000); return; }
     if (onceki === hedef) {
         if (el) el.value = hedef ? String(hedef) : '0';
         return;
@@ -10847,6 +10926,10 @@ async function planlamaIhtiyacYuklemeDuzelt(siparisId, kalemIdx, el) {
     try {
         if (el) el.disabled = true;
         await planlamaIhtiyacSevkToplamYazGuvenli(sid, ki, hedef, `Sipariş ihtiyaç düzeltme ${onceki}→${hedef}`, { onceki });
+        if (yeniMod) {
+            try { await yapiYeniTazeOku('sevk', sid, ki, 'sevk'); } catch (e) {}
+            if (typeof planlamaIhtiyacSatirCacheInvalidate === 'function') planlamaIhtiyacSatirCacheInvalidate();
+        }
         if (el) el.value = String(hedef);
         if (typeof erpToast === 'function') erpToast(`Yüklenen düzeltildi: ${onceki} → ${hedef}`, 'success');
         try { if (typeof konfDurumTabYenile === 'function') await konfDurumTabYenile(sid); } catch (e) {}
@@ -10968,7 +11051,7 @@ function planlamaIhtiyacSatirlariGetir() {
                 dokBirim = 'ADET';
             }
             const kalite = parseInt(rowK.kk_gecen, 10) || 0;
-            const sevkToplam = planlamaIhtiyacSevkAdet(s.id, i, rowK);
+            const sevkToplam = planlamaIhtiyacSevkGoster(s.id, i, rowK);
             const yukleme = sevkToplam;
             const siparisKalan = Math.max(0, Math.round(miktar - yukleme));
             /* Depoda hazır = dokunan − yüklenen (aynı birim; negatif olmaz) */
@@ -11217,8 +11300,8 @@ function planlamaKalemSecimHepsi(siparisId, hepsi) {
     planlamaSiparisDetayRender();
 }
 
-function planlamaDetayRowsByKod(kod) {
-    const rows = Array.isArray(_planlamaLastRows) ? _planlamaLastRows : [];
+function planlamaDetayRowsByKod(kod, kaynak) {
+    const rows = Array.isArray(kaynak) ? kaynak : (Array.isArray(_planlamaLastRows) ? _planlamaLastRows : []);
     if (!kod) return [];
     const k = String(kod).toUpperCase();
     if (k === 'YIKAMA_BEK') return rows.filter(r => (parseInt(r.yBek, 10) || 0) > 0);
@@ -11337,15 +11420,8 @@ function planlamaKalemUretimAlani(siparisId, kalemIdx) {
     return yer || 'SIMTEKS_KONF';
 }
 
-async function renderPlanlama() {
-    if (appMode !== 'PLANLAMA') return;
-    const list = document.getElementById('main-list');
-    if (!list) return;
-
-    if (!list.innerHTML.trim()) {
-        list.innerHTML = `<div class="panel-box" style="padding:40px 20px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">⏳</div><div style="font-size:13px;font-weight:600">Planlama: ürün bazlı veriler yükleniyor…</div><div style="font-size:10px;margin-top:8px;opacity:.85">Aktif siparişler için dokuma / konfeksiyon özetleri okunuyor.</div></div>`;
-    }
-
+/** Planlama ekranının bütün sayıları (ekran yok; ana program + mobil aynı hesabı okur). */
+async function planlamaModeli() {
     const siparisler = dataCache.siparisler || [];
     const aktifSip = siparisler.filter(s => !siparisKapaliMi(s));
     const aktifSipById = new Map(aktifSip.map(s => [String(s.id), s]));
@@ -11594,48 +11670,75 @@ async function renderPlanlama() {
         return ta - tb;
     });
 
+    return {
+        aktifSip, urunSatirlari, yikBekUrunTop, dokumaTamamSayisi, bekleyen, globalWarnings,
+        bugunYikSevk, bugunKesim, gunlukUretim, haftalikUretim, aylikUretim
+    };
+}
+try { window.planlamaModeli = planlamaModeli; } catch (e) {}
+
+/** Planlama: üretim alanının (Simteks / fason / doğrudan sevk) tabloya giren kalem satırları (ilk 220). */
+function planlamaAlanSatirlari(urunSatirlari, alan) {
+    return (urunSatirlari || []).filter(r => r.alan === alan).slice(0, 220);
+}
+
+/** Planlama: kalem satırlarını sipariş başına toplar (ekran tabloları + mobil). */
+function planlamaSiparisTopla(rows) {
+    const m = new Map();
+    rows.forEach(r => {
+        const key = String(r.s?.id || '');
+        if (!key) return;
+        if (!m.has(key)) {
+            m.set(key, {
+                s: r.s,
+                alan: r.alan,
+                urunCesit: 0,
+                hedef: 0, dokAdet: 0, kes: 0, yBek: 0, kaliteBek: 0, koliBek: 0, sevkHazirBek: 0, sevkPr: 0, kolaySkorTop: 0, sevkYuzdeTop: 0, uyariTop: 0
+            });
+        }
+        const a = m.get(key);
+        a.urunCesit += 1;
+        a.hedef += parseInt(r.hedef, 10) || 0;
+        a.dokAdet += parseFloat(r.dokAdet) || 0;
+        a.kes += parseInt(r.kes, 10) || 0;
+        a.yBek += parseInt(r.yBek, 10) || 0;
+        a.kaliteBek += parseInt(r.kaliteBek, 10) || 0;
+        a.koliBek += parseInt(r.koliBek, 10) || 0;
+        a.sevkHazirBek += parseInt(r.sevkHazirBek, 10) || 0;
+        a.sevkPr += parseInt(r.sevkPr, 10) || 0;
+        a.kolaySkorTop += parseInt(r.kolaySkor, 10) || 0;
+        a.sevkYuzdeTop += parseInt(r.sevkYuzde, 10) || 0;
+        a.uyariTop += (r.uyarilar || []).length;
+    });
+    return Array.from(m.values())
+        .map(a => ({
+            ...a,
+            kolaySkor: a.urunCesit ? Math.round(a.kolaySkorTop / a.urunCesit) : 0,
+            sevkYuzde: a.urunCesit ? Math.round(a.sevkYuzdeTop / a.urunCesit) : 0
+        }))
+        .sort((x, y) => y.kolaySkor - x.kolaySkor || y.sevkYuzde - x.sevkYuzde);
+}
+
+async function renderPlanlama() {
+    if (appMode !== 'PLANLAMA') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+
+    if (!list.innerHTML.trim()) {
+        list.innerHTML = `<div class="panel-box" style="padding:40px 20px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">⏳</div><div style="font-size:13px;font-weight:600">Planlama: ürün bazlı veriler yükleniyor…</div><div style="font-size:10px;margin-top:8px;opacity:.85">Aktif siparişler için dokuma / konfeksiyon özetleri okunuyor.</div></div>`;
+    }
+
+    const {
+        aktifSip, urunSatirlari, yikBekUrunTop, dokumaTamamSayisi, bekleyen, globalWarnings,
+        bugunYikSevk, bugunKesim, gunlukUretim, haftalikUretim, aylikUretim
+    } = await planlamaModeli();
+
     const fmtMini = (rows, emptyMsg) => {
         if (!rows.length) return `<div style="font-size:11px;color:var(--text3);padding:8px 0">${emptyMsg}</div>`;
         return `<ul style="margin:0;padding:0 0 0 16px;font-size:11px;line-height:1.55;color:var(--text)">
             ${rows.map(o => `<li><b style="font-family:'DM Mono',monospace">${pdfEsc(o.sip.sno || '—')}</b> · ${pdfEsc(o.sip.firma || '—')} · <span style="color:var(--accent2)">${pdfEsc(o.urun)}</span> · ${o.miktar ? o.miktar.toLocaleString('tr-TR') : '—'} ad · ${pdfEsc(o.saat)}${(parseInt(o.adet,10)||0)>1?` · <span style="color:var(--text3)">${o.adet} kayıt birleştirildi</span>`:''}</li>`).join('')}
         </ul>`;
     };
-
-    function planlamaSiparisTopla(rows) {
-        const m = new Map();
-        rows.forEach(r => {
-            const key = String(r.s?.id || '');
-            if (!key) return;
-            if (!m.has(key)) {
-                m.set(key, {
-                    s: r.s,
-                    alan: r.alan,
-                    urunCesit: 0,
-                    hedef: 0, dokAdet: 0, kes: 0, yBek: 0, kaliteBek: 0, koliBek: 0, sevkHazirBek: 0, sevkPr: 0, kolaySkorTop: 0, sevkYuzdeTop: 0, uyariTop: 0
-                });
-            }
-            const a = m.get(key);
-            a.urunCesit += 1;
-            a.hedef += parseInt(r.hedef, 10) || 0;
-            a.dokAdet += parseFloat(r.dokAdet) || 0;
-            a.kes += parseInt(r.kes, 10) || 0;
-            a.yBek += parseInt(r.yBek, 10) || 0;
-            a.kaliteBek += parseInt(r.kaliteBek, 10) || 0;
-            a.koliBek += parseInt(r.koliBek, 10) || 0;
-            a.sevkHazirBek += parseInt(r.sevkHazirBek, 10) || 0;
-            a.sevkPr += parseInt(r.sevkPr, 10) || 0;
-            a.kolaySkorTop += parseInt(r.kolaySkor, 10) || 0;
-            a.sevkYuzdeTop += parseInt(r.sevkYuzde, 10) || 0;
-            a.uyariTop += (r.uyarilar || []).length;
-        });
-        return Array.from(m.values())
-            .map(a => ({
-                ...a,
-                kolaySkor: a.urunCesit ? Math.round(a.kolaySkorTop / a.urunCesit) : 0,
-                sevkYuzde: a.urunCesit ? Math.round(a.sevkYuzdeTop / a.urunCesit) : 0
-            }))
-            .sort((x, y) => y.kolaySkor - x.kolaySkor || y.sevkYuzde - x.sevkYuzde);
-    }
 
     const tabloHtml = (rows, baslik, noktaRenk, panelKey) => {
         const sipRows = planlamaSiparisTopla(rows);
@@ -11686,10 +11789,9 @@ async function renderPlanlama() {
         </div>`;
     };
 
-    const MAX_ROWS_PER_TABLE = 220;
-    const simteksRows = urunSatirlari.filter(r => r.alan === 'SIMTEKS_KONF').slice(0, MAX_ROWS_PER_TABLE);
-    const fasonRows = urunSatirlari.filter(r => r.alan === 'FASON_KONF').slice(0, MAX_ROWS_PER_TABLE);
-    const dogrudanRows = urunSatirlari.filter(r => r.alan === 'DOGRUDAN_SEVK').slice(0, MAX_ROWS_PER_TABLE);
+    const simteksRows = planlamaAlanSatirlari(urunSatirlari, 'SIMTEKS_KONF');
+    const fasonRows = planlamaAlanSatirlari(urunSatirlari, 'FASON_KONF');
+    const dogrudanRows = planlamaAlanSatirlari(urunSatirlari, 'DOGRUDAN_SEVK');
     _planlamaLastRows = urunSatirlari;
 
     list.innerHTML = `
@@ -11830,6 +11932,75 @@ function sevkiyatSatirTipEslesir(r, tip) {
     if (t === 'KUMAS') return sevkiyatSatirKumasMi(r);
     if (t === 'URUN') return !sevkiyatSatirKumasMi(r);
     return true;
+}
+
+/** Sevkiyat tablosunda bir satırın gösterilen sayıları (ana program + mobil). */
+function sevkiyatSatirSayilari(r) {
+    const yuk = Math.round(parseFloat(r.yukleme) || 0);
+    const sip = Math.round(parseFloat(r.miktar) || 0);
+    const dok = Math.round(parseFloat(r.dok) || 0);
+    const sipKalan = r.siparisKalan != null ? Math.round(parseFloat(r.siparisKalan) || 0) : Math.max(0, sip - yuk);
+    const hazir = r.hazir != null
+        ? Math.round(parseFloat(r.hazir) || 0)
+        : (r.depoBekleyen != null ? Math.round(parseFloat(r.depoBekleyen) || 0) : Math.max(0, dok - yuk));
+    const birimLbl = sevkiyatSatirMetreMi(r) ? 'mt' : (String(r.birim || '').toUpperCase() === 'KG' ? 'kg' : 'ad');
+    return { yuk, sip, dok, sipKalan, hazir, birimLbl };
+}
+
+function sevkiyatSatirSirala(rows) {
+    return (rows || []).slice().sort((a, b) =>
+        String(a.sno).localeCompare(String(b.sno), 'tr', { numeric: true })
+        || String(a.urun).localeCompare(String(b.urun), 'tr')
+        || String(a.renk).localeCompare(String(b.renk), 'tr')
+    );
+}
+
+/** Sevkiyat üst özeti: aktif siparişlerin bütün kalemlerinden (filtreden bağımsız). */
+function sevkiyatOzetModeli(satirlar) {
+    satirlar = satirlar || [];
+    let sipMt = 0, sipAd = 0, sipKg = 0, dokMt = 0, dokAd = 0, dokKg = 0, yukMt = 0, yukAd = 0, yukKg = 0;
+    let kalanSipMt = 0, kalanSipAd = 0, kalanSipKg = 0, depoMt = 0, depoAd = 0, depoKg = 0;
+    const cesitSet = new Set();
+    for (let i = 0; i < satirlar.length; i++) {
+        const r = satirlar[i];
+        const yuk = parseFloat(r.yukleme) || 0;
+        const sip = parseFloat(r.miktar) || 0;
+        const dok = parseFloat(r.dok) || 0;
+        const sipKalan = r.siparisKalan != null
+            ? Math.max(0, parseFloat(r.siparisKalan) || 0)
+            : Math.max(0, sip - yuk);
+        const depoBek = r.depoBekleyen != null
+            ? Math.max(0, parseFloat(r.depoBekleyen) || 0)
+            : Math.max(0, dok - yuk);
+        const cesitKey = String(r.grupKey || planlamaIhtiyacNorm(r.kod || r.urun) || '').trim();
+        if (cesitKey) cesitSet.add(cesitKey);
+        const dokB = String(r.dokBirim || r.birim || 'ADET').toUpperCase().replace(/İ/g, 'I');
+        if (sevkiyatSatirKumasMi(r)) {
+            if (dokB === 'KG') {
+                sipKg += sip; dokKg += dok; yukKg += yuk; kalanSipKg += sipKalan; depoKg += depoBek;
+            } else {
+                sipMt += sip; dokMt += dok; yukMt += yuk; kalanSipMt += sipKalan; depoMt += depoBek;
+            }
+        } else {
+            sipAd += Math.round(sip);
+            dokAd += Math.round(dok);
+            yukAd += Math.round(yuk);
+            kalanSipAd += Math.round(sipKalan);
+            depoAd += Math.round(depoBek);
+        }
+    }
+    const tipSay = {
+        TUMU: satirlar.length,
+        HAZIR: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'HAZIR')).length,
+        KALAN: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'KALAN')).length,
+        KUMAS: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'KUMAS')).length,
+        URUN: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'URUN')).length
+    };
+    return {
+        sipMt, sipAd, sipKg, dokMt, dokAd, dokKg, yukMt, yukAd, yukKg,
+        kalanSipMt, kalanSipAd, kalanSipKg, depoMt, depoAd, depoKg,
+        kalemAdedi: satirlar.length, cesitAdedi: cesitSet.size, tipSay
+    };
 }
 
 function sevkiyatFiltreUygula(satirlar) {
@@ -12025,48 +12196,11 @@ function sevkiyatRender(opts = {}) {
         </div>`;
     };
 
-    let sipMt = 0, sipAd = 0, sipKg = 0, dokMt = 0, dokAd = 0, dokKg = 0, yukMt = 0, yukAd = 0, yukKg = 0;
-    let kalanSipMt = 0, kalanSipAd = 0, kalanSipKg = 0, depoMt = 0, depoAd = 0, depoKg = 0;
-    const cesitSet = new Set();
-    const ozetKaynak = satirlar;
-    for (let i = 0; i < ozetKaynak.length; i++) {
-        const r = ozetKaynak[i];
-        const yuk = parseFloat(r.yukleme) || 0;
-        const sip = parseFloat(r.miktar) || 0;
-        const dok = parseFloat(r.dok) || 0;
-        const sipKalan = r.siparisKalan != null
-            ? Math.max(0, parseFloat(r.siparisKalan) || 0)
-            : Math.max(0, sip - yuk);
-        const depoBek = r.depoBekleyen != null
-            ? Math.max(0, parseFloat(r.depoBekleyen) || 0)
-            : Math.max(0, dok - yuk);
-        const cesitKey = String(r.grupKey || planlamaIhtiyacNorm(r.kod || r.urun) || '').trim();
-        if (cesitKey) cesitSet.add(cesitKey);
-        const dokB = String(r.dokBirim || r.birim || 'ADET').toUpperCase().replace(/İ/g, 'I');
-        if (sevkiyatSatirKumasMi(r)) {
-            if (dokB === 'KG') {
-                sipKg += sip; dokKg += dok; yukKg += yuk; kalanSipKg += sipKalan; depoKg += depoBek;
-            } else {
-                sipMt += sip; dokMt += dok; yukMt += yuk; kalanSipMt += sipKalan; depoMt += depoBek;
-            }
-        } else {
-            sipAd += Math.round(sip);
-            dokAd += Math.round(dok);
-            yukAd += Math.round(yuk);
-            kalanSipAd += Math.round(sipKalan);
-            depoAd += Math.round(depoBek);
-        }
-    }
-    const kalemAdedi = ozetKaynak.length;
-    const cesitAdedi = cesitSet.size;
-
-    const tipSay = {
-        TUMU: satirlar.length,
-        HAZIR: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'HAZIR')).length,
-        KALAN: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'KALAN')).length,
-        KUMAS: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'KUMAS')).length,
-        URUN: satirlar.filter((r) => sevkiyatSatirTipEslesir(r, 'URUN')).length
-    };
+    const {
+        sipMt, sipAd, sipKg, dokMt, dokAd, dokKg, yukMt, yukAd, yukKg,
+        kalanSipMt, kalanSipAd, kalanSipKg, depoMt, depoAd, depoKg,
+        kalemAdedi, cesitAdedi, tipSay
+    } = sevkiyatOzetModeli(satirlar);
     const tipChip = (id, lbl) => {
         const on = _sevkiyatTip === id;
         const n = tipSay[id] || 0;
@@ -12074,11 +12208,7 @@ function sevkiyatRender(opts = {}) {
     };
     const filtreAktif = !!String(_sevkiyatQ || '').trim() || _sevkiyatTip !== 'TUMU';
 
-    const rows = filtered.slice().sort((a, b) =>
-        String(a.sno).localeCompare(String(b.sno), 'tr', { numeric: true })
-        || String(a.urun).localeCompare(String(b.urun), 'tr')
-        || String(a.renk).localeCompare(String(b.renk), 'tr')
-    );
+    const rows = sevkiyatSatirSirala(filtered);
 
     /* Büyük listelerde DOM hafif kalsın — “Tümünü göster” ile tamamı açılır (veri silinmez).
        Telefonda her satır karta döner (6-8 satır yükseklik): 400 kart hem çok uzun hem ağır —
@@ -12160,14 +12290,7 @@ function sevkiyatRender(opts = {}) {
                 <tbody>
                     ${shown.map((r) => {
                         const gh = planlamaIhtiyacGirisHucreleri(r, { forceSevkGiris: true, compact: true });
-                        const yuk = Math.round(parseFloat(r.yukleme) || 0);
-                        const sip = Math.round(parseFloat(r.miktar) || 0);
-                        const dok = Math.round(parseFloat(r.dok) || 0);
-                        const sipKalan = r.siparisKalan != null ? Math.round(parseFloat(r.siparisKalan) || 0) : Math.max(0, sip - yuk);
-                        const hazir = r.hazir != null
-                            ? Math.round(parseFloat(r.hazir) || 0)
-                            : (r.depoBekleyen != null ? Math.round(parseFloat(r.depoBekleyen) || 0) : Math.max(0, dok - yuk));
-                        const birimLbl = sevkiyatSatirMetreMi(r) ? 'mt' : (String(r.birim || '').toUpperCase() === 'KG' ? 'kg' : 'ad');
+                        const { yuk, dok, sipKalan, hazir, birimLbl } = sevkiyatSatirSayilari(r);
                         const urunTitle = pdfEsc([r.urun, r.kod].filter(Boolean).join(' · '));
                         const musTitle = pdfEsc(r.musteri);
                         const hazirTitle = pdfEsc(`Dokunan ${dok} − Sevk ${yuk} = Hazır ${hazir} ${birimLbl}`);
@@ -13020,11 +13143,16 @@ function konfKesimGecmisEslesir(r, q) {
 
 const KONF_KESIM_GECMIS_THEAD = `<th style="font-size:9px">Tarih</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Müşteri</th><th style="font-size:9px">Desen</th><th style="font-size:9px">Ebat</th><th style="font-size:9px">Renk</th><th style="font-size:9px;text-align:right">Kesilen</th><th style="font-size:9px">Rota</th><th style="font-size:9px">İşlem</th>`;
 
-function konfKesimGecmisSonucHtml() {
-    const tumKayitlar = (_konfKesimGecmisCache || []).filter((r) => !r.kesimsiz).sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
-    const q = _konfKesimGecmisArama;
+/** Kesilen ürünler (kesimsiz yıkama hariç, yeniden eskiye) + aramaya uyanlar + toplam adet — ekrana dokunmaz; Kesim ekranı ve
+    yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı") */
+function konfKesilenModeli(q) {
+    const tum = (_konfKesimGecmisCache || []).filter((r) => !r.kesimsiz).sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
     const araniyor = !!String(q || '').trim();
-    const eslesen = araniyor ? tumKayitlar.filter((r) => konfKesimGecmisEslesir(r, q)) : tumKayitlar;
+    return { tum, araniyor, eslesen: araniyor ? tum.filter((r) => konfKesimGecmisEslesir(r, q)) : tum, toplamAd: tum.reduce((s, r) => s + (r.miktar || 0), 0) };
+}
+function konfKesimGecmisSonucHtml() {
+    const q = _konfKesimGecmisArama;
+    const { eslesen, araniyor } = konfKesilenModeli(q);
     const listeLimit = Math.max(10, parseInt(_konfKesimSonListeLimit, 10) || 10);
     const gorunenKayitlar = araniyor ? eslesen : eslesen.slice(0, listeLimit);
     const sonSatirlar = gorunenKayitlar.map((r) => konfKesimGecmisSatirHtml(r)).join('');
@@ -14660,14 +14788,20 @@ function konfKesimOnuKapatilanlarHtml(filtreSiparisId) {
         </details>`;
 }
 
+/** Kesim önünde bekleyen toplamı (adetle gelen ad, metreyle gelen m) — ekrana dokunmaz; yeni mobil de kullanır (22.10.2026) */
+function konfKesimOnuToplam(liste) {
+    return {
+        topAd: (liste || []).reduce((s, g) => s + (g.metreMi ? 0 : g.kalanAd), 0),
+        topMt: (liste || []).reduce((s, g) => s + (g.metreMi ? g.kalanMt : 0), 0)
+    };
+}
 function konfKesimOnuPanelHtml(filtreSiparisId) {
     const liste = konfKesimOnuBekleyenler(filtreSiparisId);
     const say = konfKesimOnuSayi;
     /* Mobil salt okunur — düğme yok; sevki geri alma yalnız depo hareketi düzeltme yetkisiyle */
     const yaz = !window.ERP_MOBIL_LITE;
     const geriAlYetki = yaz && konfKesimOnuSevkGeriAlYetkiliMi();
-    const topAd = liste.reduce((s, g) => s + (g.metreMi ? 0 : g.kalanAd), 0);
-    const topMt = liste.reduce((s, g) => s + (g.metreMi ? g.kalanMt : 0), 0);
+    const { topAd, topMt } = konfKesimOnuToplam(liste);
     const ozet = liste.length
         ? `${liste.length} kalem${topAd ? ` · ${say(topAd)} ad` : ''}${topMt ? ` · ${say(topMt)} m` : ''}`
         : 'bekleyen yok';
@@ -14734,8 +14868,9 @@ function konfKesimOnuPanelHtml(filtreSiparisId) {
 
 function renderKonfGlobalKumasGelisPanel(filtreSiparisId) {
     const girisPanel = renderKonfManuelKesimPanel();
-    const kesimKayitlari = (_konfKesimGecmisCache || []).filter((r) => !r.kesimsiz);
-    const toplamKesilenAd = kesimKayitlari.reduce((s, r) => s + (r.miktar || 0), 0);
+    const kesilen = konfKesilenModeli('');
+    const kesimKayitlari = kesilen.tum;
+    const toplamKesilenAd = kesilen.toplamAd;
 
     const kesilenPanel = `<div class="panel-box" style="margin-bottom:12px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.04)">
         <div class="panel-head">
@@ -14861,6 +14996,7 @@ function konfKesimOnuDefterIdleri(j) {
 function konfKesimOnuGeriAlEngeli(j) {
     if (j?.pipeline !== KESIM_ONU_PIPELINE || j.kesim_onu_kapali) return 'Bu sevk az önce değişmiş (kesimi bitti denmiş) — ekranı yenileyin.';
     if (['kesilen_adet', 'yikama_sevk_adet', 'yikama_gelen_adet', 'kalite_gecen_adet', 'sevk_edilen_adet'].some(k => (parseInt(j[k], 10) || 0) > 0)) return 'Bu sevk satırına kesim / kalite / sevk adedi işlenmiş — geri alınamaz.';
+    if (j.kaynak === 'BOYAHANE') return 'Bu kumaş boyahaneden döndü — geri almak için Terbiye ekranında işin "Boyalı geldi" kaydını silin.';
     if (!konfKesimOnuDefterIdleri(j).length) return 'Bu sevkin Dokuma Depo satırıyla bağı yok (eski kayıt) — buradan geri alınamaz.';
     return '';
 }
@@ -16482,8 +16618,9 @@ async function konfYikamayaGeriYukle(siparisId, kalemIdx, adet, opts = {}) {
 }
 try { window.konfYikamayaGeriYukle = konfYikamayaGeriYukle; } catch (e) {}
 
-function renderKonfGlobalYikamaPanel(filtreSiparisId) {
-    const fisPanel = renderKonfYikamaFisPanel(filtreSiparisId);
+/** Yıkama ekranının satırları ve üç kutunun toplamları — ekrana dokunmaz; Yıkama ekranı ve yeni mobil (mobil-yeni/) AYNI
+    modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı") */
+function konfYikamaPanelModeli(filtreSiparisId) {
     const hazirListe = konfYikamaHazirListe(filtreSiparisId);
     const all = konfPipelineYikamaAllRows(filtreSiparisId);
     const yikamadaRows = konfPipelineYikamaYikamadaRows(filtreSiparisId);
@@ -16505,6 +16642,11 @@ function renderKonfGlobalYikamaPanel(filtreSiparisId) {
     const gelenAktifRows = gelenRows.filter(r => konfPipelineYikamaOzet(r).yikamada > 0);
     const gelenAktifToplamAd = gelenAktifRows.reduce((s, r) => s + (konfPipelineYikamaOzet(r).yikamada || 0), 0);
     const bitmisYikamaRows = all.filter(konfPipelineYikamaBitmisMi);
+    return { hazirListe, all, yikamadaRows, yikamadaGruplar, gelenRows, hazirToplamAd, yikamadaToplamAd, gelenAktifRows, gelenAktifToplamAd, bitmisYikamaRows };
+}
+function renderKonfGlobalYikamaPanel(filtreSiparisId) {
+    const fisPanel = renderKonfYikamaFisPanel(filtreSiparisId);
+    const { hazirListe, all, yikamadaRows, yikamadaGruplar, gelenRows, hazirToplamAd, yikamadaToplamAd, gelenAktifRows, gelenAktifToplamAd, bitmisYikamaRows } = konfYikamaPanelModeli(filtreSiparisId);
     const qBitY = String(konfPipelineBitmisFiltre.yikama || '');
     const bitmisYikamaFiltreli = bitmisYikamaRows.filter(r => konfPipelineBitmisFiltreEslesir(r, qBitY));
 
@@ -17320,17 +17462,23 @@ async function konfKaliteSentetikKaydet(siparisId, kalemIdx) {
     await konfPipelineYenile();
 }
 
-function renderKonfGlobalKalitePanel(filtreSiparisId) {
-    const manuelPanel = renderKonfManuelKalitePanel();
-    const rowsHam = konfKaliteTumSiparisleriGoster
+/** Kalite / paket satırları (aktif + bitmiş, arama) ve bekleyen toplamı — ekrana dokunmaz; Kalite ekranı ve yeni mobil
+    (mobil-yeni/) AYNI modeli kullanır (22.10.2026). tumu = "tüm aktif siparişleri göster" */
+function konfKalitePanelModeli(filtreSiparisId, qAktif, qBit, tumu) {
+    const rowsHam = tumu
         ? renderKonfKaliteTumSiparisRows(filtreSiparisId)
         : konfPipelineKaliteBekleyenRows(filtreSiparisId);
     const bitmisRows = konfPipelineKaliteBitmisRows(filtreSiparisId);
-    const qBit = String(konfPipelineBitmisFiltre.kalite || '');
-    const bitmisFiltreli = bitmisRows.filter(r => konfPipelineBitmisFiltreEslesir(r, qBit));
-    const qAktif = String(konfPipelineBitmisFiltre.kalite_aktif || '');
-    const rows = rowsHam.filter(r => konfPipelineBitmisFiltreEslesir(r, qAktif));
+    const bitmisFiltreli = bitmisRows.filter(r => konfPipelineBitmisFiltreEslesir(r, qBit || ''));
+    const rows = rowsHam.filter(r => konfPipelineBitmisFiltreEslesir(r, qAktif || ''));
     const toplamBek = rows.reduce((s, r) => s + konfPipelineKaliteOzet(r).bekleyen, 0);
+    return { rowsHam, rows, bitmisRows, bitmisFiltreli, toplamBek };
+}
+function renderKonfGlobalKalitePanel(filtreSiparisId) {
+    const manuelPanel = renderKonfManuelKalitePanel();
+    const qBit = String(konfPipelineBitmisFiltre.kalite || '');
+    const qAktif = String(konfPipelineBitmisFiltre.kalite_aktif || '');
+    const { rowsHam, rows, bitmisRows, bitmisFiltreli, toplamBek } = konfKalitePanelModeli(filtreSiparisId, qAktif, qBit, konfKaliteTumSiparisleriGoster);
 
     const thead = `<th style="font-size:9px">Tarih</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Müşteri</th><th style="font-size:9px">Ürün</th><th style="font-size:9px">Renk</th><th style="font-size:9px">Kaynak</th>
                     <th style="font-size:9px;text-align:right">Kesilen</th><th style="font-size:9px;text-align:right">Yıkamadan gelen</th>
@@ -18518,7 +18666,7 @@ function siparisKalemAsamaSayilari(sip, ix, kalem) {
         birim: siparisKalemBirim(k),
         siparis: parseFloat(k.miktar) || 0,
         dokuma: dokumaUrunIkinciOzet(u, k),
-        sevk: planlamaIhtiyacSevkAdet(sid, ix, rowK)
+        sevk: planlamaIhtiyacSevkGoster(sid, ix, rowK)
     };
     /* Yapı geçişi M2 (38 · 39 erpYapiUretimKiyas): anahtar KARSILASTIR'dayken gösterilen sayılar yeni yapıyla (kalem_durum)
        kıyaslanır, fark deftere düşer; dönen sayılar DEĞİŞMEZ. ESKI'de hiçbir şey yapmaz. */
@@ -18916,19 +19064,65 @@ function dtRaporGunIso(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 function dtRaporAralik() {
-    const t = dtRapor.tarih ? new Date(dtRapor.tarih + 'T00:00:00') : new Date();
+    return dtRaporAralikHesapla(dtRapor.donem, dtRapor.tarih);
+}
+/** Dönem aralığı (GUN / HAFTA / AY, tarih 'YYYY-AA-GG' ya da boş = bugün) — yeni mobil de kullanır */
+function dtRaporAralikHesapla(donem, tarih) {
+    const t = tarih ? new Date(tarih + 'T00:00:00') : new Date();
     t.setHours(0, 0, 0, 0);
     let bas = new Date(t), bit;
-    if (dtRapor.donem === 'HAFTA') {
+    if (donem === 'HAFTA') {
         bas.setDate(t.getDate() - ((t.getDay() + 6) % 7));   // Pazartesi
         bit = new Date(bas); bit.setDate(bas.getDate() + 7);
-    } else if (dtRapor.donem === 'AY') {
+    } else if (donem === 'AY') {
         bas = new Date(t.getFullYear(), t.getMonth(), 1);
         bit = new Date(t.getFullYear(), t.getMonth() + 1, 1);
     } else {
         bit = new Date(bas); bit.setDate(bas.getDate() + 1);
     }
     return { bas, bit };
+}
+function dtRaporTopla(l) {
+    return l.reduce((a, r) => { a.top++; a.m += r.metre; a.kg += r.kg; a.ad += r.adet; return a; }, { top: 0, m: 0, kg: 0, ad: 0 });
+}
+/** Hareket kayıtlarının dönem / arama / kaynak süzgeci ve toplamları — ekrana dokunmaz; masaüstü ve yeni mobil
+    (mobil-yeni/) AYNI modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı").
+    f = { donem, tarih, q, kaynak }; gunler yalnız HAFTA / AY'da (girişi olmayan gün de satır) */
+function dtRaporModeli(veri, f) {
+    f = f || {};
+    const donem = f.donem || 'GUN';
+    const aralik = dtRaporAralikHesapla(donem, f.tarih);
+    const basMs = aralik.bas.getTime(), bitMs = aralik.bit.getTime();
+    const kelimeler = planlamaTodoAramaNorm(f.q || '').split(/\s+/).filter(Boolean);
+    const donemde = (veri || []).filter(r => r.ms >= basMs && r.ms < bitMs && kelimeler.every(k => r.ara.includes(k)));
+    const liste = f.kaynak ? donemde.filter(r => r.kaynak === f.kaynak) : donemde;
+    const t = dtRaporTopla(liste);
+    /* Kaynak dağılımı — kaynak süzgecinden bağımsız, dönemin tamamı */
+    const kaynaklar = DT_RAPOR_KAYNAKLAR.map(([kod, ad]) => ({ kod, ad, x: dtRaporTopla(donemde.filter(r => r.kaynak === kod)) })).filter(k => k.x.top);
+    let gunler = null;
+    if (donem !== 'GUN') {
+        const gunMap = new Map();
+        liste.forEach(r => {
+            const k = dtRaporGunIso(new Date(r.ms));
+            if (!gunMap.has(k)) gunMap.set(k, []);
+            gunMap.get(k).push(r);
+        });
+        gunler = [];
+        for (let d = new Date(aralik.bas); d < aralik.bit; d.setDate(d.getDate() + 1)) {
+            const g = new Date(d);
+            gunler.push({ gun: g, x: dtRaporTopla(gunMap.get(dtRaporGunIso(g)) || []) });
+        }
+    }
+    /* Sipariş + ürün bazında */
+    const grupMap = new Map();
+    liste.forEach(r => {
+        const k = r.sid + '|' + r.urun;
+        if (!grupMap.has(k)) grupMap.set(k, { sno: r.sno, firma: r.firma, urun: r.urun, top: 0, m: 0, kg: 0, ad: 0 });
+        const x = grupMap.get(k);
+        x.top++; x.m += r.metre; x.kg += r.kg; x.ad += r.adet;
+    });
+    const gruplar = [...grupMap.values()].sort((a, b) => b.m - a.m || b.top - a.top);
+    return { aralik, kelimeler, donemde, liste, t, kaynaklar, gunler, gruplar };
 }
 function dtRaporEtiket({ bas, bit }) {
     const son = new Date(bit); son.setDate(son.getDate() - 1);
@@ -18966,15 +19160,9 @@ function dtRaporGovdeYenile() {
 }
 
 function dtRaporGovdeHtml() {
-    const veri = _dtRaporVeri.girisler || [];
-    const aralik = dtRaporAralik();
-    const basMs = aralik.bas.getTime(), bitMs = aralik.bit.getTime();
-    const kelimeler = planlamaTodoAramaNorm(dtRapor.q).split(/\s+/).filter(Boolean);
-    const donemde = veri.filter(r => r.ms >= basMs && r.ms < bitMs && kelimeler.every(k => r.ara.includes(k)));
-    const liste = dtRapor.kaynak ? donemde.filter(r => r.kaynak === dtRapor.kaynak) : donemde;
-    const topla = (l) => l.reduce((a, r) => { a.top++; a.m += r.metre; a.kg += r.kg; a.ad += r.adet; return a; }, { top: 0, m: 0, kg: 0, ad: 0 });
+    const md = dtRaporModeli(_dtRaporVeri.girisler || [], dtRapor);
+    const { kelimeler, liste, t } = md;
     const fmt = (n, b = 1) => (Number(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: b });
-    const t = topla(liste);
     const kart = (etiket, deger, renk) => `<div style="padding:12px 14px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
         <div style="font-size:8px;color:${renk};font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em">${etiket}</div>
         <div style="font-family:'Instrument Serif',serif;font-size:22px;color:var(--text)">${deger}</div></div>`;
@@ -18984,9 +19172,7 @@ function dtRaporGovdeHtml() {
     const miktarBaslik = `<th style="text-align:right">Metre</th><th style="text-align:right">KG</th><th style="text-align:right">Adet</th>`;
 
     /* Kaynak dağılımı — kaynak süzgecinden bağımsız, dönemin tamamı */
-    const kaynakHtml = DT_RAPOR_KAYNAKLAR.map(([kod, ad]) => {
-        const x = topla(donemde.filter(r => r.kaynak === kod));
-        if (!x.top) return '';
+    const kaynakHtml = md.kaynaklar.map(({ kod, ad, x }) => {
         const secili = dtRapor.kaynak === kod;
         return `<button type="button" onclick="dtRaporKaynak('${secili ? '' : kod}')" title="${secili ? 'Süzgeci kaldır' : 'Yalnız bu kaynağı göster'}"
             style="padding:6px 10px;border-radius:8px;border:1px solid ${secili ? 'var(--cyan-c)' : 'var(--border)'};background:${secili ? 'rgba(34,211,238,0.1)' : 'var(--surface2)'};color:var(--text2);font-size:10px;cursor:pointer;text-align:left">
@@ -18995,21 +19181,12 @@ function dtRaporGovdeHtml() {
 
     /* Gün gün dağılım (haftalık / aylık) — girişi olmayan günler de satır olarak görünür */
     let gunHtml = '';
-    if (dtRapor.donem !== 'GUN') {
-        const gunler = [];
-        for (let d = new Date(aralik.bas); d < aralik.bit; d.setDate(d.getDate() + 1)) gunler.push(new Date(d));
-        const gunMap = new Map();
-        liste.forEach(r => {
-            const k = dtRaporGunIso(new Date(r.ms));
-            if (!gunMap.has(k)) gunMap.set(k, []);
-            gunMap.get(k).push(r);
-        });
+    if (md.gunler) {
         gunHtml = `<div class="panel-box" style="padding:0;overflow:hidden">
             <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>Gün gün</span></div>
             <div style="overflow:auto;max-height:46vh"><table class="dt-table" style="min-width:520px">
                 <thead><tr><th style="text-align:left">Gün</th><th style="text-align:right">Top</th>${miktarBaslik}</tr></thead>
-                <tbody>${gunler.map(g => {
-                    const x = topla(gunMap.get(dtRaporGunIso(g)) || []);
+                <tbody>${md.gunler.map(({ gun: g, x }) => {
                     return `<tr style="${x.top ? '' : 'opacity:.45'}">
                         <td>${pdfEsc(g.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short' }))}</td>
                         <td class="mono" style="text-align:right">${x.top || '—'}</td>${miktarHucre(x)}</tr>`;
@@ -19019,14 +19196,7 @@ function dtRaporGovdeHtml() {
     }
 
     /* Sipariş + ürün bazında */
-    const grupMap = new Map();
-    liste.forEach(r => {
-        const k = r.sid + '|' + r.urun;
-        if (!grupMap.has(k)) grupMap.set(k, { sno: r.sno, firma: r.firma, urun: r.urun, top: 0, m: 0, kg: 0, ad: 0 });
-        const x = grupMap.get(k);
-        x.top++; x.m += r.metre; x.kg += r.kg; x.ad += r.adet;
-    });
-    const gruplar = [...grupMap.values()].sort((a, b) => b.m - a.m || b.top - a.top);
+    const gruplar = md.gruplar;
     const grupHtml = `<div class="panel-box" style="padding:0;overflow:hidden">
         <div class="panel-head"><span class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>Sipariş / ürün bazında</span>
             <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace">${gruplar.length} ürün</span></div>
@@ -19632,13 +19802,17 @@ function renderDokumaDepo() {
    (alanda çalışan herkes); müşteri / terbiye / genel depo sevki ✎ ile Depo düzelt penceresinden — YALNIZ yönetici
    (11 depoHareketDuzeltKurali; miktar ya da geri alma Dokuma Depo kalanını ve sevkin öbür ucunu birlikte düzeltir). */
 let _dokumaDepoSevklerAcik = false;
-function dokumaDepoSevkEdilenlerHtml() {
+/** Sevk edilenler satırları (son 60 gün, en çok 300) — ekrana dokunmaz; yeni mobil de bunu kullanır */
+function dokumaDepoSevkEdilenSatirlari() {
     const etiket = ortakDepoSevkEtiket();   /* ORTAK sabit */
     const sinir = Date.now() - 60 * 86400000;
-    const satirlar = (dataCache.kumas_stok || [])
+    return (dataCache.kumas_stok || [])
         .filter(r => String(r.notlar || '').includes(etiket) && (Date.parse(r.created_at) || 0) >= sinir)
         .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
         .slice(0, 300);
+}
+function dokumaDepoSevkEdilenlerHtml() {
+    const satirlar = dokumaDepoSevkEdilenSatirlari();
     if (!satirlar.length) return '';
     const yonetici = typeof depoYoneticiMi === 'function' && depoYoneticiMi();
     const kesimAcik = typeof erpUserCan === 'function' && erpUserCan('KONFEKSIYON_KESIM');
@@ -19678,35 +19852,12 @@ async function dtDokumaDepoYenile() {
     await dokumaDepoYenileAktifEkran({ filterOnly: false });
 }
 
-async function renderDokumaDepoIcerik(opts) {
-    opts = opts || {};
-    /* Toplu sevk sürerken çizilmez (02 _dokumaDepoTopluSevkSuruyor): çizim satır listesini boşaltıp baştan okuyor,
-       sıradaki kalemler satırını bulamıyordu. Toplu sevk bitince ekran bir kez çizilir. */
-    if (typeof _dokumaDepoTopluSevkSuruyor !== 'undefined' && _dokumaDepoTopluSevkSuruyor) return;
-    const filterOnly = !!opts.filterOnly;
-    const embed = !!opts.embed;
-    const sevkGirisAktif = opts.sevkGirisAktif === true
-        || (opts.sevkGirisAktif == null && appMode === 'SEVKIYAT' && sevkiyatMerkezGrup === 'DOKUMA_DEPO');
-    const list = opts.targetId
-        ? document.getElementById(opts.targetId)
-        : document.getElementById('main-list');
-    if (!list) return;
-
-    if (!filterOnly) _dokumaDepoKdSatirlariCache = [];
-    const f = dokumaDepoFiltre || { q: '', durum: 'HEPSI', siparisId: '' };
-    let rows = [];
-    try {
-        if (filterOnly && (_dokumaDepoKdSatirlariCache || []).length) {
-            rows = _dokumaDepoKdSatirlariCache.slice();
-        } else {
-            rows = await dtDokumaDepoKdTopluYukle();
-        }
-    } catch (e) {
-        console.warn('renderDokumaDepoIcerik', e);
-        if (typeof erpToast === 'function') erpToast('Dokuma Depo okunamadı: ' + (e.message || e), 'error');
-        rows = [];
-    }
-
+/** Dokuma Depo'da görünen satırlar (tarih, sipariş, arama, durum süzgeci + sıralama) ve toplamlar — ekrana dokunmaz.
+    Masaüstü ekranı ve yeni mobil (mobil-yeni/) AYNI fonksiyonu kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı").
+    rows = dtDokumaDepoKdTopluYukle sonucu, f = dokumaDepoFiltre biçimi { q, durum: HEPSI | DEPO | SEVK, siparisId } */
+function dokumaDepoGorunurSatirlar(rows, f) {
+    f = f || { q: '', durum: 'HEPSI', siparisId: '' };
+    rows = Array.isArray(rows) ? rows : [];
     rows = rows.filter(r => dtDokumaDepoTarihBugunVeSonrasi(r.created_at));
 
     const sevkSet = depoDokumaSevkEdilmisKaynakIdSet(dataCache.kumas_stok || []);
@@ -19756,6 +19907,41 @@ async function renderDokumaDepoIcerik(opts) {
     const ozetAd = rows.reduce((a, r) => a + Math.abs(parseInt(r.cuval_sayisi || 0, 10) || 0), 0);
     const bekleyen = rows.filter(r => r._kdOnly || !sevkSet.has(String(r.id))).length;
     const sevkEdilen = rows.filter(r => !r._kdOnly && sevkSet.has(String(r.id))).length;
+    return { rows, sevkSet, kayitSnoAl, ozetMt, ozetKg, ozetAd, bekleyen, sevkEdilen };
+}
+
+async function renderDokumaDepoIcerik(opts) {
+    opts = opts || {};
+    /* Toplu sevk sürerken çizilmez (02 _dokumaDepoTopluSevkSuruyor): çizim satır listesini boşaltıp baştan okuyor,
+       sıradaki kalemler satırını bulamıyordu. Toplu sevk bitince ekran bir kez çizilir. */
+    if (typeof _dokumaDepoTopluSevkSuruyor !== 'undefined' && _dokumaDepoTopluSevkSuruyor) return;
+    const filterOnly = !!opts.filterOnly;
+    const embed = !!opts.embed;
+    const sevkGirisAktif = opts.sevkGirisAktif === true
+        || (opts.sevkGirisAktif == null && appMode === 'SEVKIYAT' && sevkiyatMerkezGrup === 'DOKUMA_DEPO');
+    const list = opts.targetId
+        ? document.getElementById(opts.targetId)
+        : document.getElementById('main-list');
+    if (!list) return;
+
+    if (!filterOnly) _dokumaDepoKdSatirlariCache = [];
+    const f = dokumaDepoFiltre || { q: '', durum: 'HEPSI', siparisId: '' };
+    let rows = [];
+    try {
+        if (filterOnly && (_dokumaDepoKdSatirlariCache || []).length) {
+            rows = _dokumaDepoKdSatirlariCache.slice();
+        } else {
+            rows = await dtDokumaDepoKdTopluYukle();
+        }
+    } catch (e) {
+        console.warn('renderDokumaDepoIcerik', e);
+        if (typeof erpToast === 'function') erpToast('Dokuma Depo okunamadı: ' + (e.message || e), 'error');
+        rows = [];
+    }
+
+    const _gorunur = dokumaDepoGorunurSatirlar(rows, f);
+    rows = _gorunur.rows;
+    const { sevkSet, kayitSnoAl, ozetMt, ozetKg, ozetAd, bekleyen, sevkEdilen } = _gorunur;
 
     const siparisOpts = (() => {
         const ids = new Set();
@@ -20428,22 +20614,26 @@ function dtGirisKullaniciAlanlari() {
     return ad ? { user: ad, kullanici: ad } : {};
 }
 
-async function renderDtForm() {
-    const siparis = (dataCache.siparisler||[]).find(s=>s.id==dtSeciliSiparisId);
-    if (!siparis) return '';
+/** Dokuma Takip sipariş görünümünün verisi (ürün ağacı + KD_DOKUMA okunur) — ekrana dokunmaz.
+    Masaüstü formu ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı"). */
+async function dtFormVerisi(sid) {
+    const siparis = (dataCache.siparisler||[]).find(s=>s.id==sid);
+    if (!siparis) return null;
+    /* Kumaş planı (29): kumaşa bağlı kalemler tek "kumaş" satırında, kumaşın adıyla ve yalnız metre */
+    if (_kdCache[`KD_URUN_AGACI_${sid}`] === undefined) {
+        try { await sbKdGet(sid, 'KD_URUN_AGACI'); } catch (e) { console.warn('dokuma takip ürün ağacı', e); }
+    }
+    let kd = _kdCache[`KD_DOKUMA_${sid}`];
+    if (kd === undefined) kd = await dtGetKd(sid);
+    return dtFormModeli(siparis, kd || {});
+}
+
+/** Siparişin dokuma özeti, kalem satırları (kumaş planlı kalemler kumaşın tek satırında) ve giriş geçmişi (yeniden eskiye) */
+function dtFormModeli(siparis, kd) {
     let kalemler = [];
     try { kalemler = typeof siparis.cins==='string'?JSON.parse(siparis.cins):(siparis.cins||[]); } catch(e){}
-    /* Kumaş planı (29): kumaşa bağlı kalemler tek "kumaş" satırında, kumaşın adıyla ve yalnız metre */
-    if (_kdCache[`KD_URUN_AGACI_${dtSeciliSiparisId}`] === undefined) {
-        try { await sbKdGet(dtSeciliSiparisId, 'KD_URUN_AGACI'); } catch (e) { console.warn('dokuma takip ürün ağacı', e); }
-    }
     const dtKumas = (i) => typeof kumasPlaniKalemKumasi === 'function' ? kumasPlaniKalemKumasi(siparis, i) : null;
-    let kd = _kdCache[`KD_DOKUMA_${dtSeciliSiparisId}`];
-    if (kd === undefined) kd = await dtGetKd(dtSeciliSiparisId);
-    kd = kd || {};
-    const urunler = kd.urunler || {};
-    await dtTezgahIsleriYukle(dtSeciliSiparisId);
-
+    const urunler = (kd && kd.urunler) || {};
     const toplamMetre = Object.values(urunler).reduce((a,u)=>a+(parseFloat(u.toplam_metre)||0),0);
     const toplamKg    = Object.values(urunler).reduce((a,u)=>a+(parseFloat(u.toplam_kg)||0),0);
     const toplamAdetDokuma = Object.values(urunler).reduce((a,u)=>a+(parseInt(u.toplam_adet,10)||0),0);
@@ -20461,6 +20651,30 @@ async function renderDtForm() {
     const ikinciToplamLabel = siparisKgMi ? 'Toplam KG' : 'Toplam Adet';
     const ikinciToplamDeger = siparisKgMi ? toplamKg.toFixed(1) : toplamAdetDokuma.toLocaleString('tr-TR');
     const ikinciToplamUnit = siparisKgMi ? 'kg' : 'adet';
+    const satirlar = kalemler.map((kalem0, i) => {
+        const kb = dtKumas(i);
+        if (kb && !kb.oncu) return null;   // kumaşın öbür kalemleri kumaş satırında
+        const k = kb ? kb.kalem : kalem0;
+        const u = kb
+            ? { toplam_metre: kb.km.kalemler.reduce((a, r) => a + (parseFloat(urunler[r.ki]?.toplam_metre) || 0), 0), toplam_kg: 0, toplam_adet: 0 }
+            : (urunler[i] || { toplam_metre:0, toplam_kg:0, toplam_adet:0 });
+        /* ADET m+adet, KG m+kg, MT yalnız m; MT + ek birim (15.10.2026) → m + işaretlenen, iki kutu olabilir */
+        return { i, kb, k, u, birim: siparisKalemBirim(k), siparisMiktar: parseFloat(k.miktar || 0) || 0, alan: dtKalemGirisAlanlari(k) };
+    }).filter(Boolean);
+    const girisler = kalemler.flatMap((k, i) => {
+        const u = urunler[i] || {};
+        const arr = Array.isArray(u.girisler) ? u.girisler.map((g, gi) => ({ g, gi })) : [];
+        return arr.slice().reverse().map(({ g, gi }) => ({ i, gi, g, ad: dtKumas(i)?.kalem.ad || k.ad || 'Ürün '+(i+1) }));
+    });
+    return { siparis, kalemler, urunler, toplamMetre, toplamKg, toplamAdetDokuma, siparisAdedi, siparisKgMi,
+        ikinciToplamLabel, ikinciToplamDeger, ikinciToplamUnit, satirlar, girisler };
+}
+
+async function renderDtForm() {
+    const m = await dtFormVerisi(dtSeciliSiparisId);
+    if (!m) return '';
+    await dtTezgahIsleriYukle(dtSeciliSiparisId);
+    const { siparis, kalemler, toplamMetre, siparisAdedi, ikinciToplamLabel, ikinciToplamDeger, ikinciToplamUnit } = m;
 
     return `
     <div style="display:flex;flex-direction:column;gap:12px">
@@ -20497,20 +20711,10 @@ async function renderDtForm() {
             <div >
                 ${kalemler.length === 0
                     ? '<p class="text-[9px] text-slate-400 italic p-6 text-center">Sipariş kalemi bulunamadı</p>'
-                    : kalemler.map((kalem0,i) => {
-                        const kb = dtKumas(i);
-                        if (kb && !kb.oncu) return '';   // kumaşın öbür kalemleri kumaş satırında
-                        const k = kb ? kb.kalem : kalem0;
-                        const u = kb
-                            ? { toplam_metre: kb.km.kalemler.reduce((a, r) => a + (parseFloat(urunler[r.ki]?.toplam_metre) || 0), 0), toplam_kg: 0, toplam_adet: 0 }
-                            : (urunler[i] || { toplam_metre:0, toplam_kg:0, toplam_adet:0 });
-                        const birim = siparisKalemBirim(k);
-                        const siparisMiktar = parseFloat(k.miktar || 0) || 0;
+                    : m.satirlar.map(({ i, kb, k, u, birim, siparisMiktar, alan }) => {
                         const siparisMiktarText = birim === 'ADET'
                             ? Math.round(siparisMiktar).toLocaleString('tr-TR')
                             : siparisMiktar.toFixed(1);
-                        /* ADET m+adet, KG m+kg, MT yalnız m; MT + ek birim (15.10.2026) → m + işaretlenen, iki kutu olabilir */
-                        const alan = dtKalemGirisAlanlari(k);
                         const kgKutu = `
                                     <input type="number" step="0.1" placeholder="+kg" id="dt-input-kg-${i}"
                                         class="pro-input" style="text-align:center;padding:5px 8px;font-size:10px;border-color:rgba(167,139,250,0.3);color:var(--accent2)">
@@ -20566,19 +20770,16 @@ async function renderDtForm() {
             </div>` : ''}
         </div>
 
-        ${Object.values(urunler).some(u=>(u.girisler||[]).length>0) ? `
+        ${m.girisler.length ? `
         <div class="panel-box">
             <div class="panel-head">
                 <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--text3)"></span>Giriş Geçmişi</span>
                 <span style="font-size:9px;color:var(--text3)">Kayıtlar otomatik Dokuma Depo'da listelenir · sevk oradan yapılır</span>
             </div>
             <div style="max-height:220px;overflow-y:auto">
-                ${kalemler.flatMap((k,i) => {
-                    const u = urunler[i] || {};
-                    const arr = Array.isArray(u.girisler) ? u.girisler.map((g, gi) => ({ g, gi })) : [];
-                    return arr.slice().reverse().map(({ g, gi }) => `
+                ${m.girisler.map(({ i, gi, g, ad }) => `
                     <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);font-size:10px;flex-wrap:wrap">
-                        <span style="font-weight:500;color:var(--text);width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(dtKumas(i)?.kalem.ad || k.ad || 'Ürün '+(i+1))}</span>
+                        <span style="font-weight:500;color:var(--text);width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(ad)}</span>
                         <span style="color:var(--cyan-c);font-family:'DM Mono',monospace">${g.metre?'+'+parseFloat(g.metre).toFixed(1)+'m':''}</span>
                         <span style="color:var(--accent2);font-family:'DM Mono',monospace">${g.kg?'+'+parseFloat(g.kg).toFixed(1)+'kg':''}</span>
                         <span style="color:var(--emerald-c);font-family:'DM Mono',monospace">${g.adet?'+'+g.adet+' adet':''}</span>
@@ -20597,8 +20798,7 @@ async function renderDtForm() {
                         <button onclick="dtGirisRevizePrompt(${i},${gi})" class="btn-pro btn-ghost-pro" title="Revize et" style="padding:3px 8px;font-size:10px">✏️</button>
                         <button onclick="dtGirisSil(${i},${gi})" class="btn-pro btn-ghost-pro" title="Sil" style="padding:3px 8px;font-size:10px;color:var(--rose-c)">🗑️</button>
                         </span>
-                    </div>`);
-                }).join('')}
+                    </div>`).join('')}
             </div>
         </div>` : ''}
 
@@ -24229,10 +24429,16 @@ function tpKartSec(key) {
 }
 
 /* ── Özet: 4 kutu, tıklayınca şeritleri süzer ─────────────────────── */
-function tpOzetHtml() {
+/** Üst kutuların sayıları — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
+function tpOzetModeli() {
     const hepsi = _tpCache.tezgahlar;
     const say = (d) => hepsi.filter(t => tpDurum(t) === d).length;
-    const gec = hepsi.reduce((a, t) => a + tpTezgahTerminRiskleri(t).length, 0);
+    return { DOKUYOR: say('DOKUYOR'), DURUYOR: say('DURUYOR'), BOSTA: say('BOSTA'), GEC: hepsi.reduce((a, t) => a + tpTezgahTerminRiskleri(t).length, 0) };
+}
+function tpOzetHtml() {
+    const om = tpOzetModeli();
+    const say = (d) => om[d];
+    const gec = om.GEC;
     const kutu = (filtre, deger, etiket, renk) => {
         const aktif = _tpFiltre.durum === filtre;
         return `<button type="button" onclick="tpSetFiltre('durum','${aktif ? 'HEPSI' : filtre}')" title="${aktif ? 'Süzmeyi kaldır' : 'Yalnız bunları göster'}"
@@ -25367,11 +25573,17 @@ function uaSiparisAksesuarGenelOku(siparisId, kalemler) {
     }
     return genel;
 }
-function renderUaAksesuarGenelPanel(siparis, kalemler) {
+/** Genel aksesuar planı: ürün başı değerler + fason kalem adedi + fason için planlanan toplam (ana program + mobil). */
+function uaAksesuarPlani(siparis, kalemler) {
     const genel = uaSiparisAksesuarGenelOku(siparis.id, kalemler);
     const fasonKalemler = fasonTakipFasonKalemleri(siparis);
     const fasonAdet = fasonKalemler.reduce((a, { k }) => a + (parseInt(k.miktar, 10) || 0), 0);
     const dolu = UA_AKSESUARLAR.filter(ak => (parseFloat(genel[ak.id]) || 0) > 0);
+    const toplamlar = dolu.map(ak => { const birim = parseFloat(genel[ak.id]) || 0; return { ak, birim, top: Math.round(birim * fasonAdet * 10) / 10 }; });
+    return { genel, fasonAdet, dolu, toplamlar };
+}
+function renderUaAksesuarGenelPanel(siparis, kalemler) {
+    const { genel, fasonAdet, dolu, toplamlar } = uaAksesuarPlani(siparis, kalemler);
     /* Telefonda açılır-kapanır, istenmedikçe kapalı; açık/kapalı durumu yeniden çizimde korunur. */
     const katlanir = !!window.ERP_MOBIL_LITE;
     const baslik = `<span class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>Genel aksesuar planı</span>`;
@@ -25401,9 +25613,7 @@ function renderUaAksesuarGenelPanel(siparis, kalemler) {
             <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.35)">
                 <div style="font-size:9px;font-weight:700;color:var(--amber-c);margin-bottom:6px">Fason için planlanan toplam</div>
                 <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px">
-                    ${dolu.map(ak => {
-                        const birim = parseFloat(genel[ak.id]) || 0;
-                        const top = Math.round(birim * fasonAdet * 10) / 10;
+                    ${toplamlar.map(({ ak, top }) => {
                         return `<div style="font-size:9px;color:var(--text2)"><b>${ak.label}</b>: ${top.toLocaleString('tr-TR')}</div>`;
                     }).join('')}
                 </div>
@@ -25519,20 +25729,16 @@ function uaSiparisTanimsizMi(siparis, all = {}) {
     return !(agacTamam || teknikTamam);
 }
 
-async function renderUrunAgaci() {
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const teknikFoyModu = appMode === 'TEKNIK_FOY';
+/** Açık siparişlerin ürün ağacı durumu (tanımlı / tanımsız) — okur, yazmaz (ana program + mobil). */
+async function uaSiparisDurumlari() {
     const siparisler = (dataCache.siparisler || []).filter(s => !siparisKapaliMi(s));
-
     /* Önce 40'lık gruplarla toplu çekim: aksi hâlde ekran her açılışta sipariş başına
        bir istek atıyordu (92 açık siparişte 92 eşzamanlı istek). sbKdGet önbellekte
        varsa ağa çıkmadığı için aşağıdaki döngü bundan sonra bedavaya gelir. */
     if (typeof sbKdGetMany === 'function') {
         try { await sbKdGetMany(siparisler.map(s => s.id).filter(Boolean), 'KD_URUN_AGACI'); } catch (e) {}
     }
-    // Async: sipariş ağaç durumlarını topla
-    const sipAgaclar = await Promise.all(siparisler.map(async s => {
+    return Promise.all(siparisler.map(async s => {
         const all = await sbKdGet(s.id, 'KD_URUN_AGACI');
         const agac = all['siparis'] || {};
         const tanimsiz = uaSiparisTanimsizMi(s, all);
@@ -25545,6 +25751,13 @@ async function renderUrunAgaci() {
             tanimsiz
         };
     }));
+}
+
+async function renderUrunAgaci() {
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const teknikFoyModu = appMode === 'TEKNIK_FOY';
+    const sipAgaclar = await uaSiparisDurumlari();
     const bekleyenler = sipAgaclar.filter(x => x.tanimsiz);
     const sipOpts = sipAgaclar.map(x =>
         `<option value="${x.id}" ${uaSeciliSiparisId==x.id?'selected':''}>${x.tanimsiz?'○':'✓'} ${pdfEsc(x.sno)} — ${pdfEsc(x.firma||'?')}</option>`
@@ -25650,8 +25863,9 @@ function uaKalemAsamaVarMi(siparisId, kalemIdx, asamaId) {
     return (ua.asamalar || []).map(a => String(a || '').toLowerCase()).includes(String(asamaId || '').toLowerCase());
 }
 
-function renderUaSeciliKalemIslemPanel(siparisId, kalemler) {
-    let secili = uaGetSeciliKalemler().filter(i => i >= 0 && i < (kalemler || []).length);
+/** Kalemlerin (boş seçim = hepsi) üretim aşamaları, UA_ASAMALAR sırasıyla: [{ a, kalemSay }] (ana program + mobil). */
+function uaKalemIslemOzeti(siparisId, kalemler, seciliIdx) {
+    let secili = (seciliIdx || []).filter(i => i >= 0 && i < (kalemler || []).length);
     if (!secili.length) secili = (kalemler || []).map((_, i) => i);
     const asamaIds = new Set();
     secili.forEach(i => {
@@ -25660,15 +25874,19 @@ function renderUaSeciliKalemIslemPanel(siparisId, kalemler) {
             : (_kdCache[`KD_URUN_AGACI_${siparisId}`]?.[`u_${i}`] || {});
         (ua.asamalar || []).forEach(a => asamaIds.add(String(a || '').toLowerCase()));
     });
-    const sirali = UA_ASAMALAR.filter(a => asamaIds.has(a.id));
+    return { secili, asamalar: UA_ASAMALAR.filter(a => asamaIds.has(a.id)).map(a => ({ a, kalemSay: secili.filter(i => uaKalemAsamaVarMi(siparisId, i, a.id)).length })) };
+}
+function renderUaSeciliKalemIslemPanel(siparisId, kalemler) {
+    const oz = uaKalemIslemOzeti(siparisId, kalemler, uaGetSeciliKalemler());
+    const secili = oz.secili;
+    const sirali = oz.asamalar.map(x => x.a);
     if (!sirali.length) {
         return `<div style="padding:12px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text3)">Seçili kalemlerde tanımlı üretim aşaması yok.</div>`;
     }
     return `<div style="padding:10px 14px;border-top:1px solid var(--border);background:rgba(99,102,241,0.04)">
         <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace;margin-bottom:8px">Seçili kalemlerin işlemleri (${secili.length} kalem)</div>
         <div style="display:flex;flex-direction:column;gap:4px;max-height:min(36vh,280px);overflow:auto">
-            ${sirali.map((a, n) => {
-                const kalemSay = secili.filter(i => uaKalemAsamaVarMi(siparisId, i, a.id)).length;
+            ${oz.asamalar.map(({ a, kalemSay }, n) => {
                 return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">
                     <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;min-width:18px">${n + 1}</span>
                     <span style="font-size:14px;line-height:1">${a.ikon}</span>
@@ -26046,6 +26264,10 @@ function renderUrunAgaciIcerik() {
     </div>`;
 }
 
+/** Ürün ağacı "Tahmini toplam kumaş" (metre / ürün × adet × (1 + tolerans)) — ana program + mobil. */
+function uaTahminiKumasMetre(ua, urun) {
+    return uaSayi(ua.kumas_metre) * parseInt(urun.miktar || 0) * (1 + uaSayi(ua.kumas_tolerans) / 100);
+}
 function renderUaEditor(urun, idx) {
     if (!urun) return '';
     const ua = uaGetCacheAgac(uaSeciliSiparisId, idx);
@@ -26142,7 +26364,7 @@ function renderUaEditor(urun, idx) {
                 </div>
                 ${urun.miktar && ua.kumas_metre ? `
                 <div class="mt-2 bg-indigo-50 rounded-xl px-4 py-2 text-[9px] font-bold text-indigo-700">
-                    📐 Tahmini toplam kumaş: <b>${(uaSayi(ua.kumas_metre) * parseInt(urun.miktar||0) * (1 + uaSayi(ua.kumas_tolerans)/100)).toFixed(1)} metre</b>
+                    📐 Tahmini toplam kumaş: <b>${uaTahminiKumasMetre(ua, urun).toFixed(1)} metre</b>
                 </div>` : ''}
             </div>`}
 
@@ -26159,6 +26381,13 @@ function renderUaEditor(urun, idx) {
 
         </div>
     </div>`;
+}
+
+/** Ekran olmadan seçili sipariş / kalem — yazıcılar (uaAsamaKucukTikla, uaFieldGuncelle, uaUrunTeknikGenelGuncelle…) bunlara yazar (yeni mobil). */
+function uaSecimAyarla(siparisId, urunIdx) {
+    uaSeciliSiparisId = siparisId || null;
+    uaSeciliUrunIdx = urunIdx == null ? null : urunIdx;
+    uaCalismaModu = 'URUN';
 }
 
 // ── YARDIMCI FONKSİYONLAR ──
@@ -26458,6 +26687,13 @@ let _dokumaFasonRenderGen = 0;
 let dokumaFasonAcikSiparisId = null;
 let dokumaSiparisEditId = null;
 let _dokumaFasonYuklendi = false;
+/* İplik hesabı kolonları (supabase/migrations/dokuma_fason_iplik_teknik.sql, 21.10.2026 canlıda):
+   true = kurulu, false = yok (yeni alanlar yazılmaz), null = henüz bilinmiyor */
+let _dokumaFasonTeknikKolon = null;
+/* Atkı artığı kolonu (supabase/migrations/dokuma_fason_atki_artik.sql, 21.10.2026): true / false / null — aynı kural */
+let _dokumaFasonArtikKolon = null;
+/* Boyuna çekme kolonu (supabase/migrations/dokuma_fason_boyuna_cekme.sql, 22.10.2026): true / false / null — aynı kural */
+let _dokumaFasonBoyunaKolon = null;
 
 async function dokumaFasonSiparisleriYukle(force) {
     if (_dokumaFasonYuklendi && !force) return;
@@ -26467,14 +26703,27 @@ async function dokumaFasonSiparisleriYukle(force) {
         if (error) throw error;
         dataCache.dokumaFasonSiparisleri = data || [];
         _dokumaFasonYuklendi = true;
+        if (data && data.length) {
+            _dokumaFasonTeknikKolon = Object.prototype.hasOwnProperty.call(data[0], 'atki_iplikleri');
+            _dokumaFasonArtikKolon = Object.prototype.hasOwnProperty.call(data[0], 'atki_artik_cm');
+            _dokumaFasonBoyunaKolon = Object.prototype.hasOwnProperty.call(data[0], 'boyuna_cekme_pct');
+        } else if (_dokumaFasonTeknikKolon === null || _dokumaFasonArtikKolon === null || _dokumaFasonBoyunaKolon === null) {
+            /* Hiç satır yoksa kolonları tek kolonluk sorguyla sor (satır okumaz) */
+            const r = await sb.from('dokuma_fason_siparisleri').select('atki_iplikleri').limit(1);
+            _dokumaFasonTeknikKolon = !r.error;
+            const r2 = await sb.from('dokuma_fason_siparisleri').select('atki_artik_cm').limit(1);
+            _dokumaFasonArtikKolon = !r2.error;
+            const r3 = await sb.from('dokuma_fason_siparisleri').select('boyuna_cekme_pct').limit(1);
+            _dokumaFasonBoyunaKolon = !r3.error;
+        }
     } catch (e) {
         console.error('dokumaFasonSiparisleriYukle', e);
         if (!dataCache.dokumaFasonSiparisleri) dataCache.dokumaFasonSiparisleri = [];
     }
 }
 
-function dokumaFasonKayitlari() {
-    const durumF = dokumaFasonFiltre?.siparisDurum || 'AKTIF';
+function dokumaFasonKayitlari(siparisDurum) {   /* süzgeç verilmezse ekranınki (yeni mobil kendi süzgecini verir) */
+    const durumF = siparisDurum || dokumaFasonFiltre?.siparisDurum || 'AKTIF';
     let list = (dataCache.dokumaFasonSiparisleri || []).slice();
     if (durumF === 'AKTIF') list = list.filter(s => !siparisKapaliMi(s));
     else if (durumF === 'TAMAMLANDI') list = list.filter(s => siparisKapaliMi(s));
@@ -26495,26 +26744,90 @@ function dokumaFasonIplikMetrePerKg(sistem, ipNo) {
     return (String(sistem || 'NE').toUpperCase() === 'NM') ? no * 1000 : no * (100000 / 60);
 }
 
-/** Kumaş metrajı + teknik özelliklerden çözgü/atkı ipliği ihtiyacını hesaplar. */
+/** İplik kartındaki numaradan hesap numarası önerisi: "40/1" → 40, katlı "20/2" → 10 (Ne / Nm aynı kural). Bulunamazsa 0. */
+function dokumaFasonIplikNoOner(metin) {
+    const m = String(metin || '').replace(',', '.').match(/(\d+(?:\.\d+)?)\s*(?:\/\s*(\d+))?/);
+    if (!m) return 0;
+    const no = parseFloat(m[1]) || 0;
+    const kat = parseInt(m[2], 10) || 1;
+    return no > 0 ? Math.round((no / kat) * 100) / 100 : 0;
+}
+/** İplik kartları (iplik_stok IPLIK_KART_GIRIS satırları, kod başına bir): [{ kod, iplik_no, ad, ipNo }] */
+function dokumaFasonIplikKartlari() {
+    const m = new Map();
+    (dataCache.iplik_stok || []).forEach(r => {
+        const kod = String(r.stok_kodu || '').trim().toUpperCase();
+        if (!kod || kod === 'KODSUZ') return;
+        const kart = String(r.kaynak_birim || '') === 'IPLIK_KART_GIRIS';
+        const onceki = m.get(kod);
+        if (onceki && (onceki.kart || !kart)) return;
+        const iplikNo = String(r.iplik_no || '').trim();
+        m.set(kod, { kod, kart, iplik_no: iplikNo, ad: [iplikNo, r.cins || r.iplik_cinsi || ''].filter(Boolean).join(' ').trim(), ipNo: dokumaFasonIplikNoOner(iplikNo) });
+    });
+    return [...m.values()].sort((a, b) => a.kod.localeCompare(b.kod, 'tr'));
+}
+/** Atkı iplikleri (çok atkı, 21.10.2026): [{ kod, ip_no, pay }] — liste boşsa eski tek atkı (atki_ip_no) kabul edilir.
+ *  pay = atkı içindeki payı (%); toplamı 100 değilse oranla, hepsi boşsa eşit bölünür. */
+function dokumaFasonAtkiListesi(spec) {
+    let ham = spec?.atki_iplikleri;
+    if (typeof ham === 'string') { try { ham = JSON.parse(ham); } catch (e) { ham = []; } }
+    let liste = Array.isArray(ham) ? ham.map(a => ({ kod: String(a?.kod || '').trim().toUpperCase(), ip_no: parseFloat(a?.ip_no) || 0, pay: parseFloat(a?.pay) || 0 }))
+        .filter(a => a.kod || a.ip_no > 0 || a.pay > 0) : [];
+    if (!liste.length) liste = [{ kod: '', ip_no: parseFloat(spec?.atki_ip_no) || 0, pay: 100 }];
+    const toplam = liste.reduce((s, a) => s + a.pay, 0);
+    return liste.map(a => ({ ...a, oran: toplam > 0 ? a.pay / toplam : 1 / liste.length }));
+}
+/** Tarak eni metre alanına santimetre girilmiş mi (10 m'den geniş tarak yok) — kayıtta 265 = 265 cm (DK31145053, 21.10.2026) */
+function dokumaFasonTarakEniSupheli(spec) { return (parseFloat(spec?.tarak_eni_m) || 0) > 10; }
+
+/** Kumaş metrajı + teknik özelliklerden çözgü/atkı ipliği ihtiyacını hesaplar.
+ *  Çözgü: tel × metre × (1 + çözgü çekmesi) × (1 + fire) — çekme = kumaşa girerken kısalma, fire = çözgü / haşıl / levent sonu atığı.
+ *  Atkı: atkı sıklığı × 100 × TEZGAH ÜSTÜ metre atkı × tarak eni (m) × (1 + fire). Tezgah üstü metre = yerdeki metre × (1 + BOYUNA
+ *  çekme) — atkı tezgahta atılır, kumaş tezgahtan inince boyuna kısalır (kullanıcı 21.10.2026: "yerdeki mala göre değil tezgah
+ *  üzerine göre"; 22.10.2026: çözgü çekmesinden AYRI "boyuna çekme (tezgah → yer)" alanı — çözgü çekmesi iplik kıvrımını da içerir;
+ *  boş = girilmemiş → atkı yerdeki metreden). Atkı çekmesi tarak eninin içindedir (kumaş tarak eninden
+ *  dar çıkar) → atkı ipliğine ayrıca eklenmez; beklenen ham eni verir: tarak eni ÷ (1 + atkı çekmesi).
+ *  Haşıl payı: haşıl maddesinin çözgüye kattığı ağırlık — beklenen ham kumaş kg'ı (firesiz) içindir. */
 function dokumaFasonHesapla(spec) {
     const metre = parseFloat(spec.metre) || 0;
     const cozguFireOrani = (parseFloat(spec.cozgu_fire_payi) || 0) / 100;
     const atkiFireOrani = (parseFloat(spec.atki_fire_payi) || 0) / 100;
+    const cozguCekmeOrani = (parseFloat(spec.cozgu_cekme_pct) || 0) / 100;
+    const atkiCekmeVar = spec.atki_cekme_pct != null && String(spec.atki_cekme_pct).trim() !== '';
+    const atkiCekmeOrani = (parseFloat(spec.atki_cekme_pct) || 0) / 100;
+    const hasilOrani = (parseFloat(spec.hasil_payi_pct) || 0) / 100;
 
-    const cozguUzunlukM = metre * (1 + cozguFireOrani);
+    const cozguKullanilanM = metre * (1 + cozguCekmeOrani);           /* kumaşın içindeki çözgü (firesiz) */
+    const cozguUzunlukM = cozguKullanilanM * (1 + cozguFireOrani);     /* levente sarılacak çözgü uzunluğu */
     const cozguTel = parseFloat(spec.cozgu_tel_sayisi) || 0;
-    const toplamCozguM = cozguTel * cozguUzunlukM;
     const cozguMPerKg = dokumaFasonIplikMetrePerKg(spec.ip_no_sistemi, spec.cozgu_ip_no);
-    const cozguKg = cozguMPerKg > 0 ? toplamCozguM / cozguMPerKg : 0;
+    const cozguKg = cozguMPerKg > 0 ? cozguTel * cozguUzunlukM / cozguMPerKg : 0;
+    const cozguNetKg = cozguMPerKg > 0 ? cozguTel * cozguKullanilanM / cozguMPerKg : 0;
 
     const atkiSiklik = parseFloat(spec.atki_sikligi) || 0;
     const tarakEniM = parseFloat(spec.tarak_eni_m) || 0;
-    const toplamAtkiSayisiHam = atkiSiklik * metre * 100;
-    const toplamAtkiM = toplamAtkiSayisiHam * tarakEniM * (1 + atkiFireOrani);
-    const atkiMPerKg = dokumaFasonIplikMetrePerKg(spec.ip_no_sistemi, spec.atki_ip_no);
-    const atkiKg = atkiMPerKg > 0 ? toplamAtkiM / atkiMPerKg : 0;
+    const boyunaOrani = (parseFloat(spec.boyuna_cekme_pct) || 0) / 100;
+    const tezgahM = metre * (1 + boyunaOrani);                 /* tezgah üstü boy = yerdeki metre × (1 + boyuna çekme) */
+    const atkiSayisi = atkiSiklik * tezgahM * 100;
+    const atkiNetM = atkiSayisi * tarakEniM;                   /* kumaşın içindeki atkı (tarak eni, pis kenar dahil) */
+    /* Atkı artığı (21.10.2026, kullanıcı: "atkı boyu tarak eninden uzun"): her atkıda makas / kenar artığı (cm, iki yan toplam);
+       iplik ihtiyacına girer, kumaşta kalmaz (beklenen ham kumaş kg'ına girmez) */
+    const artikM = (parseFloat(spec.atki_artik_cm) || 0) / 100;
+    const atkiArtikM = atkiSayisi * artikM;
+    const atkilar = dokumaFasonAtkiListesi(spec).map(a => {
+        const mPerKg = dokumaFasonIplikMetrePerKg(spec.ip_no_sistemi, a.ip_no);
+        return { ...a, kg: mPerKg > 0 ? (atkiNetM + atkiArtikM) * (1 + atkiFireOrani) * a.oran / mPerKg : 0, netKg: mPerKg > 0 ? atkiNetM * a.oran / mPerKg : 0,
+            artikKg: mPerKg > 0 ? atkiArtikM * a.oran / mPerKg : 0, eksik: !(mPerKg > 0) };
+    });
+    const atkiKg = atkilar.reduce((s, a) => s + a.kg, 0);
+    const atkiNetKg = atkilar.reduce((s, a) => s + a.netKg, 0);
+    const atkiArtikKg = atkilar.reduce((s, a) => s + a.artikKg, 0);
+    const beklenenHamEnCm = atkiCekmeVar && tarakEniM > 0 ? (tarakEniM * 100) / (1 + atkiCekmeOrani) : null;
+    const beklenenHamKg = cozguNetKg * (1 + hasilOrani) + atkiNetKg;
+    const beklenenGramaj = beklenenHamEnCm && metre > 0 ? beklenenHamKg * 1000 / (metre * beklenenHamEnCm / 100) : null;
 
-    return { cozguUzunlukM, cozguKg, atkiKg, toplamKg: cozguKg + atkiKg };
+    return { cozguUzunlukM, cozguKullanilanM, cozguKg, cozguNetKg, atkiKg, atkiNetKg, atkiArtikKg, atkiSayisi, tezgahM, atkilar, toplamKg: cozguKg + atkiKg,
+        beklenenHamEnCm, beklenenHamKg, beklenenGramaj, telOneri: (parseFloat(spec.cozgu_sikligi) || 0) * tarakEniM * 100 };
 }
 
 function dokumaSiparisYeniAc() {
@@ -26539,6 +26852,13 @@ function renderDokumaSiparisGiris() {
     if (!list) return;
     const editing = dokumaSiparisEditId ? (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === String(dokumaSiparisEditId)) : null;
     const fasonMi = String(editing?.dokuma_uretim_yeri || '').toUpperCase() === 'FASON_DOKUMA';
+    /* Tarak eni formda SANTİMETRE (kayıt metre); metre alanına cm girilmiş eski kayıt olduğu gibi cm sayılır */
+    const tarakHam = parseFloat(editing?.tarak_eni_m) || 0;
+    const tarakSupheli = dokumaFasonTarakEniSupheli(editing);
+    const tarakCm = tarakHam > 0 ? (tarakSupheli ? tarakHam : Math.round(tarakHam * 10000) / 100) : '';
+    const teknikVar = _dokumaFasonTeknikKolon !== false;
+    const yuzde = (v) => (v == null || v === '' ? '' : v);
+    const atkiBas = editing ? dokumaFasonAtkiListesi(editing) : [{ kod: '', ip_no: 0, pay: 100 }];
     list.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:12px;max-width:640px">
         <div class="panel-box" style="padding:20px">
@@ -26555,28 +26875,49 @@ function renderDokumaSiparisGiris() {
 
             <div style="padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);margin-bottom:14px">
                 <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace;margin-bottom:10px">Teknik özellikler <span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0">— doğru hesap için gerekli</span></div>
+                <datalist id="dsp-iplik-liste">${dokumaSiparisIplikSecenekHtml()}</datalist>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
                     <div><label class="pro-label">Çözgü sıklığı (tel/cm)</label><input id="dsp-cozgu-sikligi" type="number" min="0" step="0.1" class="pro-input" value="${editing?.cozgu_sikligi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
                     <div><label class="pro-label">Atkı sıklığı (atkı/cm)</label><input id="dsp-atki-sikligi" type="number" min="0" step="0.1" class="pro-input" value="${editing?.atki_sikligi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
-                    <div><label class="pro-label">Çözgü tel sayısı (toplam)</label><input id="dsp-cozgu-tel" type="number" min="0" step="1" class="pro-input" value="${editing?.cozgu_tel_sayisi || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
-                    <div><label class="pro-label">Tarak eni / pis kenar (m)</label><input id="dsp-tarak-eni" type="number" min="0" step="0.01" class="pro-input" value="${editing?.tarak_eni_m || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Tarak eni (cm) <span style="font-weight:400;color:var(--text3)">— pis kenar dahil</span></label><input id="dsp-tarak-eni-cm" type="number" min="0" step="0.1" class="pro-input" placeholder="Örn. 265" value="${tarakCm}" oninput="dokumaSiparisHesaplaGuncelle()">
+                        ${tarakSupheli ? `<div style="font-size:9px;color:var(--amber-c);margin-top:3px;line-height:1.4">⚠ Kayıtta tarak eni ${pdfEsc(String(tarakHam))} m yazıyordu (metre alanına santimetre girilmiş). ${pdfEsc(String(tarakHam))} cm sayıldı — kaydedince düzelir.</div>` : ''}</div>
+                    <div><label class="pro-label">Çözgü tel sayısı (toplam)</label><input id="dsp-cozgu-tel" type="number" min="0" step="1" class="pro-input" value="${editing?.cozgu_tel_sayisi || ''}" oninput="dokumaSiparisHesaplaGuncelle()">
+                        <div id="dsp-tel-oneri" style="font-size:9px;color:var(--text3);margin-top:3px"></div></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
                     <div><label class="pro-label">İplik no sistemi</label>
                         <select id="dsp-ip-sistemi" class="pro-input" onchange="dokumaSiparisHesaplaGuncelle()">
                             <option value="NE" ${(editing?.ip_no_sistemi || 'NE') === 'NE' ? 'selected' : ''}>Ne (İngiliz no)</option>
                             <option value="NM" ${editing?.ip_no_sistemi === 'NM' ? 'selected' : ''}>Nm (Metrik no)</option>
                         </select>
                     </div>
-                    <div><label class="pro-label">Çözgü ip no</label><input id="dsp-cozgu-ipno" type="number" min="0" step="1" class="pro-input" value="${editing?.cozgu_ip_no || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
-                    <div><label class="pro-label">Atkı ip no</label><input id="dsp-atki-ipno" type="number" min="0" step="1" class="pro-input" value="${editing?.atki_ip_no || ''}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Atkı artığı (cm / atkı) <span style="font-weight:400;color:var(--text3)">— makas / kenar, iki yan toplam</span></label>
+                        <input id="dsp-atki-artik" type="number" min="0" max="200" step="0.5" class="pro-input" placeholder="Örn. 10" value="${yuzde(editing?.atki_artik_cm)}" ${_dokumaFasonArtikKolon === false ? 'disabled title="Veritabanı kolonu kurulu değil"' : ''} oninput="dokumaSiparisHesaplaGuncelle()"></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;max-width:340px">
+                <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace;margin:4px 0 6px">Çözgü ipliği</div>
+                <div class="dsp-iplik-satir" style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
+                    <div><label class="pro-label">İplik kartı</label><input id="dsp-cozgu-kod" class="pro-input dsp-iplik-kod" list="dsp-iplik-liste" placeholder="IP-…" value="${pdfEsc(editing?.cozgu_iplik_kodu || '')}" ${teknikVar ? '' : 'disabled'} oninput="dokumaSiparisIplikKodDegisti(this)">
+                        <div class="dsp-iplik-ad" style="font-size:9px;color:var(--text3);margin-top:3px"></div></div>
+                    <div><label class="pro-label">İp no</label><input id="dsp-cozgu-ipno" type="number" min="0" step="0.1" class="pro-input dsp-iplik-no" value="${editing?.cozgu_ip_no || ''}" oninput="this.dataset.oto='0';dokumaSiparisHesaplaGuncelle()"></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin:4px 0 6px">
+                    <div style="font-size:9px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;font-family:'DM Mono',monospace">Atkı iplikleri</div>
+                    <span id="dsp-atki-pay-toplam" style="font-size:9px;color:var(--text3)"></span>
+                    <span style="flex:1"></span>
+                    ${teknikVar ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:3px 10px;font-size:10px" onclick="dokumaSiparisAtkiEkle()">＋ Atkı ipliği ekle</button>` : ''}
+                </div>
+                <div id="dsp-atki-satirlar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">${atkiBas.map((a, i) => dokumaSiparisAtkiSatirHtml(a, i, atkiBas.length, teknikVar)).join('')}</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px">
+                    <div><label class="pro-label">Çözgü çekmesi (%)</label><input id="dsp-cozgu-cekme" type="number" min="0" max="100" step="0.1" class="pro-input" placeholder="Örn. 8" value="${yuzde(editing?.cozgu_cekme_pct)}" ${teknikVar ? '' : 'disabled'} oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Boyuna çekme (%) <span style="font-weight:400;color:var(--text3)">— tezgah → yer</span></label><input id="dsp-boyuna-cekme" type="number" min="0" max="100" step="0.1" class="pro-input" placeholder="Örn. 3" value="${yuzde(editing?.boyuna_cekme_pct)}" ${_dokumaFasonBoyunaKolon === false ? 'disabled title="Veritabanı kolonu kurulu değil"' : ''} oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Atkı çekmesi (%)</label><input id="dsp-atki-cekme" type="number" min="0" max="100" step="0.1" class="pro-input" placeholder="Örn. 5" value="${yuzde(editing?.atki_cekme_pct)}" ${teknikVar ? '' : 'disabled'} oninput="dokumaSiparisHesaplaGuncelle()"></div>
+                    <div><label class="pro-label">Haşıl payı (%)</label><input id="dsp-hasil-payi" type="number" min="0" max="100" step="0.1" class="pro-input" placeholder="Örn. 10" value="${yuzde(editing?.hasil_payi_pct)}" ${teknikVar ? '' : 'disabled'} oninput="dokumaSiparisHesaplaGuncelle()"></div>
                     <div><label class="pro-label">Çözgü firesi (%)</label>
                         <input id="dsp-cozgu-fire" type="number" min="0" step="0.5" class="pro-input" value="${editing?.cozgu_fire_payi ?? 10}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
                     <div><label class="pro-label">Atkı firesi (%)</label>
                         <input id="dsp-atki-fire" type="number" min="0" step="0.5" class="pro-input" value="${editing?.atki_fire_payi ?? 3}" oninput="dokumaSiparisHesaplaGuncelle()"></div>
                 </div>
+                <div style="font-size:9px;color:var(--text3);line-height:1.5;margin-bottom:10px">Çözgü çekmesi: çözgü ipliği kumaştan uzundur (kıvrım + kısalma) — çözgü ipliği yerdeki metre × (1 + çözgü çekmesi). Boyuna çekme: kumaş tezgahtan inince boyuna kısalır — atkı sayısı TEZGAH ÜSTÜ boydan (yerdeki metre × (1 + boyuna çekme)); boşsa yerdeki metreden. Atkı çekmesi tarak eninin içindedir, beklenen ham eni verir. Fire: çözgü, haşıl, levent sonu ve kenar atığı. Haşıl payı: haşılın çözgüye kattığı ağırlık (gelen kumaşın kg kontrolü için).${teknikVar ? '' : ' <b style="color:var(--amber-c)">Yeni iplik alanlarının veritabanı kolonları kurulu değil — bu alanlar kaydedilmez.</b>'}</div>
                 <div id="dsp-hesap-sonuc" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding-top:10px;border-top:1px dashed var(--border)"></div>
             </div>
 
@@ -26619,18 +26960,96 @@ function renderDokumaSiparisGiris() {
             </div>
         </div>
     </div>`;
+    document.querySelectorAll('#main-list .dsp-iplik-kod').forEach(el => dokumaSiparisIplikKodDegisti(el, true));
     dokumaSiparisHesaplaGuncelle();
+    /* İplik kartları yüklü değilse arkadan yükle, yalnız seçenek listesini ve kart adlarını tazele (form yeniden çizilmez) */
+    if (!(dataCache.iplik_stok || []).length && typeof erpSyncAllDataBekle === 'function') {
+        erpSyncAllDataBekle({ silent: true, tables: ['iplik_stok'], light: true }).then(() => {
+            const dl = document.getElementById('dsp-iplik-liste');
+            if (!dl || appMode !== 'DOKUMA_SIPARIS_GIRIS') return;
+            dl.innerHTML = dokumaSiparisIplikSecenekHtml();
+            document.querySelectorAll('#main-list .dsp-iplik-kod').forEach(el => dokumaSiparisIplikKodDegisti(el, true));
+        }).catch(() => {});
+    }
+}
+
+/* ── İplik seçimi (çözgü tek, atkı birden çok — 21.10.2026) ── */
+function dokumaSiparisIplikSecenekHtml() {
+    return dokumaFasonIplikKartlari().map(k => `<option value="${pdfEsc(k.kod)}">${pdfEsc(k.ad || k.kod)}</option>`).join('');
+}
+function dokumaSiparisAtkiSatirHtml(a, i, adet, teknikVar = true) {
+    const tek = adet <= 1;
+    return `<div class="dsp-atki-satir dsp-iplik-satir" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end">
+        <div><label class="pro-label">${tek ? 'Atkı ipliği kartı' : `${i + 1}. atkı — iplik kartı`}</label><input class="pro-input dsp-iplik-kod" list="dsp-iplik-liste" placeholder="IP-…" value="${pdfEsc(a.kod || '')}" ${teknikVar ? '' : 'disabled'} oninput="dokumaSiparisIplikKodDegisti(this)">
+            <div class="dsp-iplik-ad" style="font-size:9px;color:var(--text3);margin-top:3px"></div></div>
+        <div><label class="pro-label">İp no</label><input type="number" min="0" step="0.1" class="pro-input dsp-iplik-no" value="${a.ip_no || ''}" oninput="this.dataset.oto='0';dokumaSiparisHesaplaGuncelle()"></div>
+        <div><label class="pro-label">Atkıdaki payı (%)</label><input type="number" min="0" max="100" step="1" class="pro-input dsp-atki-pay" value="${tek ? 100 : (a.pay || '')}" ${tek || !teknikVar ? 'disabled' : ''} oninput="dokumaSiparisHesaplaGuncelle()"></div>
+        <div>${tek ? '<span style="display:inline-block;width:28px"></span>' : `<button type="button" class="btn-pro btn-ghost-pro" title="Bu atkıyı çıkar" style="padding:6px 9px;font-size:11px;color:var(--rose-c)" onclick="dokumaSiparisAtkiSil(${i})">✕</button>`}</div>
+    </div>`;
+}
+function dokumaSiparisAtkiOku() {
+    return [...document.querySelectorAll('#dsp-atki-satirlar .dsp-atki-satir')].map(s => ({
+        kod: String(s.querySelector('.dsp-iplik-kod')?.value || '').trim().toUpperCase(),
+        ip_no: parseFloat(s.querySelector('.dsp-iplik-no')?.value) || 0,
+        pay: parseFloat(s.querySelector('.dsp-atki-pay')?.value) || 0
+    }));
+}
+function dokumaSiparisAtkiCiz(liste) {
+    const kutu = document.getElementById('dsp-atki-satirlar');
+    if (!kutu) return;
+    kutu.innerHTML = liste.map((a, i) => dokumaSiparisAtkiSatirHtml(a, i, liste.length)).join('');
+    kutu.querySelectorAll('.dsp-iplik-kod').forEach(el => dokumaSiparisIplikKodDegisti(el, true));
+    dokumaSiparisHesaplaGuncelle();
+}
+function dokumaSiparisAtkiEkle() {
+    const liste = dokumaSiparisAtkiOku();
+    const yeniAdet = liste.length + 1;
+    /* Paylar eşit dağıtılır (kullanıcı sonra değiştirir) */
+    const pay = Math.floor(100 / yeniAdet);
+    const out = [...liste, { kod: '', ip_no: 0, pay: 0 }].map((a, i) => ({ ...a, pay: i === yeniAdet - 1 ? 100 - pay * (yeniAdet - 1) : pay }));
+    dokumaSiparisAtkiCiz(out);
+}
+function dokumaSiparisAtkiSil(i) {
+    const liste = dokumaSiparisAtkiOku().filter((_, j) => j !== i);
+    if (liste.length === 1) liste[0].pay = 100;
+    dokumaSiparisAtkiCiz(liste.length ? liste : [{ kod: '', ip_no: 0, pay: 100 }]);
+}
+/** Kart seçilince: kart adını göster, ip no boşsa (ya da kendiliğinden doldurulmuşsa) karttaki numaradan öner. ilk = form açılışı (ip no'ya dokunmaz). */
+function dokumaSiparisIplikKodDegisti(el, ilk) {
+    const satir = el?.closest('.dsp-iplik-satir');
+    if (!satir) return;
+    const kod = String(el.value || '').trim().toUpperCase();
+    const kart = kod ? dokumaFasonIplikKartlari().find(k => k.kod === kod) : null;
+    const ad = satir.querySelector('.dsp-iplik-ad');
+    if (ad) {
+        ad.textContent = kart ? (kart.ad || kart.kod) : (kod && (dataCache.iplik_stok || []).length ? 'Bu kodla iplik kartı bulunamadı' : '');
+        ad.style.color = kod && !kart && (dataCache.iplik_stok || []).length ? 'var(--rose-c)' : 'var(--text3)';
+    }
+    const no = satir.querySelector('.dsp-iplik-no');
+    if (!ilk && no && kart?.ipNo > 0 && (!String(no.value || '').trim() || no.dataset.oto === '1')) { no.value = kart.ipNo; no.dataset.oto = '1'; }
+    if (!ilk) dokumaSiparisHesaplaGuncelle();
 }
 
 function dokumaSiparisFormDegerleriniOku() {
+    const atki = dokumaSiparisAtkiOku();
+    const tarakCm = parseFloat(document.getElementById('dsp-tarak-eni-cm')?.value) || 0;
+    const sayiYaBos = (id) => { const v = String(document.getElementById(id)?.value ?? '').trim(); return v === '' ? null : (parseFloat(v.replace(',', '.')) || 0); };
     return {
         metre: document.getElementById('dsp-metre')?.value,
+        cozgu_sikligi: document.getElementById('dsp-cozgu-sikligi')?.value,
         cozgu_tel_sayisi: document.getElementById('dsp-cozgu-tel')?.value,
         atki_sikligi: document.getElementById('dsp-atki-sikligi')?.value,
-        tarak_eni_m: document.getElementById('dsp-tarak-eni')?.value,
+        tarak_eni_m: tarakCm > 0 ? Math.round(tarakCm * 100) / 10000 : 0,
         ip_no_sistemi: document.getElementById('dsp-ip-sistemi')?.value,
+        cozgu_iplik_kodu: String(document.getElementById('dsp-cozgu-kod')?.value || '').trim().toUpperCase(),
         cozgu_ip_no: document.getElementById('dsp-cozgu-ipno')?.value,
-        atki_ip_no: document.getElementById('dsp-atki-ipno')?.value,
+        atki_iplikleri: atki.length === 1 ? [{ ...atki[0], pay: 100 }] : atki,
+        atki_ip_no: atki[0]?.ip_no || 0,   /* eski okuyucular için: ilk atkının numarası */
+        cozgu_cekme_pct: sayiYaBos('dsp-cozgu-cekme'),
+        atki_cekme_pct: sayiYaBos('dsp-atki-cekme'),
+        hasil_payi_pct: sayiYaBos('dsp-hasil-payi'),
+        atki_artik_cm: sayiYaBos('dsp-atki-artik'),
+        boyuna_cekme_pct: sayiYaBos('dsp-boyuna-cekme'),
         cozgu_fire_payi: document.getElementById('dsp-cozgu-fire')?.value,
         atki_fire_payi: document.getElementById('dsp-atki-fire')?.value
     };
@@ -26642,26 +27061,76 @@ function dokumaSiparisHesaplaGuncelle() {
     const spec = dokumaSiparisFormDegerleriniOku();
     const h = dokumaFasonHesapla(spec);
     const fmt = (n) => (parseFloat(n) || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
-    kutu.innerHTML = `
-        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü uzunluğu</div><div style="font-size:15px;font-weight:700;color:var(--text)">${fmt(h.cozguUzunlukM)} m</div></div>
-        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Çözgü ipliği</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${fmt(h.cozguKg)} kg</div></div>
-        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Atkı ipliği</div><div style="font-size:15px;font-weight:700;color:var(--accent)">${fmt(h.atkiKg)} kg</div></div>
-        <div style="text-align:center"><div style="font-size:8px;color:var(--text3)">Toplam iplik</div><div style="font-size:15px;font-weight:700;color:var(--amber-c)">${fmt(h.toplamKg)} kg</div></div>
-    `;
+    /* Tel sayısı önerisi: çözgü sıklığı × tarak eni */
+    const oneri = document.getElementById('dsp-tel-oneri');
+    if (oneri) {
+        const tel = parseFloat(spec.cozgu_tel_sayisi) || 0;
+        const o = Math.round(h.telOneri);
+        oneri.innerHTML = o > 0 ? (Math.abs(o - tel) < 1 ? `✓ sıklık × en = ${fmt(o)} tel` : `Sıklık × en = <b>${fmt(o)}</b> tel · <a href="#" onclick="event.preventDefault();const e=document.getElementById('dsp-cozgu-tel');e.value=${o};dokumaSiparisHesaplaGuncelle()">bunu kullan</a>`) : '';
+    }
+    const payT = document.getElementById('dsp-atki-pay-toplam');
+    if (payT) {
+        const liste = dokumaSiparisAtkiOku();
+        const top = liste.reduce((s, a) => s + a.pay, 0);
+        payT.textContent = liste.length > 1 ? `payların toplamı %${fmt(top)}${Math.abs(top - 100) > 0.01 ? ' — %100 olmalı' : ''}` : '';
+        payT.style.color = liste.length > 1 && Math.abs(top - 100) > 0.01 ? 'var(--rose-c)' : 'var(--text3)';
+    }
+    const kutuHtml = (et, deger, renk, alt) => `<div style="text-align:center"><div style="font-size:8px;color:var(--text3)">${et}</div><div style="font-size:15px;font-weight:700;color:${renk}">${deger}</div>${alt ? `<div style="font-size:8px;color:var(--text3);margin-top:2px">${alt}</div>` : ''}</div>`;
+    const atkiAlt = h.atkilar.length > 1 ? h.atkilar.map((a, i) => `${a.kod || (i + 1) + '. atkı'} ${fmt(a.kg)}`).join(' · ') : (h.atkilar[0]?.kod || '');
+    /* Bu işe gönderilen iplikler ↔ formdaki numaralar (14 dokumaFasonIpNoUyumsuzluklari; 21.10.2026 kullanıcı isteği) */
+    const duzenlenen = dokumaSiparisEditId ? (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === String(dokumaSiparisEditId)) : null;
+    const gonderilen = duzenlenen && typeof dokumaFasonGonderilenIplikler === 'function' ? dokumaFasonGonderilenIplikler(duzenlenen) : null;
+    const ipUyari = gonderilen ? dokumaFasonIpNoUyumsuzluklari(spec, gonderilen) : [];
+    const gonMetin = gonderilen && (gonderilen.COZGU.length || gonderilen.ATKI.length)
+        ? `Bu işe gönderilen: ${[...gonderilen.COZGU.map(g => `çözgü ${g.etiket} (${fmt(g.kg)} kg)`), ...gonderilen.ATKI.map(g => `atkı ${g.etiket} (${fmt(g.kg)} kg)`)].join(' · ')}` : '';
+    const ipEksik = (!(parseFloat(spec.cozgu_ip_no) > 0) ? 1 : 0) + h.atkilar.filter(a => a.eksik).length;
+    kutu.innerHTML = kutuHtml('Çözgü uzunluğu (levent)', fmt(h.cozguUzunlukM) + ' m', 'var(--text)', `kumaşta ${fmt(h.cozguKullanilanM)} m`)
+        + kutuHtml('Çözgü ipliği', fmt(h.cozguKg) + ' kg', 'var(--accent)', spec.cozgu_iplik_kodu || '')
+        + kutuHtml('Atkı ipliği', fmt(h.atkiKg) + ' kg', 'var(--accent)', [atkiAlt, h.tezgahM > 0 ? `tezgahta ${fmt(h.tezgahM)} m` : '', h.atkiArtikKg > 0 ? `artık ${fmt(h.atkiArtikKg)} kg dahil` : ''].filter(Boolean).join(' · '))
+        + kutuHtml('Toplam iplik', fmt(h.toplamKg) + ' kg', 'var(--amber-c)', 'fire dahil')
+        + (h.beklenenHamEnCm ? kutuHtml('Beklenen ham en', fmt(h.beklenenHamEnCm) + ' cm', 'var(--text)', 'tarak eni ÷ (1 + atkı çekmesi)') : '')
+        + (h.beklenenHamKg > 0 ? kutuHtml('Beklenen ham kumaş', fmt(h.beklenenHamKg) + ' kg', 'var(--text)', h.beklenenGramaj ? `≈ ${fmt(h.beklenenGramaj)} g/m² · firesiz, haşıllı` : 'firesiz, haşıllı') : '')
+        + (ipEksik ? `<div style="grid-column:1/-1;font-size:9px;color:var(--amber-c);text-align:center">⚠ ${ipEksik} ipliğin numarası girilmemiş — o ipliğin kg'ı hesaplanamıyor.</div>` : '')
+        + (ipUyari.length ? `<div style="grid-column:1/-1;font-size:10px;font-weight:700;color:var(--rose-c);text-align:center;line-height:1.5">⚠ Gönderilen iplikle tutmuyor: ${pdfEsc(ipUyari.join(' · '))}</div>` : '')
+        + (gonMetin ? `<div style="grid-column:1/-1;font-size:9px;color:var(--text3);text-align:center">${pdfEsc(gonMetin)}</div>` : '');
 }
 
 async function dokumaSiparisKaydet() {
+    /* Yazma kapısı: düğmeyi gizlemek yetmez (Dokuma fason ekranı yetkisi) */
+    if (typeof fasonYazabilir === 'function' && !fasonYazabilir('DOKUMA')) { erpToast('Dokuma siparişi girme / düzeltme yetkiniz yok.', 'error'); return; }
     const ad = String(document.getElementById('dsp-kumas-ad')?.value || '').trim();
     const metre = parseFloat(document.getElementById('dsp-metre')?.value || 0) || 0;
     if (!ad) { erpToast('Kumaş türü / açıklama girin.', 'error'); return; }
     if (metre <= 0) { erpToast('Toplam metre 0\'dan büyük olmalı.', 'error'); return; }
+    const teknikVar = _dokumaFasonTeknikKolon !== false;
+    const specOn = dokumaSiparisFormDegerleriniOku();
+    if (teknikVar) {
+        for (const [alan, et] of [['cozgu_cekme_pct', 'Çözgü çekmesi'], ['boyuna_cekme_pct', 'Boyuna çekme'], ['atki_cekme_pct', 'Atkı çekmesi'], ['hasil_payi_pct', 'Haşıl payı']]) {
+            const v = specOn[alan];
+            if (v != null && (v < 0 || v > 100)) { erpToast(`${et} 0 ile 100 arasında olmalı.`, 'error'); return; }
+        }
+        if (specOn.atki_artik_cm != null && (specOn.atki_artik_cm < 0 || specOn.atki_artik_cm > 200)) { erpToast('Atkı artığı 0 ile 200 cm arasında olmalı.', 'error'); return; }
+        if (specOn.atki_iplikleri.length > 1) {
+            const top = specOn.atki_iplikleri.reduce((s, a) => s + a.pay, 0);
+            if (Math.abs(top - 100) > 0.01) { erpToast(`Atkı iplik paylarının toplamı %100 olmalı (şu an %${top.toLocaleString('tr-TR')}).`, 'error', 6000); return; }
+        }
+    }
+    /* Gönderilen iplikle tutmuyorsa sor (yalnız düzenlemede: hareketi olan iş) */
+    if (dokumaSiparisEditId && typeof dokumaFasonIpNoUyumsuzluklari === 'function') {
+        try { if (typeof fasonAkisYukle === 'function') await fasonAkisYukle(); } catch (e) {}
+        const duz = (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === String(dokumaSiparisEditId));
+        const u = duz ? dokumaFasonIpNoUyumsuzluklari(specOn, dokumaFasonGonderilenIplikler(duz)) : [];
+        if (u.length && !(await erpAskConfirm(`⚠ İplik numarası bu işe gönderilen iplikle tutmuyor:\n\n${u.join('\n')}\n\nÇözgü / atkı numaraları yer değiştirmiş olabilir. Yine de bu değerlerle kaydedilsin mi?`))) return;
+    }
+    const tarakCm = (parseFloat(specOn.tarak_eni_m) || 0) * 100;
+    if (tarakCm > 0 && tarakCm < 20 && !(await erpAskConfirm(`Tarak eni ${tarakCm.toLocaleString('tr-TR')} cm girildi — bu çok dar.\n\nMetre girdiyseniz santimetreye çevirin (2,65 m = 265 cm).\n\nYine de bu değerle kaydedilsin mi?`))) return;
     const fasonMi = !!document.getElementById('dsp-yer-fason')?.checked;
     const fasonFirma = fasonMi ? String(document.getElementById('dsp-fason-firma')?.value || '').trim() : '';
     const hangiIs = String(document.getElementById('dsp-hangi-is')?.value || '').trim();
     const starih = document.getElementById('dsp-starih')?.value || null;
     const ttarih = document.getElementById('dsp-ttarih')?.value || null;
     const notVal = String(document.getElementById('dsp-not')?.value || '').trim();
-    const spec = dokumaSiparisFormDegerleriniOku();
+    const spec = specOn;
     const hesap = dokumaFasonHesapla({ ...spec, metre });
 
     const kayit = {
@@ -26673,7 +27142,7 @@ async function dokumaSiparisKaydet() {
         starih,
         ttarih,
         notlar: notVal,
-        cozgu_sikligi: parseFloat(document.getElementById('dsp-cozgu-sikligi')?.value || 0) || 0,
+        cozgu_sikligi: parseFloat(spec.cozgu_sikligi) || 0,
         atki_sikligi: parseFloat(spec.atki_sikligi) || 0,
         cozgu_tel_sayisi: parseFloat(spec.cozgu_tel_sayisi) || 0,
         tarak_eni_m: parseFloat(spec.tarak_eni_m) || 0,
@@ -26682,16 +27151,35 @@ async function dokumaSiparisKaydet() {
         atki_ip_no: parseFloat(spec.atki_ip_no) || 0,
         cozgu_fire_payi: parseFloat(spec.cozgu_fire_payi) || 0,
         atki_fire_payi: parseFloat(spec.atki_fire_payi) || 0,
-        cozgu_ihtiyaci_m: hesap.cozguUzunlukM,
-        cozgu_ipligi_kg: hesap.cozguKg,
-        atki_ipligi_kg: hesap.atkiKg
+        cozgu_ihtiyaci_m: Math.round(hesap.cozguUzunlukM * 100) / 100,
+        cozgu_ipligi_kg: Math.round(hesap.cozguKg * 100) / 100,
+        atki_ipligi_kg: Math.round(hesap.atkiKg * 100) / 100
     };
+    /* İplik hesabı kolonları (21.10.2026) — yalnız kuruluysa; yoksa eski kolonlar aynen yazılır */
+    if (teknikVar) Object.assign(kayit, {
+        cozgu_iplik_kodu: spec.cozgu_iplik_kodu || '',
+        atki_iplikleri: spec.atki_iplikleri.filter(a => a.kod || a.ip_no > 0).map(a => ({ kod: a.kod, ip_no: a.ip_no, pay: a.pay })),
+        cozgu_cekme_pct: spec.cozgu_cekme_pct,
+        atki_cekme_pct: spec.atki_cekme_pct,
+        hasil_payi_pct: spec.hasil_payi_pct
+    });
+    if (_dokumaFasonArtikKolon !== false) kayit.atki_artik_cm = spec.atki_artik_cm;   /* atkı artığı kolonu (21.10.2026) kuruluysa */
+    if (_dokumaFasonBoyunaKolon !== false) kayit.boyuna_cekme_pct = spec.boyuna_cekme_pct;   /* boyuna çekme kolonu (22.10.2026) kuruluysa */
     try {
         if (typeof sb === 'undefined' || !sb?.from) throw new Error('Bağlantı yok');
         if (dokumaSiparisEditId) {
+            const onceki = (dataCache.dokumaFasonSiparisleri || []).find(s => String(s.id) === String(dokumaSiparisEditId));
             kayit.updated_at = new Date().toISOString();
-            const { error } = await sb.from('dokuma_fason_siparisleri').update(kayit).eq('id', dokumaSiparisEditId);
+            /* Koşullu yazma: form açıldıktan sonra başka yerden değiştiyse üstüne yazmaz */
+            let q = sb.from('dokuma_fason_siparisleri').update(kayit).eq('id', dokumaSiparisEditId);
+            if (onceki?.updated_at) q = q.eq('updated_at', onceki.updated_at);
+            const { data: yazilan, error } = await q.select('id');
             if (error) throw error;
+            if (!yazilan || !yazilan.length) {
+                erpToast('Bu dokuma siparişi siz düzenlerken başka yerden değişmiş — kayıt yapılmadı. Liste tazelendi; yeniden açıp tekrar girin.', 'error', 9000);
+                await dokumaFasonSiparisleriYukle(true);
+                return;
+            }
             const idx = (dataCache.dokumaFasonSiparisleri || []).findIndex(s => String(s.id) === String(dokumaSiparisEditId));
             if (idx >= 0) Object.assign(dataCache.dokumaFasonSiparisleri[idx], kayit);
             erpToast('Dokuma siparişi güncellendi.', 'success');
@@ -26836,9 +27324,9 @@ async function renderKonfeksiyon() {
     </div>`;
 }
 
-async function renderKonfeksiyonPlanlama() {
-    const list = document.getElementById('main-list');
-    if (!list) return;
+/** Konfeksiyon planlama listesi: üretim yeri dağılımı, süzülen siparişler, plana dahil olmayanlar, seçilebilenler (eksik
+    KD_KONFEKSIYON toplu okunur) — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
+async function konfPlanlamaListeModeli(yerFiltresi, planliGoster) {
     const siparisler = (dataCache.siparisler || []).filter(s => !siparisKapaliMi(s));
     const siparisMeta = siparisler.map(s => {
         const kalemler = uaSiparisKalemleriGetir(s);
@@ -26855,9 +27343,9 @@ async function renderKonfeksiyonPlanlama() {
     }, { simteks: 0, fason: 0, dogrudan: 0 });
     const filtreliSiparisler = siparisMeta
         .filter(r => {
-            if (konfeksiyonYerFiltresi === 'SIMTEKS_KONF') return r.yer === 'SIMTEKS_KONF';
-            if (konfeksiyonYerFiltresi === 'FASON_KONF') return r.yer === 'FASON_KONF';
-            if (konfeksiyonYerFiltresi === 'DOGRUDAN_SEVK') return r.yer === 'DOGRUDAN_SEVK';
+            if (yerFiltresi === 'SIMTEKS_KONF') return r.yer === 'SIMTEKS_KONF';
+            if (yerFiltresi === 'FASON_KONF') return r.yer === 'FASON_KONF';
+            if (yerFiltresi === 'DOGRUDAN_SEVK') return r.yer === 'DOGRUDAN_SEVK';
             return true;
         })
         .map(r => r.s);
@@ -26885,7 +27373,13 @@ async function renderKonfeksiyonPlanlama() {
             .map(s => String(s.id))
     );
     const planaDahilEdilmeyenSiparisler = filtreliSiparisler.filter(s => !planlanmisSiparisSet.has(String(s.id)));
-    const planlamaSecimSiparisleri = konfPlanlamaPlanliGoster ? filtreliSiparisler : planaDahilEdilmeyenSiparisler;
+    const planlamaSecimSiparisleri = planliGoster ? filtreliSiparisler : planaDahilEdilmeyenSiparisler;
+    return { siparisler, konfDagilim, filtreliSiparisler, planlanmisSiparisSet, planaDahilEdilmeyenSiparisler, planlamaSecimSiparisleri };
+}
+async function renderKonfeksiyonPlanlama() {
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const { siparisler, konfDagilim, planaDahilEdilmeyenSiparisler, planlamaSecimSiparisleri } = await konfPlanlamaListeModeli(konfeksiyonYerFiltresi, konfPlanlamaPlanliGoster);
     konfWarmupUaForKonfFilter(siparisler);
     if (konfeksiyonSiparisId && !planlamaSecimSiparisleri.some(s => String(s.id) === String(konfeksiyonSiparisId))) {
         konfeksiyonSiparisId = null;
@@ -27105,6 +27599,11 @@ function konfSiparisMetricForStage(stageId, kd, islemRows, kdDok, kalemler, sipa
         case 'kalite': return uretimTop().kalite;
         case 'koli': return uretimTop().koli;
         case 'sevk': {
+            /* Yapı geçişi M1: anahtar 'sevk' YENI'yken kalemlerin yeni sevki (hepsi okunmuşsa); değilse aşağıdaki eski hesap */
+            if (siparisId != null && typeof yapiSevkGoster === 'function' && (kalemler || []).length) {
+                const ys = (kalemler || []).map((_k, i) => yapiSevkGoster(siparisId, i));
+                if (ys.every((v) => v != null)) return ys.reduce((a, v) => a + v, 0);
+            }
             /* Kalem kalem ortak okuyucu (düzeltme / kesin toplam); düz günlük toplamı silinen sevki ekliyordu (SP554) */
             const akisNet = (siparisId != null && typeof sevkiyatSiparisKalemYuklemeFromAkis === 'function' && (kalemler || []).length)
                 ? (kalemler || []).reduce((a, _k, i) => a + sevkiyatSiparisKalemYuklemeFromAkis(siparisId, i), 0)
@@ -27655,6 +28154,18 @@ async function konfPlanTamamlanmayanlariErtesiGuneKaydir(gunStr) {
     alert(`${etkilenenSatir} satırdaki ${tasinanAsama} açık operasyon ${kaynakGun} tarihinden ${hedefGun} tarihine taşındı.`);
 }
 
+/** O gün yapılacak (henüz tamamlanmamış) plan aşamaları + toplam adet — ekrana dokunmaz; yeni mobil de kullanır (22.10.2026) */
+function konfPlanGunlukYapilacak(rows, gun) {
+    const gunlukYapilacak = (rows || []).flatMap(r => {
+        const out = [];
+        if (!r.kesim && String(r.kesim_gun || '') === gun) out.push({ ...r, plan_asama: 'Kesim' });
+        if (!r.dikim && String(r.dikim_gun || '') === gun) out.push({ ...r, plan_asama: 'Dikim' });
+        if (!r.kalite && String(r.kalite_gun || '') === gun) out.push({ ...r, plan_asama: 'Kalite/Paket' });
+        if (!r.sevk && String(r.sevk_gun || '') === gun) out.push({ ...r, plan_asama: 'Sevk' });
+        return out;
+    });
+    return { gunlukYapilacak, gunlukToplam: gunlukYapilacak.reduce((a, r) => a + (parseInt(r.adet || 0, 10) || 0), 0) };
+}
 function renderKonfPlanlama(siparis, kalemler, kd) {
     const rawRows = konfPlanRowsGet(siparis, kalemler, kd);
     const rows = rawRows.map(r => {
@@ -27702,15 +28213,7 @@ function renderKonfPlanlama(siparis, kalemler, kd) {
         if (aktifAy && String(r.aylik || '') !== aktifAy) return false;
         return true;
     });
-    const gunlukYapilacak = rows.flatMap(r => {
-        const out = [];
-        if (!r.kesim && String(r.kesim_gun || '') === gunlukPanelGun) out.push({ ...r, plan_asama: 'Kesim' });
-        if (!r.dikim && String(r.dikim_gun || '') === gunlukPanelGun) out.push({ ...r, plan_asama: 'Dikim' });
-        if (!r.kalite && String(r.kalite_gun || '') === gunlukPanelGun) out.push({ ...r, plan_asama: 'Kalite/Paket' });
-        if (!r.sevk && String(r.sevk_gun || '') === gunlukPanelGun) out.push({ ...r, plan_asama: 'Sevk' });
-        return out;
-    });
-    const gunlukToplam = gunlukYapilacak.reduce((a, r) => a + (parseInt(r.adet || 0, 10) || 0), 0);
+    const { gunlukYapilacak, gunlukToplam } = konfPlanGunlukYapilacak(rows, gunlukPanelGun);
     const seciliHafta = aktifHafta || konfPlanHaftaAnahtariFromGun(gunlukPanelGun);
     const haftalikRows = rows.filter(r => String(r.haftalik || '') === seciliHafta);
     const operasyonlar = ['KESIM', 'DIKIM', 'KALITE', 'SEVK'];
@@ -29956,8 +30459,9 @@ function renderInputs() {
                     </div>
                     <div id="wrap-cikis-detay" style="display:none">
                         <label class="pro-label" style="color:var(--rose-c)">HANGİ FİRMAYA / KİŞİYE?</label>
-                        <input id="val-afirma" oninput="updateIplikPreview()" class="pro-input" placeholder="Firma adı..."
+                        <input id="val-afirma" oninput="updateIplikPreview()" class="pro-input" placeholder="Firma adı..." list="val-afirma-liste" autocomplete="off"
                             style="text-transform:uppercase;border-color:rgba(251,113,133,0.3)">
+                        <datalist id="val-afirma-liste"></datalist>
                     </div>
                 </div>
             </div>` : ''}
@@ -30688,6 +31192,18 @@ function renderInputs() {
 }
 // --- renderInputs SONU ---
 
+/* Stok ekranlarına giren hareketler — ekrana dokunmaz; Kumaş / Mamül stoğu ekranı ve yeni mobil (mobil-yeni/)
+   AYNI seçimi kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı"). Kumaş: yalnız SM/NU kumaş kartları. */
+function kumasStokListeHareketleri(hareketler) {
+    return (hareketler || dataCache.kumas_stok || []).filter(x =>
+        kumasStokHareketiKumasDepoMu(x) &&
+        (typeof kumasDepoStokKoduMu !== 'function' || kumasDepoStokKoduMu(x.stok_kodu))
+    );
+}
+function mamulStokListeHareketleri(hareketler) {
+    return (hareketler || dataCache.kumas_stok || []).filter(kumasStokHareketiMamulDepoMu);
+}
+
 // ============================================================
 // loadData — Tüm modlar için, doğru kapatılmış tek fonksiyon
 // ============================================================
@@ -30767,10 +31283,7 @@ function loadData(opts) {
 
     // --- KUMAŞ DEPO GRUPLAMA — yalnızca SM/NU kumaş kartları, sipariş artığı kodlar hariç ---
     if (table === 'kumas_stok' && (appMode === 'KUMAS' || (appMode === 'DEPO_HAREKET' && depoKomutaHedef === 'KUMAS'))) {
-        const fabricData = baseData.filter(x =>
-            kumasStokHareketiKumasDepoMu(x) &&
-            (typeof kumasDepoStokKoduMu !== 'function' || kumasDepoStokKoduMu(x.stok_kodu))
-        );
+        const fabricData = kumasStokListeHareketleri(baseData);
         if (!opts.kumasBodyOnly) {
             window._kumasStokGrpsHam = typeof kumasStokListeGruplariOlustur === 'function'
                 ? kumasStokListeGruplariOlustur(fabricData)
@@ -30811,7 +31324,7 @@ function loadData(opts) {
 
     // --- MAMUL DEPO GRUPLAMA (stok kodu bazında net bakiye) — sadece mamül hareketleri ---
     if (table === 'kumas_stok' && (appMode === 'MAMUL_DEPO' || (appMode === 'DEPO_HAREKET' && depoKomutaHedef === 'MAMUL_DEPO'))) {
-        const mamulData = baseData.filter(kumasStokHareketiMamulDepoMu);
+        const mamulData = mamulStokListeHareketleri(baseData);
         if (!opts.mamulBodyOnly) {
             window._mamulStokGrpsHam = typeof mamulStokHamGruplariOlustur === 'function'
                 ? mamulStokHamGruplariOlustur(mamulData)
@@ -31053,12 +31566,7 @@ function loadData(opts) {
     let mamulGruplarSayisi = 0;
     if (appMode === 'KART_LISTE' && archiveTab === 'TUMU' && typeof stokKartGrupluListeHtml === 'function') {
         const sLower = (document.getElementById('search')?.value || '').toLowerCase().trim();
-        const iplikRows = (typeof iplikKartlariListe === 'function' ? iplikKartlariListe() : []).filter(i => stokKartAramaEslesir(i, sLower));
-        const lib = dataCache.kumas_kutuphanesi || [];
-        const kumasRows = lib.filter(i => stokKartGrupEslesir(i, 'KUMAS') && stokKartAramaEslesir(i, sLower))
-            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        const mamulRows = lib.filter(i => stokKartGrupEslesir(i, 'MAMUL') && stokKartAramaEslesir(i, sLower))
-            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const { iplikRows, kumasRows, mamulRows } = stokKartTumuSatirlari(sLower);
         stokKartGrupluHtml = stokKartGrupluListeHtml(iplikRows, kumasRows, mamulRows);
         currentData = window._stokKartTumuCurrentData || [];
     }
@@ -31654,8 +32162,8 @@ function siparisKalemKumasMetrajOzet(siparisId, kalemIdx, kalem, u, rowK) {
             kg: parseFloat(u?.toplam_kg) || 0,
             ikinci: parseFloat(u?.toplam_kg) || 0
         };
-    const sevk = (typeof planlamaIhtiyacSevkAdet === 'function')
-        ? planlamaIhtiyacSevkAdet(siparisId, kalemIdx, rowK || {})
+    const sevk = (typeof planlamaIhtiyacSevkGoster === 'function')
+        ? planlamaIhtiyacSevkGoster(siparisId, kalemIdx, rowK || {})
         : Math.max(parseInt(rowK?.sevk_edilen || 0, 10) || 0, parseInt(rowK?.sevk_adet || 0, 10) || 0);
     if (birim === 'MT') {
         const dokunan = Math.round(parseFloat(dokOzet.metre) || 0);
@@ -34136,6 +34644,11 @@ function uaIslemToplamForKalem(islemRows, kalemler, kalemIdx, kodlar, opts = {})
 
 /** Ana ERP (SEVK) + konfeksiyon paneli (KONF_SEVK) + KD + pipeline — tek net sevk. */
 function konfKalemSevkNet(kdKonf, islemRows, kalemler, kalemIdx, ctx = {}) {
+    /* Yapı geçişi M1: anahtar 'sevk' YENI'yken kalemin tek sevki yeni yapıdan (38 yapiSevkGoster); okunmamışsa eski hesap */
+    if (ctx.siparisId != null && typeof yapiSevkGoster === 'function') {
+        const y = yapiSevkGoster(ctx.siparisId, kalemIdx);
+        if (y != null) return y;
+    }
     const row = (kdKonf && kdKonf[`kalem_${kalemIdx}`]) ? kdKonf[`kalem_${kalemIdx}`] : {};
     const sevkFromKd = Math.max(parseInt(row.sevk_edilen, 10) || 0, parseInt(row.sevk_adet, 10) || 0);
     /* Günlükteki sevk: Sevkiyat Merkezi / Sipariş özeti ile AYNI okuyucu (kesin_toplam + düzeltme satırı).
@@ -36290,6 +36803,19 @@ function checkIplikExit(el) {
     if (el.value !== 'SİMTEKS DOKUMA') {
         wrap.style.display = 'block';
         const firmaInput = document.getElementById('val-afirma');
+        /* Öneri listesi: bu birime daha önce yazılmış firmalar (çok kullanılan önce) — aynı firmanın farklı yazımları
+           çoğalmasın (22.10.2026; Çözgücü / Bükümcü hesabı firma adından toplanır). Yalnız öneri, serbest yazı kalır. */
+        const dl = document.getElementById('val-afirma-liste');
+        if (dl) {
+            const etiket = '[SEVK_YER:' + el.value + ']';
+            const say = new Map();
+            (dataCache.iplik_stok || []).forEach(r => {
+                if (!String(r.notlar || '').includes(etiket)) return;
+                const ad = String(r.araci_firma || '').trim().toLocaleUpperCase('tr-TR');
+                if (ad) say.set(ad, (say.get(ad) || 0) + 1);
+            });
+            dl.innerHTML = [...say.entries()].sort((a, b) => b[1] - a[1]).map(([ad]) => `<option value="${pdfEsc(ad)}"></option>`).join('');
+        }
         if (firmaInput) firmaInput.focus();
     } else {
         wrap.style.display = 'none';
@@ -37096,6 +37622,8 @@ async function sbKdGetMany(siparisIds, tip, opts = {}) {
                 const parsed = sbKdSatirlardanSec(bySid.get(id) || [], tip);
                 if (sbKdCacheYaz(id, tip, parsed)) anyChange = true;
                 out[id] = parsed;
+                /* M7a: ağdan okunan ürün ağacı kabı yeni yapıyla kıyas kuyruğuna (yalnız anahtar 'recete' KARSILASTIR'da; 38) */
+                if (tip === 'KD_URUN_AGACI' && typeof yapiReceteKiyasEkle === 'function') yapiReceteKiyasEkle(id, parsed);
             });
         } catch (e) {
             console.warn('sbKdGetMany fallback', tip, e);
@@ -37137,6 +37665,7 @@ async function sbKdGetTipler(siparisId, tips, opts = {}) {
             const parsed = sbKdSatirlardanSec(rows, t);
             if (sbKdCacheYaz(sid, t, parsed)) anyChange = true;
             out[t] = parsed;
+            if (t === 'KD_URUN_AGACI' && typeof yapiReceteKiyasEkle === 'function') yapiReceteKiyasEkle(sid, parsed);   /* M7a kıyas (38) */
         });
         if (anyChange) planlamaIhtiyacSatirCacheInvalidate();
     } catch (e) {
@@ -37163,6 +37692,7 @@ async function sbKdGet(siparisId, tip, forceReload = false) {
         if (error) throw error;
         const val = sbKdSatirlardanSec(data || [], tip);
         if (sbKdCacheYaz(siparisId, tip, val)) planlamaIhtiyacSatirCacheInvalidate();
+        if (tip === 'KD_URUN_AGACI' && typeof yapiReceteKiyasEkle === 'function') yapiReceteKiyasEkle(siparisId, val);   /* M7a kıyas (38) */
         return val;
     } catch(e) {
         console.error('sbKdGet error', tip, siparisId, e);
@@ -37234,9 +37764,15 @@ async function sbKdSet(siparisId, tip, kd, opts = {}) {
         const birlesik = taban ? kdUcYonluBirlestir(taban, benim, guncel, undefined, undefined, mutlak) : kdDeepMerge(guncel, benim);
         const json = JSON.stringify(birlesik || {});
 
+        /* M7b: ürün ağacı kabı yazılmadan önce yazma kapısına deneme (yalnız anahtar 'recete' KARSILASTIR'da; 38) */
+        const rd = tip === 'KD_URUN_AGACI' && typeof yapiReceteDeneBekle === 'function'
+            ? await yapiReceteDeneBekle({ siparis_id: siparisId, tur: 'yaz', notlar: json,
+                gordugu: (rows || []).length ? { id: (sec ? sec.row : rows[0]).id, updated_at: (sec ? sec.row : rows[0]).updated_at || null } : null })
+            : null;
         if (!(rows || []).length) {
             const { error: insErr } = await sb.from('siparis_akis').insert([{ siparis_id: siparisId, islem: tip, kalem_ad: tip, miktar: 0, notlar: json }]);
             if (insErr) { hataGoster('sbKdSet insert error', insErr); return { error: insErr }; }
+            if (rd) yapiReceteDeneOnay(rd);
             return sbKdYazildi(siparisId, tip, key, benim, json);
         }
         const hedef = sec ? sec.row : rows[0];
@@ -37250,6 +37786,7 @@ async function sbKdSet(siparisId, tip, kd, opts = {}) {
             return { error: sonuc.error };
         }
         if (!sonuc.data || !sonuc.data.length) continue;   /* başka cihaz arada yazdı — taze oku, yeniden birleştir */
+        if (rd) yapiReceteDeneOnay(rd);
         /* Aynı tipte mükerrer satırlar varsa hepsi aynı içerikle senkron kalsın (eski davranış). */
         const digerleri = (rows || []).map(r => r.id).filter(id => String(id) !== String(hedef.id));
         if (digerleri.length) {
@@ -37286,6 +37823,8 @@ async function sbKdDel(siparisId, tip) {
     delete _kdCache[key];
     delete _kdCacheAt[key];
     planlamaIhtiyacSatirCacheInvalidate();
+    /* M7b: ürün ağacını sıfırla → yazma kapısına deneme (K2 arşiv + iz; yalnız anahtar 'recete' KARSILASTIR'da; 38) */
+    if (tip === 'KD_URUN_AGACI' && typeof yapiReceteDeneBekle === 'function') await yapiReceteDeneBekle({ siparis_id: siparisId, tur: 'sifirla' });
     const { error } = await sb.from('siparis_akis').delete().eq('siparis_id', siparisId).eq('islem', tip);
     /* supabase-js hatada fırlatmaz — sessiz geçilirse ekran "sıfırlandı" der, kayıt yerinde kalır. */
     if (error) {
@@ -38033,6 +38572,21 @@ async function siparisFotoEkleKaydet() {
     }
 }
 
+/** Pencere olmadan: siparişe dosyaları açıklamalarıyla ekler (yeni mobil). Aynı yazıcı siparisFotoEkleKaydet çalışır. */
+async function siparisFotoEkleDosyalarla(siparisId, dosyalar) {
+    if (!siparisFotoEkleYetkiliMi()) { erpToast('Siparişe fotoğraf ekleme yetkiniz yok.', 'error'); return false; }
+    siparisFotoEkleKaldir();
+    _siparisFotoEkleSid = siparisId;
+    _siparisFotoEkleDetaydan = false;
+    (dosyalar || []).forEach(x => { if (x && x.dosya) _siparisFotoEkleSecilen.push({ dosya: x.dosya, onizleme: '', aciklama: String(x.aciklama || '') }); });
+    if (!_siparisFotoEkleSecilen.length) return false;
+    await siparisFotoEkleKaydet();
+    /* başarılıysa siparisFotoEkleKaldir seçilenleri boşaltır */
+    const ok = !_siparisFotoEkleSecilen.length;
+    siparisFotoEkleKaldir();
+    return ok;
+}
+
 /** Açık sipariş penceresini yeni fotoğraflarla yeniden çizer (açık sekmeyi korur). */
 function siparisFotoEkleDetayYenile(i) {
     const modal = document.getElementById('detail-modal');
@@ -38571,6 +39125,45 @@ function erpShowLoginScreen() {
     }, 80);
 }
 
+/** Giriş — yalnız sunucu sorusu + anahtar + kullanıcı kaydı, ekrana dokunmaz (yeni mobil mobil-yeni/ de bunu çağırır).
+    Dönüş { ok: true } ya da { ok: false, err }; ağ / kurulum hatası fırlatılır. */
+async function erpGirisDogrula(username, password) {
+    const { data, error } = await sb.rpc('erp_login', {
+        p_username: username,
+        p_password: password
+    });
+    if (error) throw error;
+    if (!data?.ok) return { ok: false, err: data?.err || 'Kullanıcı adı veya şifre hatalı.' };
+    const user = data.user;
+    erpSetToken(data.token);
+    localStorage.setItem('erp_user_cache', JSON.stringify(user));
+    erpCurrentUser = {
+        username:      user.username,
+        display_name:  user.display_name || user.username,
+        role:          user.role,
+        allowed_modes: erpNormalizeAllowedModes(user.allowed_modes)
+    };
+    return { ok: true };
+}
+
+/** Kayıtlı oturumu (anahtar + kullanıcı önbelleği) kurar, ekrana dokunmaz. Oturum yoksa false. */
+function erpOturumOnbellektenKur() {
+    const cached = localStorage.getItem('erp_user_cache');
+    const token  = erpGetToken();
+    if (!cached || !token) return false;
+    try {
+        const user = JSON.parse(cached);
+        if (!user || !user.username) return false;
+        erpCurrentUser = {
+            username:      user.username,
+            display_name:  user.display_name || user.username,
+            role:          user.role,
+            allowed_modes: erpNormalizeAllowedModes(user.allowed_modes)
+        };
+        return true;
+    } catch (e) { return false; }   /* geçersiz cache */
+}
+
 // ── Login işlemi ──
 async function erpDoLogin() {
     const userEl = document.getElementById('erp-login-user');
@@ -38590,34 +39183,17 @@ async function erpDoLogin() {
     if (errEl) errEl.style.display = 'none';
 
     try {
-        const { data, error } = await sb.rpc('erp_login', {
-            p_username: username,
-            p_password: password
-        });
+        const giris = await erpGirisDogrula(username, password);
 
-        if (error) throw error;
-
-        if (!data?.ok) {
-            if (errEl) { errEl.textContent = '✕ ' + (data?.err || 'Kullanıcı adı veya şifre hatalı.'); errEl.style.display = 'block'; }
+        if (!giris.ok) {
+            if (errEl) { errEl.textContent = '✕ ' + giris.err; errEl.style.display = 'block'; }
             if (btn) { btn.textContent = 'Giriş Yap'; btn.disabled = false; btn.style.opacity = '1'; }
             // Şifre alanını temizle
             if (passEl) passEl.value = '';
             return;
         }
 
-        // Başarılı giriş
-        const user = data.user;
-        erpSetToken(data.token);
-        localStorage.setItem('erp_user_cache', JSON.stringify(user));
-
-        erpCurrentUser = {
-            username:      user.username,
-            display_name:  user.display_name || user.username,
-            role:          user.role,
-            allowed_modes: erpNormalizeAllowedModes(user.allowed_modes)
-        };
-
-        // Overlay kaldır, sayfayı göster
+        // Başarılı giriş — Overlay kaldır, sayfayı göster
         const overlay = document.getElementById('erp-login-overlay');
         if (overlay) overlay.remove();
         const sidebar = document.querySelector('aside.erp-sidebar');
@@ -38712,27 +39288,13 @@ async function erpSessionBootstrap() {
         return true;
     }
 
-    const cached = localStorage.getItem('erp_user_cache');
-    const token  = erpGetToken();
-
-    if (cached && token) {
-        try {
-            const user = JSON.parse(cached);
-            if (user && user.username) {
-                erpCurrentUser = {
-                    username:      user.username,
-                    display_name:  user.display_name || user.username,
-                    role:          user.role,
-                    allowed_modes: erpNormalizeAllowedModes(user.allowed_modes)
-                };
-                erpUpdateSidebarUser();
-                erpApplyNavPermissions();
-                erpInjectAdminNav();
-                // Önbellekle hızlı açılır, ardından sunucudaki güncel yetki uygulanır
-                erpYetkiSenkBaslat();
-                return true;
-            }
-        } catch (e) { /* geçersiz cache */ }
+    if (erpOturumOnbellektenKur()) {
+        erpUpdateSidebarUser();
+        erpApplyNavPermissions();
+        erpInjectAdminNav();
+        // Önbellekle hızlı açılır, ardından sunucudaki güncel yetki uygulanır
+        erpYetkiSenkBaslat();
+        return true;
     }
 
     // Geçerli oturum yok — login göster
@@ -38937,6 +39499,31 @@ function raporKdOnbellegeYaz(tip, satirlar) {
     if (degisti && typeof planlamaIhtiyacSatirCacheInvalidate === 'function') planlamaIhtiyacSatirCacheInvalidate();
 }
 
+/* Başka cihaz bir siparişin KD kabını yazınca canlı senkron onu önbellekten düşürür (04 erpLiveApplyPayloadYap); rapor verisi
+   60 sn tazeyken toplu okuma yapılmaz → o siparişin sayıları (dokuma, kalite …) boş kaptan 0 hesaplanırdı (22.10.2026, fark
+   defteri #244–246). Düşen kaplar yalnız o siparişler için yeniden okunur (tip başına tek istek, düşen yoksa ağ yok). */
+const RAPOR_KD_TIPLERI = ['KD_DOKUMA', 'KD_KONFEKSIYON'];
+let _raporKdEksikSoz = null;
+/** [[tip, düşen sipariş id'leri], …] — rapor verisi hiç yüklenmediyse boş (tam yükleme zaten hepsini okur). Yalnız bellekte bakar. */
+function raporKdEksikler() {
+    if (!_raporVeri.olaylar || typeof sbKdGetMany !== 'function') return [];
+    const ids = (dataCache.siparisler || []).map((s) => String(s.id));
+    return RAPOR_KD_TIPLERI.map((tip) => [tip, ids.filter((id) => _kdCache[`${tip}_${id}`] === undefined)]).filter(([, e]) => e.length);
+}
+function raporKdEksikleriOku() {
+    if (_raporKdEksikSoz) return _raporKdEksikSoz;
+    const isler = raporKdEksikler();
+    if (!isler.length) return Promise.resolve(0);
+    _raporKdEksikSoz = Promise.all(isler.map(([tip, eksik]) => sbKdGetMany(eksik, tip).catch((e) => { console.warn('rapor KD yeniden okuma', tip, e); })))
+        .then(() => {
+            /* Siparişler sekmesinin hesap önbelleği (raporSiparisVerisi) yeni kaplarla yeniden kurulsun */
+            if (typeof _raporSiparisOnbellek === 'object' && _raporSiparisOnbellek) _raporSiparisOnbellek.ts = 0;
+            return isler.reduce((a, [, e]) => a + e.length, 0);
+        })
+        .finally(() => { _raporKdEksikSoz = null; });
+    return _raporKdEksikSoz;
+}
+
 function raporAkisOlaySatirlariCek() {
     return raporSayfaliCek(() => sb.from('siparis_akis')
         .select('id,siparis_id,islem,kalem_ad,miktar,notlar,created_at')
@@ -38945,7 +39532,10 @@ function raporAkisOlaySatirlariCek() {
 }
 
 async function raporVeriYukle(force) {
-    if (!force && _raporVeri.olaylar && Date.now() - _raporVeri.ts < RAPOR_VERI_TTL_MS) return _raporVeri;
+    if (!force && _raporVeri.olaylar && Date.now() - _raporVeri.ts < RAPOR_VERI_TTL_MS) {
+        await raporKdEksikleriOku();
+        return _raporVeri;
+    }
     if (_raporVeri.bekleyen) return _raporVeri.bekleyen;
     const t0 = performance.now();
     _raporVeri.bekleyen = (async () => {
@@ -40927,6 +41517,11 @@ function raporOzetDisaPaket() {
 let raporTab = 'YR_OZET';
 
 async function renderRaporlar() {
+    /* Canlı yenilemede düşen KD kapları önce okunur — aşağıdaki ilk çizim boş kaptan 0 göstermesin (düşen yoksa beklemeden çizilir) */
+    if (raporKdEksikler().length) {
+        try { await raporKdEksikleriOku(); } catch (e) {}
+        if (appMode !== 'RAPORLAR') return;
+    }
     const list = document.getElementById('main-list');
     if (!list) return;
     if (!raporYeniSekmeMi(raporTab)) raporTab = 'YR_OZET';
@@ -42505,6 +43100,25 @@ const FASON_TIPLER = {
                    alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'top_nolar', 'k2_mt', 'olculen_en', 'gramaj', 'hata_puan', 'not'], zorunlu: ['mt'] },
     IPLIK_IADE:  { alan: 'DOKUMA', islem: 'FASON_GELEN', ad: 'Artan iplik geri geldi', dugme: 'İplik iadesi', ikon: '↩️', renk: '#f59e0b', ana: 'kg', depo: 'IPLIK_GIRIS',
                    alanlar: ['tarih', 'firma', 'fis_no', 'iplik_yer', 'iplik_kodu', 'iplik_ad', 'lot_no', 'marka', 'kg', 'top', 'not'], zorunlu: ['iplik_yer', 'kg'] },
+    /* Fason dokuma iplik hesabı (21.10.2026): fasonun BİLDİRDİKLERİ — depoya dokunmaz. Çözgü / haşıl dokumacıda ya da ayrı
+       firmada olabilir (iş başına); ayrı firmada levent firmadan dokumacıya geçer (LEVENT_GECIS, firma = gönderen).
+       İş sonu sayımı iplik başına (çözgülük / her atkı ipliği); aynı ipliğin SON sayımı geçerlidir. etiketler = bu türe özel alan adı. */
+    COZGU_RAPOR: { alan: 'DOKUMA', islem: 'FASON_KONTROL', ad: 'Çözgü çözüldü (rapor)', dugme: 'Çözgü raporu', ikon: '🧵', renk: '#818cf8', ana: 'mt',
+                   alanlar: ['tarih', 'firma', 'fis_no', 'iplik_kodu', 'iplik_ad', 'levent_no', 'tel', 'mt', 'kg', 'artik_kg', 'not'], zorunlu: ['tel', 'mt'],
+                   etiketler: { mt: 'Çözgü uzunluğu (m)', kg: 'Levente sarılan iplik (kg — boşsa tel × metreden)' } },
+    HASIL_RAPOR: { alan: 'DOKUMA', islem: 'FASON_KONTROL', ad: 'Haşıldan çıktı (rapor)', dugme: 'Haşıl raporu', ikon: '💧', renk: '#38bdf8', ana: 'mt',
+                   alanlar: ['tarih', 'firma', 'fis_no', 'levent_no', 'giren_mt', 'mt', 'kg', 'hasil_kalan_kg', 'not'], zorunlu: ['mt'],
+                   etiketler: { mt: 'Haşıldan çıkan (m)', kg: 'Haşıllı levent (kg, isteğe bağlı)' } },
+    LEVENT_GECIS:{ alan: 'DOKUMA', islem: 'FASON_GIDEN', ad: 'Levent dokumacıya geçti', dugme: 'Levent dokumacıya', ikon: '🚚', renk: '#84cc16', ana: 'mt',
+                   alanlar: ['tarih', 'firma', 'hedef_firma', 'fis_no', 'levent_no', 'tel', 'mt', 'not'], zorunlu: ['hedef_firma', 'mt'],
+                   etiketler: { firma: 'Gönderen firma (çözgü / haşıl)', mt: 'Levent metresi' } },
+    /* Bükümcüden bükülü iplik dönüşü (22.10.2026, 41-fason-cozgu-bukum.js): iplik deposuna GİRİŞ; kaynak_kod = hangi ham iplikten */
+    BUKUM_GELEN: { alan: 'DOKUMA', islem: 'FASON_GELEN', ad: 'Bükülü iplik geldi', dugme: 'Bükülü iplik geldi', ikon: '🌀', renk: '#10b981', ana: 'kg', depo: 'IPLIK_GIRIS',
+                   alanlar: ['tarih', 'firma', 'fis_no', 'kaynak_kod', 'iplik_kodu', 'iplik_ad', 'lot_no', 'marka', 'kg', 'top', 'not'], zorunlu: ['kaynak_kod', 'kg'],
+                   etiketler: { iplik_kodu: 'Bükülü ipliğin kodu (depo)', kg: 'Gelen bükülü iplik (kg)' } },
+    SAYIM:       { alan: 'DOKUMA', islem: 'FASON_KONTROL', ad: 'Fasonda kalan iplik (sayım)', dugme: 'Kalan iplik sayımı', ikon: '⚖️', renk: '#fbbf24', ana: 'kg',
+                   alanlar: ['tarih', 'firma', 'iplik_yer', 'iplik_kodu', 'iplik_ad', 'kg', 'levent_kalan_mt', 'telef_kg', 'not'], zorunlu: ['iplik_yer'],
+                   etiketler: { kg: 'Fasonda kalan iplik (kg; kalmadıysa 0)', iplik_kodu: 'İplik kodu' } },
     /* Terbiye (boyahane, 23-terbiye.js): bobin boyaya ham iplik, kumaş boyaya ham kumaş gider; boyalı gelir.
        Gönderim depodan düşer, boyalı gelen ve boyanmadan dönen depoya girer (kullanıcı kararı 05.10.2026). */
     BOYA_IPLIK:  { alan: 'TERBIYE', islem: 'FASON_GIDEN', ad: 'Boyaya iplik gönderildi', dugme: 'İplik gönder', ikon: '🧶', renk: '#06b6d4', ana: 'kg', depo: 'IPLIK_CIKIS',
@@ -42514,9 +43128,9 @@ const FASON_TIPLER = {
     BOYA_IPLIK_IADE: { alan: 'TERBIYE', islem: 'FASON_GELEN', ad: 'Boyanmadan geri gelen iplik', dugme: 'Boyanmadan döndü', ikon: '↩️', renk: '#f59e0b', ana: 'kg', depo: 'IPLIK_GIRIS',
                    alanlar: ['tarih', 'firma', 'fis_no', 'iplik_kodu', 'iplik_ad', 'lot_no', 'marka', 'kg', 'top', 'not'], zorunlu: ['kg'] },
     BOYA_KUMAS:  { alan: 'TERBIYE', islem: 'FASON_GIDEN', ad: 'Boyaya ham kumaş gönderildi', dugme: 'Kumaş gönder', ikon: '📜', renk: '#06b6d4', ana: 'mt', depo: 'KUMAS_CIKIS',
-                   alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'not'], zorunlu: ['mt'] },
+                   alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'top_liste', 'not'], zorunlu: ['mt'] },
     BOYALI_KUMAS:{ alan: 'TERBIYE', islem: 'FASON_GELEN', ad: 'Boyalı kumaş geldi', dugme: 'Boyalı geldi', ikon: '✅', renk: '#10b981', ana: 'mt', depo: 'KUMAS_GIRIS',
-                   alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'not'], zorunlu: ['mt'] },
+                   alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'top_liste', 'not'], zorunlu: ['mt'] },
     BOYA_KUMAS_IADE: { alan: 'TERBIYE', islem: 'FASON_GELEN', ad: 'Boyanmadan geri gelen kumaş', dugme: 'Boyanmadan döndü', ikon: '↩️', renk: '#f59e0b', ana: 'mt', depo: 'KUMAS_GIRIS',
                    alanlar: ['tarih', 'firma', 'fis_no', 'kumas_kodu', 'kumas_ad', 'lot_no', 'mt', 'kg', 'top', 'not'], zorunlu: ['mt'] },
     KONTROL:     { alan: '*', islem: 'FASON_KONTROL', ad: 'Kontrol', dugme: 'Kontrol / numune', ikon: '🔍', renk: '#e879f9', ana: 'kontrol_adet',
@@ -42549,6 +43163,16 @@ const FASON_ALAN = {
     tevkifat: { ad: 'KDV tevkifatı', tip: 'sec', secenek: FASON_TEVKIFAT },
     /* Fason ürün ağacı (A|…): ürün hareketi hangi kalem satırına; kumaş / aksesuar gönderimi malzeme listesinden (A, B, C…) */
     satir_id: { ad: 'Kalem (ebat · kumaş)', tip: 'satir' }, agac_malzeme: { ad: 'Malzeme (A, B, C…)', tip: 'agac_malzeme' },
+    /* Fason dokuma raporları / sayım (21.10.2026) */
+    artik_kg: { ad: 'Çözgüde kalan artık iplik (kg)', tip: 'num', step: '0.01' }, giren_mt: { ad: 'Haşıla giren (m)', tip: 'num', step: '0.01' },
+    hasil_kalan_kg: { ad: 'Haşılda kalan iplik (kg)', tip: 'num', step: '0.01' }, hedef_firma: { ad: 'Teslim alan dokumacı', tip: 'firma' },
+    levent_kalan_mt: { ad: 'Leventte kalan çözgü (m)', tip: 'num', step: '0.01' }, telef_kg: { ad: 'Telef / döküntü (kg)', tip: 'num', step: '0.01' },
+    kaynak_kod: { ad: 'Hangi ham iplikten (kod)', ph: 'ör. IP-0006' },
+    /* Çözgücü raporu (41, 22.10.2026, kullanıcı: "100 kg levent gelmişse %3 haşıl var dersek 97 kilo iplik geldi"): levent kg'ı haşıllı,
+       iplik = kg × (1 − haşıl %); yalnız C| formunda (fasonHareketAlanlari) */
+    hasil_pct: { ad: 'Haşıl payı (%)', tip: 'num', step: '0.1' },
+    /* Terbiye kumaş (22.10.2026): top listesi / çeki — satır başına "top no · metre · kg"; doluysa metre / kg / top bundan toplanır (42) */
+    top_liste: { ad: 'Top listesi / çeki (her satır: top no · metre · kg)', tip: 'ta', genis: true, ph: '1  52,3  18,2  —  2  49,8  17,6 (alt alta)' },
 };
 /* Föy / iş tanımı / bilgi alanları (FASON_FOY olayları). fiyat:true → yalnız fiyat yetkisine */
 const FASON_FOY_ALAN = {
@@ -42562,7 +43186,9 @@ const FASON_FOY_ALAN = {
     dfoy: [
         ['kumas_kodu', 'Kumaş kodu (gelen ham kumaşın depo kodu)', 'kumas'], ['kumas_ad', 'Kumaş adı'],
         ['hedef_en', 'Hedef ham en (cm)', 'num'], ['hedef_gramaj', 'Hedef gramaj (g/m²)', 'num'], ['orgu', 'Örgü (bezayağı, dimi, saten…)'],
-        ['kenar', 'Kenar tipi'], ['tezgah_tipi', 'Tezgah tipi (fasonda)'], ['hata_puan_limit', 'Kabul hata puanı (/100 m²)', 'num'],
+        ['kenar', 'Kenar tipi'], ['tezgah_tipi', 'Tezgah tipi (fasonda)'],
+        /* ['hata_puan_limit', 'Kabul hata puanı (/100 m²)', 'num'] — 22.10.2026 kullanıcı: "föydeki kalite kabul alanını kaldır şimdilik";
+           geri açmak için bu satır + 14 DOKUMA_FASON_KALITE_KABUL = true (kayıtlı eski değerler veride duruyor) */
         ['iplik_fire_pct', 'İplik fire toleransı %', 'num'], ['aciklama', 'Açıklama / talimat', 'ta']
     ],
     is: [
@@ -42597,7 +43223,11 @@ const FASON_FOY_ALAN = {
     /* Terbiye boya işi tanımı (T|tid, 23-terbiye.js): ne boyanıyor, hangi sipariş kalemi, hangi renk, ne kadar */
     tis: [['tur', 'Alan', 'sec', [['BOBIN', 'Bobin boya'], ['KUMAS', 'Kumaş boya']]], ['siparis_id', 'Sipariş'], ['kalem_idx', 'Sipariş kalemi'], ['kalem_ad', 'Kalem'],
         ['malzeme', 'Boyanacak (ham iplik / kumaş)'], ['renk', 'Renk'], ['renk_kodu', 'Renk kodu'], ['hedef', 'Boyanacak miktar', 'num'], ['not', 'Not', 'ta'],
-        ['kapali', 'Bitti'], ['kapanis', 'Bitiş tarihi', 'date'], ['silindi', 'Silindi']],
+        ['kapali', 'Bitti'], ['kapanis', 'Bitiş tarihi', 'date'], ['silindi', 'Silindi'],
+        /* 22.10.2026 (42-terbiye-bobin.js): termin, müşteri, bobin; kumaşta işlem türü + talimatın teknik bilgileri */
+        ['istenen_termin', 'İstediğimiz termin', 'date'], ['musteri', 'Müşteri'], ['bobin_tipi', 'Bobin tipi'], ['bobin_kg', 'Bobin ağırlığı (kg)', 'num'],
+        ['islem', 'İşlem türü'], ['ham_en', 'Ham en (cm)', 'num'], ['istenen_en', 'İstenen mamul en (cm)', 'num'], ['gramaj', 'İstenen gramaj (g/m²)', 'num'],
+        ['boy_cekme_tol', 'Boy çekmesi toleransı %', 'num'], ['en_cekme_tol', 'En çekmesi toleransı %', 'num'], ['tuse', 'Tuşe / apre isteği', 'ta']],
     /* Fason ağacı kesim girişi (is_id kendi kimliği; parça parça, toplanır) */
     kesim: [['satir_id', 'Kalem'], ['kesilen', 'Kesilen', 'num'], ['dikilen', 'Dikilen', 'num'], ['paketlenen', 'Paketlenen', 'num'], ['tarih', 'Tarih', 'date'], ['not', 'Not'], ['silindi', 'Silindi']],
     kapama: [['karar', 'Kapama kararı', 'sec', [['IADE_BEKLE', 'İade bekleniyor'], ['FIRE', 'Fire sayıldı']]], ['miktar', 'Kalan miktar', 'num'], ['not', 'Not']],
@@ -42610,6 +43240,12 @@ const FASON_HAREKET_ALANLARI = Object.keys(FASON_ALAN);
    (aks_key yerine agac_malzeme), ürün hareketinde hangi kalem (satir_id) seçilir. */
 function fasonHareketAlanlari(tip, anahtar) {
     const t = FASON_TIPLER[tip];
+    /* Çözgücü raporu: levent ağırlığı haşıllı gelir → haşıl payı kg'ın ardında (41 fasonCbHesap iplik = kg × (1 − %)) */
+    if (tip === 'COZGU_RAPOR' && String(anahtar || '').startsWith('C|')) {
+        const i = t.alanlar.indexOf('kg');
+        return { alanlar: [...t.alanlar.slice(0, i + 1), 'hasil_pct', ...t.alanlar.slice(i + 1)], zorunlu: t.zorunlu,
+            etiketler: { kg: 'Levent ağırlığı (kg; boşsa tel × metreden)' } };
+    }
     if (!String(anahtar || '').startsWith('A|')) return { alanlar: t.alanlar, zorunlu: t.zorunlu };
     const ekle = (l, alan) => l.includes(alan) ? l : [...l.slice(0, 3), alan, ...l.slice(3)];
     let alanlar = t.alanlar.map(a => a === 'aks_key' ? 'agac_malzeme' : a);
@@ -42676,6 +43312,8 @@ function fasonYazabilir(alan) {
     return erpUserCan(alan === 'DOKUMA' ? 'DOKUMA_FASON_TAKIP' : 'FASON_TAKIP');
 }
 function fasonFiyatGorur() {
+    /* M6c: SQL kuruluysa yetkiyi SUNUCU söyler (40-fason-fiyat.js: admin + adminin listesi; yönetici rolü ve FASON_FIYAT kodu yetmez) */
+    if (typeof fasonFiyatKuruluMu === 'function' && fasonFiyatKuruluMu() === true) return fasonFiyatYetkiliMi();
     return (typeof erpIsAdmin === 'function' && erpIsAdmin()) || (typeof erpUserCan === 'function' && erpUserCan(FASON_FIYAT_YETKI));
 }
 function fasonSiparisBul(sid) { return (dataCache.siparisler || []).find(s => String(s.id) === String(sid)) || null; }
@@ -42712,6 +43350,8 @@ function fasonBaglam(anahtar) {
             baslik: row ? `${row.sno || ''} · ${row.kumas_adi || ''}` : anahtar };
     }
     if (p[0] === 'T' && typeof terbiyeBaglam === 'function') return terbiyeBaglam(anahtar, p[1]);
+    /* Çözgücü (C|firma anahtarı) / bükümcü (B|…) — kendi dokumamızın fason çözgü / büküm hesabı (22.10.2026, 41-fason-cozgu-bukum.js) */
+    if ((p[0] === 'C' || p[0] === 'B') && typeof fasonCbBaglam === 'function') return fasonCbBaglam(anahtar, p[0], p.slice(1).join('|'));
     return { alan: 'HESAP', anahtar: '', siparisId: null, baslik: 'Firma hesabı' };
 }
 
@@ -42750,23 +43390,33 @@ function fasonTakipSiparisIncelemeAc(siparisId) {
 /* ── Okuma ──────────────────────────────────────────────────────── */
 async function fasonAkisYukle(zorla) {
     if (_fasonAkis.yukleniyor) return _fasonAkis.yukleniyor;
-    if (_fasonAkis.yuklendi && !zorla) return;
+    if (_fasonAkis.yuklendi && !zorla) {
+        /* M6c: kapalı fiyat / ödeme önbelleği eskidiyse tazelenir (40-fason-fiyat.js; başka kullanıcının değişikliği) */
+        try { if (typeof fasonFiyatTazele === 'function') await fasonFiyatTazele(); } catch (e) {}
+        return;
+    }
     _fasonAkis.yukleniyor = (async () => {
+        /* M6c: kapalı fiyat + ödeme defteri olaylarla birlikte okunur (yalnız yetkiliye veri gelir; SQL yoksa istek yok) */
+        const fiyatSoz = typeof fasonFiyatYukle === 'function' ? fasonFiyatYukle(!!zorla).catch(() => false) : null;
         const { data, error } = await sbTumSatirlar(() => sb.from('siparis_akis')
             .select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
             .in('islem', FASON_ISLEM_LISTE)
             .order('created_at', { ascending: true })
             .order('id', { ascending: true }));
+        if (fiyatSoz) await fiyatSoz;
         if (error) { _fasonAkis.hata = String(error.message || error); return; }
         const sunucu = (data || []).map(r => ({ ...r, n: fasonNotOku(r.notlar) }));
         const oidler = new Set(sunucu.map(r => r.n.oid).filter(Boolean));
         /* Bu bilgisayarda yazılıp henüz sunucuda görünmeyen (internetsiz bekleyen) satırlar kalsın */
         const yerel = _fasonAkis.satirlar.filter(r => r._yerel && !oidler.has(r.n.oid));
-        _fasonAkis.satirlar = [...sunucu, ...yerel];
+        _fasonAkis.satirlar = [...sunucu, ...yerel, ...(typeof fasonFiyatHesapSatirlari === 'function' ? fasonFiyatHesapSatirlari() : [])];
         _fasonAkis.yuklendi = true;
         _fasonAkis.hata = null;
         _fasonAkis.zaman = Date.now();
         _fasonAkis.surum++;
+        /* M6 karşılaştırma: aynı olaylar yeni yerden (v_fason_akis) okunup arka planda kıyaslanır (yalnız anahtar 'fason'
+           KARSILASTIR, en çok 10 dk'da bir; ekran bu satırlarla çizilir) */
+        try { if (typeof yapiFasonOkuKiyas === 'function') yapiFasonOkuKiyas(sunucu).catch(() => {}); } catch (e) {}
     })();
     try { await _fasonAkis.yukleniyor; } finally { _fasonAkis.yukleniyor = null; }
 }
@@ -42820,7 +43470,7 @@ function fasonDurum() {
         } else {
             if (!n.fgid || hareketler.has(n.fgid) || !FASON_TIPLER[n.tip]) return;   /* aynı kimlik ikinci kez sayılmaz */
             const h = { fgid: n.fgid, tip: n.tip, alan: n.alan || FASON_TIPLER[n.tip].alan, anahtar: n.anahtar || '', isId: n.is_id || 'ana',
-                sid: String(r.siparis_id ?? ''), ...fasonAlanlar(n), depo: n.depo || null, toplu: n.toplu_id || '',
+                sid: String(r.siparis_id ?? ''), ...fasonAlanlar(n), depo: n.depo || null, konfGelis: n.konf_gelis || null, toplu: n.toplu_id || '',
                 user: olay.user, ts: olay.ts, ikiz: !!n.ikiz_onaylandi, gecmis: [], silindi: null, akisId: r.id, yerel: !!r._yerel };
             hareketler.set(n.fgid, h);
             if (h.anahtar) {
@@ -42852,6 +43502,11 @@ function fasonHareketMiktarMetin(h) {
         return `${fasonSecenekAd(FASON_KONTROL_TURLERI, h.kontrol_tur)} · ${fasonSecenekAd(FASON_SONUCLAR, h.sonuc)}${h.kontrol_adet ? ` · ${fasonFmtI(h.kontrol_adet)} kontrol` : ''}${h.hatali ? ` / ${fasonFmtI(h.hatali)} hatalı` : ''}`;
     }
     if (t.alan === 'HESAP') return fasonFiyatGorur() ? fasonFmtPara(h.tutar, h.para_birimi) : '•••';
+    if (h.tip === 'COZGU_RAPOR') return [`${fasonFmtM(h.mt)} m`, h.tel ? `${fasonFmtI(h.tel)} tel` : '',
+        h.kg ? (h.hasil_pct > 0 ? `${fasonFmtM(h.kg)} kg levent · %${fasonFmtM(h.hasil_pct)} haşıl → ${fasonFmtM(Math.round(h.kg * (1 - h.hasil_pct / 100) * 100) / 100)} kg iplik` : `${fasonFmtM(h.kg)} kg sarıldı`) : '',
+        h.artik_kg ? `artık ${fasonFmtM(h.artik_kg)} kg` : ''].filter(Boolean).join(' · ');
+    if (h.tip === 'HASIL_RAPOR') return [h.giren_mt ? `${fasonFmtM(h.giren_mt)} → ${fasonFmtM(h.mt)} m` : `${fasonFmtM(h.mt)} m`, h.kg ? `${fasonFmtM(h.kg)} kg` : '', h.hasil_kalan_kg ? `haşılda kalan ${fasonFmtM(h.hasil_kalan_kg)} kg` : ''].filter(Boolean).join(' · ');
+    if (h.tip === 'SAYIM') return [`kalan ${fasonFmtM(h.kg)} kg`, h.levent_kalan_mt ? `leventte ${fasonFmtM(h.levent_kalan_mt)} m` : '', h.telef_kg ? `telef ${fasonFmtM(h.telef_kg)} kg` : ''].filter(Boolean).join(' · ');
     /* Fason ağacı malzemesi: kendi kodu ve birimiyle ("C · 300 ad", "E · 120 m") */
     if (h.agac_malzeme && typeof fasonAgacMalzemeMiktarMetin === 'function') return fasonAgacMalzemeMiktarMetin(h);
     if (t.ana === 'mt') {
@@ -42864,7 +43519,7 @@ function fasonHareketMiktarMetin(h) {
 function fasonHareketDetayMetin(h) {
     const aks = h.aks_key ? (UA_AKSESUARLAR.find(a => a.id === h.aks_key)?.label || h.aks_key) : '';
     return [
-        h.firma, h.fis_no ? 'fiş ' + h.fis_no : '', aks,
+        h.firma, h.hedef_firma ? '→ ' + h.hedef_firma : '', h.fis_no ? 'fiş ' + h.fis_no : '', aks, h.kaynak_kod ? 'hamdan ' + h.kaynak_kod : '',
         h.satir_id && typeof fasonAgacKimlikMetin === 'function' ? fasonAgacKimlikMetin('satir_id', h.satir_id, h.anahtar) : '',
         h.iplik_yer ? fasonSecenekAd(FASON_ALAN.iplik_yer.secenek, h.iplik_yer) : '',
         [h.kumas_kodu, h.kumas_ad].filter(Boolean).join(' '), [h.iplik_kodu, h.iplik_ad].filter(Boolean).join(' '),
@@ -42884,6 +43539,10 @@ function fasonIsVarsayilan(anahtar) {
         return { turler: bobin ? 'BOBIN_BOYA' : 'KUMAS_BOYA', girdi: bobin ? 'IPLIK' : 'KUMAS', firma: '', sira: '1', termin: String(b.siparis?.ttarih || '').slice(0, 10),
             fiyat_birim: bobin ? 'KG' : 'METRE', birim_fiyat: '', para_birimi: 'TL', kdv_pct: '10', tevkifat: '5/10', k2_kesinti_pct: '', gecikme_ceza: '', not: '' };
     }
+    if (b.cb) {   /* çözgücü / bükümcü firma hesabı: tek iş, firma anahtardan */
+        return { turler: b.cb === 'C' ? 'COZGU' : 'BUKUM', girdi: 'IPLIK', firma: b.firma || '', sira: '1', termin: '',
+            fiyat_birim: b.cb === 'C' ? 'METRE' : 'KG', birim_fiyat: '', para_birimi: 'TL', kdv_pct: '10', tevkifat: '5/10', k2_kesinti_pct: '', gecikme_ceza: '', not: '' };
+    }
     if (b.alan === 'DOKUMA') {
         return { turler: 'DOKUMA', girdi: 'IPLIK', firma: String(b.row?.dokuma_fason_firma || ''), sira: '1', termin: String(b.row?.ttarih || '').slice(0, 10),
             fiyat_birim: 'METRE', birim_fiyat: '', para_birimi: 'TL', kdv_pct: '10', tevkifat: '5/10', k2_kesinti_pct: '', gecikme_ceza: '', not: '' };
@@ -42901,14 +43560,18 @@ function fasonIsler(anahtar) {
     const liste = [];
     d.foy.forEach((v, key) => {
         const [a, b, id] = key.split('#');
-        if (a === anahtar && b === 'is') liste.push({ ...fasonIsVarsayilan(anahtar), ...v.deger, id, _ilk: v.ilk, _gecmisSay: v.gecmis.length });
+        /* M6c: SQL kuruluysa fiyat alanları kapalı tablodan (yetkisize boş) — 40-fason-fiyat.js fasonFiyatIsOku */
+        if (a === anahtar && b === 'is') { const vs = fasonIsVarsayilan(anahtar); liste.push({ ...vs, ...v.deger, ...fasonIsFiyati(anahtar, id, vs), id, _ilk: v.ilk, _gecmisSay: v.gecmis.length }); }
     });
     const canli = liste.filter(x => x.silindi !== '1');
     const anaVar = liste.some(x => x.id === 'ana');
     const anaKullanildi = (d.anahtarMap.get(anahtar) || []).some(h => h.isId === 'ana' && !h.silindi);
     /* Hiç iş tanımlanmamışsa (ya da eski hareketler "ana" işe bağlıysa) örtük ana iş */
-    if (!anaVar && (!canli.length || anaKullanildi)) canli.unshift({ ...fasonIsVarsayilan(anahtar), id: 'ana', _ortuk: true });
+    if (!anaVar && (!canli.length || anaKullanildi)) { const vs = fasonIsVarsayilan(anahtar); canli.unshift({ ...vs, ...fasonIsFiyati(anahtar, 'ana', vs), id: 'ana', _ortuk: true }); }
     return canli.sort((a, b) => (fasonTakipNum(a.sira) - fasonTakipNum(b.sira)) || String(a._ilk?.ts || '').localeCompare(String(b._ilk?.ts || '')));
+}
+function fasonIsFiyati(anahtar, isId, varsayilan) {
+    return typeof fasonFiyatIsOku === 'function' ? fasonFiyatIsOku(anahtar, isId, varsayilan) : {};
 }
 function fasonIsAd(is) {
     const liste = [...FASON_KONF_ISLEMLER, ...FASON_DOKUMA_ISLEMLER, ...FASON_TERBIYE_ISLEMLER];
@@ -42919,7 +43582,10 @@ function fasonIsAd(is) {
 function fasonIsOzet(anahtar, isId) {
     const o = { kumasMt: 0, kumasKg: 0, iadeMt: 0, urunGiden: 0, aks: {}, aksIade: {}, tamir: 0, gelenA: 0, gelenH: 0, tgA: 0, tgH: 0,
         iplikC: 0, iplikA: 0, iadeC: 0, iadeA: 0, leventGiden: 0, leventGelen: 0, leventGelenKg: 0,
-        hamMt: 0, hamKg: 0, hamTop: 0, hamK2: 0, enW: 0, enM: 0, grW: 0, grM: 0, hpW: 0, hpM: 0, kontroller: [], sonTarih: '', hareketSay: 0 };
+        hamMt: 0, hamKg: 0, hamTop: 0, hamK2: 0, enW: 0, enM: 0, grW: 0, grM: 0, hpW: 0, hpM: 0, kontroller: [], sonTarih: '', hareketSay: 0,
+        /* Fason dokuma raporları (21.10.2026): çözgü / haşıl / levent geçişi toplamları, sayım = iplik başına son sayım */
+        cozguMt: 0, cozguKg: 0, cozguArtik: 0, cozguLevent: 0, cozguTelMt: 0, hasilGiren: 0, hasilCikan: 0, hasilKg: 0, hasilKalanKg: 0,
+        hasilLevent: 0, leventGecis: 0, sayimlar: {} };
     fasonAnahtarHareketleri(anahtar).filter(h => !h.silindi && (isId == null || h.isId === isId)).forEach(h => {
         o.hareketSay++;
         if (String(h.tarih) > o.sonTarih) o.sonTarih = String(h.tarih);
@@ -42943,6 +43609,16 @@ function fasonIsOzet(anahtar, isId) {
                 if (h.hata_puan) { o.hpW += h.hata_puan * h.mt; o.hpM += h.mt; }
                 break;
             case 'KONTROL': o.kontroller.push(h); break;
+            case 'COZGU_RAPOR': o.cozguMt += h.mt; o.cozguKg += h.kg; o.cozguArtik += h.artik_kg; o.cozguLevent++; o.cozguTelMt += h.tel * h.mt; break;
+            case 'HASIL_RAPOR': o.hasilGiren += h.giren_mt; o.hasilCikan += h.mt; o.hasilKg += h.kg; o.hasilKalanKg += h.hasil_kalan_kg; o.hasilLevent++; break;
+            case 'LEVENT_GECIS': o.leventGecis += h.mt; break;
+            case 'BUKUM_GELEN': o.bukumGelen = (o.bukumGelen || 0) + h.kg; break;
+            case 'SAYIM': {
+                const k = `${h.iplik_yer || 'ATKI'}|${String(h.iplik_kodu || '').trim().toUpperCase()}`;
+                const s = o.sayimlar[k];
+                if (!s || `${h.tarih}|${h.ts}` > `${s.tarih}|${s.ts}`) o.sayimlar[k] = h;
+                break;
+            }
         }
     });
     o.gelenS = o.gelenA + o.tgA;                          /* sağlam gelen (tamirden dönen dahil) */
@@ -43069,8 +43745,22 @@ function fasonParaMetin(obj) {
 }
 
 /* ── Yazıcılar ──────────────────────────────────────────────────── */
-async function fasonOlayYaz(baglam, islem, kalemAd, miktar, n, etiket) {
-    const satir = { siparis_id: baglam.siparisId != null && baglam.siparisId !== '' ? baglam.siparisId : null, islem, kalem_ad: kalemAd || baglam.baslik || '—', miktar: miktar || 0, notlar: JSON.stringify(n) };
+/** Olayın siparis_akis satırı (yazılacağı biçimde) — fasonOlayYaz ile yapı geçişi denemesi (38 yapiFasonDene) aynı satırı kullanır. */
+function fasonOlaySatir(baglam, islem, kalemAd, miktar, n) {
+    return { siparis_id: baglam.siparisId != null && baglam.siparisId !== '' ? baglam.siparisId : null, islem, kalem_ad: kalemAd || baglam.baslik || '—', miktar: miktar || 0, notlar: JSON.stringify(n) };
+}
+/** opts.yapiSoruldu: çağıran olayı (ve depo ters kaydını) kapıya zaten sordu (M6 karşılaştırma).
+    opts.fiyatGordugu: iş formunun okuduğu fiyat zamanı (M6c — başkası değiştirdiyse fiyat yazılmaz). */
+async function fasonOlayYaz(baglam, islem, kalemAd, miktar, n, etiket, opts = {}) {
+    /* M6c: SQL kuruluysa ödeme olayları kapalı deftere, föydeki fiyat alanları kapalı tabloya (40-fason-fiyat.js); açık akışa fiyatsız olay */
+    if (typeof fasonFiyatYolu === 'function') {
+        const y = await fasonFiyatYolu(baglam, islem, kalemAd, miktar, n, opts);
+        if (y.bitti) return y.res;
+        n = y.n;
+    }
+    const satir = fasonOlaySatir(baglam, islem, kalemAd, miktar, n);
+    /* M6 karşılaştırma: aynı olay kapıya deneme (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
+    if (!opts.yapiSoruldu) { try { if (typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([satir], []); } catch (e) {} }
     const res = await erpAkisEkle(satir, etiket || 'Fason kaydı');
     if (res.ok) fasonAkisYerelEkle(satir, n);
     return res;
@@ -43135,7 +43825,8 @@ function fasonDokumaDepoSevkiMi(h) {
     return (dataCache.kumas_stok || []).some(r => { const n = String(r.notlar || ''); return n.includes(iz) && n.includes(etiket); });
 }
 const FASON_DOKUMA_DEPO_UYARI = 'Bu gönderim bir Dokuma Depo sevkidir — miktarı ve silmesi Dokuma Depo ekranındaki "Sevk edilenler" listesinden (✎, yönetici) yapılır; mal Dokuma Depo’ya oradan döner, boya işi de birlikte düzelir.';
-async function fasonDepoDuzeltmeYaz(baglam, firma, fgid, eskiEtki, yeniEtki, aciklama) {
+/** Düzeltme / silmenin depo ters kayıtları — yazmaz: [{ tablo, satir }] (fasonDepoDuzeltmeYaz ile yapı geçişi denemesi aynı satırları kullanır). */
+function fasonDepoDuzeltmeSatirlari(baglam, firma, fgid, eskiEtki, yeniEtki, aciklama) {
     const ters = (e) => ({ ...e, mt: -e.mt, kg: -e.kg, top: -e.top });
     const yaz = [];
     if (!yeniEtki) yaz.push(ters(eskiEtki));
@@ -43143,8 +43834,11 @@ async function fasonDepoDuzeltmeYaz(baglam, firma, fgid, eskiEtki, yeniEtki, aci
         const d = { ...yeniEtki, mt: Math.round((yeniEtki.mt - eskiEtki.mt) * 100) / 100, kg: Math.round((yeniEtki.kg - eskiEtki.kg) * 100) / 100, top: yeniEtki.top - eskiEtki.top };
         if (d.mt || d.kg || d.top) yaz.push(d);
     } else { yaz.push(ters(eskiEtki)); yaz.push(yeniEtki); }
-    for (const e of yaz) {
-        const r = await fasonStokYaz(e.tablo, fasonDepoPayload(baglam, firma, fgid, e, aciklama));
+    return yaz.map((e) => ({ tablo: e.tablo, satir: fasonDepoPayload(baglam, firma, fgid, e, aciklama) }));
+}
+async function fasonDepoDuzeltmeYaz(baglam, firma, fgid, eskiEtki, yeniEtki, aciklama) {
+    for (const d of fasonDepoDuzeltmeSatirlari(baglam, firma, fgid, eskiEtki, yeniEtki, aciklama)) {
+        const r = await fasonStokYaz(d.tablo, d.satir);
         if (!r.ok) return r;
     }
     return { ok: true };
@@ -43229,11 +43923,16 @@ function fasonIplikKodDegisti(on) {
     const kod = String(kodEl.value || '').trim().toUpperCase();
     const s = fasonIplikSecenekleri().find(x => x.kod === kod);
     const adEl = document.getElementById(on + '-iplik_ad');
-    if (adEl && !adEl.value && s?.ad) adEl.value = s.ad;
+    /* Ad boşsa ya da kendiliğinden doldurulduysa kodun adı yazılır; elle yazılan ada dokunulmaz (21.10.2026: kod değişince eski
+       kodun adı kalıyordu — IP-0013 sayımında "30/1") */
+    if (adEl && !adEl.dataset.dinle) { adEl.dataset.dinle = '1'; adEl.addEventListener('input', () => { adEl.dataset.oto = '0'; }); }
+    if (adEl && s?.ad && (!adEl.value || adEl.dataset.oto === '1')) { adEl.value = s.ad; adEl.dataset.oto = '1'; }
     const lotList = document.getElementById(on + '-lot-liste');
     if (lotList) lotList.innerHTML = s ? Object.entries(s.lots).filter(([, l]) => l.kg > 0.001).map(([lot, l]) => `<option value="${pdfEsc(lot === 'LOTSUZ' ? '' : lot)}">${fasonFmtM(l.kg)} kg</option>`).join('') : '';
     bilgi.textContent = s ? `Depoda: ${fasonFmtM(s.kg)} kg` : (kod ? 'Bu kodla iplik bulunamadı' : '');
     bilgi.style.color = !s || s.kg <= 0 ? 'var(--rose-c)' : 'var(--text3)';
+    /* Çözgücü / bükümcü formu (41): bilgi satırı depo yerine firmanın hesabından, seçili iplik düğmesi işaretli */
+    if (typeof fasonCbFormKodDegisti === 'function') fasonCbFormKodDegisti(on);
 }
 
 /* ── Genel alan çizici ──────────────────────────────────────────── */
@@ -43276,12 +43975,16 @@ function fasonAlanOku(on, ad, tip) {
 }
 
 /* ── Hareket formu (gönder / gelen / iade / kontrol / ödeme; düzelt / sil) ── */
+/* Kapalı dokuma fason işi (✓ Bitti = dokuma siparişi Tamamlandı, 14 dokumaFasonKapaliMi): hareket girilmez / düzeltilmez / silinmez */
+const FASON_DOKUMA_KAPALI_UYARI = 'Bu dokuma işi kapalı (✓ Bitti) — hareket girmek, düzeltmek ya da silmek için önce "↺ Yeniden aç".';
+function fasonAnahtarKapaliMi(b) { return b?.alan === 'DOKUMA' && typeof dokumaFasonKapaliMi === 'function' && dokumaFasonKapaliMi(b.row); }
 async function fasonHareketFormAc(anahtar, tip, fgid, isId, firmaHazir) {
     const t = FASON_TIPLER[tip];
     if (!t) return;
     const alan = t.alan === '*' ? fasonBaglam(anahtar).alan : t.alan;
     if (!fasonYazabilir(alan)) { erpToast(alan === 'HESAP' ? 'Ödeme / kesinti girmek için fason fiyat yetkisi gerekir.' : 'Fason kaydı girme yetkiniz yok (mobil salt okunur).', 'error'); return; }
     const b = fasonBaglam(anahtar);
+    if (fasonAnahtarKapaliMi(b)) { erpToast(FASON_DOKUMA_KAPALI_UYARI, 'error', 7000); return; }
     const h = fgid ? fasonDurum().hareketler.get(fgid) : null;
     if (fgid && (!h || h.silindi)) { erpToast('Hareket bulunamadı ya da silinmiş.', 'error'); return; }
     if (t.depo && typeof erpSyncAllDataBekle === 'function') {
@@ -43297,12 +44000,12 @@ async function fasonHareketFormAc(anahtar, tip, fgid, isId, firmaHazir) {
     const alanlar = formAlan.alanlar.filter(a => a !== 'para_birimi' || fasonFiyatGorur());
     const govde = alanlar.map(a => {
         const s = FASON_ALAN[a];
-        const etiket = a === 'adet' && !['GELEN', 'TAMIR_GELEN'].includes(tip) ? 'Adet' : s.ad;
+        const etiket = formAlan.etiketler?.[a] || t.etiketler?.[a] || (a === 'adet' && !['GELEN', 'TAMIR_GELEN'].includes(tip) ? 'Adet' : s.ad);
         return fasonAlanHtml('fh', a, s.tip || 'text', v[a], { etiket, zorunlu: formAlan.zorunlu.includes(a), secenek: s.secenek, step: s.step, ph: s.ph, genis: s.genis,
             lot: v.lot_no, aksPlan, lotListe: a === 'lot_no' && t.depo && t.depo.startsWith('IPLIK'), anahtar: b.anahtar, tipHareket: tip });
     }).join('');
     const depoNot = t.depo ? (h
-        ? `<div style="font-size:10px;color:var(--text3)">${h.depo?.dus ? '📦 Bu hareket depoya yazılmıştı — miktar / kod değişirse farkı kadar depo düzeltmesi yazılır.' : 'Bu hareket depoya yazılmamıştı.'}</div>`
+        ? `<div style="font-size:10px;color:var(--text3)">${h.depo?.dus ? (b.cb ? '📦 Depoya yazıldı' : '📦 Bu hareket depoya yazılmıştı — miktar / kod değişirse farkı kadar depo düzeltmesi yazılır.') : 'Bu hareket depoya yazılmamıştı.'}</div>`
         : `<label style="display:flex;gap:8px;align-items:center;font-size:11px;cursor:pointer"><input id="fh-depo" type="checkbox" checked> ${{
             KUMAS_CIKIS: 'Kumaş deposundan ÇIKIŞ yaz (stoktan düşer)', KUMAS_GIRIS: 'Kumaş deposuna GİRİŞ yaz', IPLIK_CIKIS: 'İplik deposundan ÇIKIŞ yaz (stoktan düşer)', IPLIK_GIRIS: 'İplik deposuna GİRİŞ yaz'
         }[t.depo]}</label>`) : '';
@@ -43320,10 +44023,17 @@ async function fasonHareketFormAc(anahtar, tip, fgid, isId, firmaHazir) {
                 ${h ? `<button id="fh-sil" type="button" class="btn-pro btn-ghost-pro" style="padding:8px 14px;color:var(--rose-c)" onclick="fasonHareketSil()">🗑 Sil</button>` : '<span></span>'}
                 <button id="fh-kaydet" type="button" class="btn-pro btn-primary-pro" style="padding:8px 18px" onclick="fasonHareketKaydet()">${h ? 'Düzeltmeyi kaydet' : 'Kaydet'}</button>
             </div>
-            <div style="font-size:9px;color:var(--text3)">Kayıt kim / ne zaman bilgisiyle saklanır; düzeltme ve silme de işlem defterinde görünür.</div>
+            ${b.cb ? '' : '<div style="font-size:9px;color:var(--text3)">Kayıt kim / ne zaman bilgisiyle saklanır; düzeltme ve silme de işlem defterinde görünür.</div>'}
         </div>`, 720);
     if (alanlar.includes('kumas_kodu')) fasonKumasKodDegisti('fh');
     if (alanlar.includes('iplik_kodu')) fasonIplikKodDegisti('fh');
+    /* Çözgücü / bükümcü (41, 22.10.2026): firmaya giden iplikler düğme olarak; birden çok iplik gittiyse kod kutusu boş açılır */
+    if (b.cb && typeof fasonCbFormHazirla === 'function') fasonCbFormHazirla(b, tip, !!h);
+    /* Terbiye (42-terbiye-bobin.js, 22.10.2026): boyalı iplikte kod renk kartından (iplik × renk başına tek kart); kumaşta top listesi toplanır */
+    if (!h && tip === 'BOYALI_IPLIK' && typeof terbiyeBoyaliFormHazirla === 'function') terbiyeBoyaliFormHazirla(b);
+    if (alanlar.includes('top_liste') && typeof terbiyeTopListeBagla === 'function') terbiyeTopListeBagla();
+    /* Boyalı kumaş: dönüş hedefi Konfeksiyon (Kesim önü) / kumaş deposu */
+    if (!h && tip === 'BOYALI_KUMAS' && typeof terbiyeKumasDonusFormHazirla === 'function') terbiyeKumasDonusFormHazirla(b);
 }
 function fasonHareketIsDegisti(isId) {
     if (!_fasonForm) return;
@@ -43351,6 +44061,23 @@ function fasonHareketVarsayilan(b, tip, is, firmaHazir) {
             if (son) Object.assign(v, { iplik_yer: son.iplik_yer, iplik_kodu: son.iplik_kodu, iplik_ad: son.iplik_ad, lot_no: son.lot_no, marka: son.marka });
         }
         if (tip === 'KONTROL') v.kontrol_tur = 'HAM';
+        /* İplik hesabı raporları (21.10.2026): bir önceki adımın değerleri önerilir */
+        const hs = fasonAnahtarHareketleri(b.anahtar).filter(x => !x.silindi);
+        const son = (...tipler) => [...hs].reverse().find(x => tipler.includes(x.tip));
+        if (tip === 'COZGU_RAPOR') v.tel = fasonTakipNum(b.row?.cozgu_tel_sayisi) || '';
+        if (tip === 'HASIL_RAPOR') { const s = son('COZGU_RAPOR'); if (s) Object.assign(v, { levent_no: s.levent_no || '', giren_mt: s.mt || '' }); }
+        if (tip === 'LEVENT_GECIS') {
+            const s = son('HASIL_RAPOR', 'COZGU_RAPOR');
+            Object.assign(v, { levent_no: s?.levent_no || '', mt: s?.mt || '', tel: s?.tel || fasonTakipNum(b.row?.cozgu_tel_sayisi) || '' });
+            const dokumaci = fasonIsler(b.anahtar).find(x => String(x.turler || '').includes('DOKUMA'));
+            v.hedef_firma = dokumaci?.firma || b.row?.dokuma_fason_firma || '';
+        }
+        if (tip === 'SAYIM') {
+            const a0 = typeof dokumaFasonAtkiListesi === 'function' && b.row ? dokumaFasonAtkiListesi(b.row)[0] : null;
+            Object.assign(v, { iplik_yer: 'ATKI', iplik_kodu: a0?.kod || '' });
+        }
+        /* Çözgücü / bükümcü firma hesabı (41-fason-cozgu-bukum.js): firmaya en son giden iplik önerilir */
+        if (b.cb && typeof fasonCbHareketVarsayilan === 'function') Object.assign(v, fasonCbHareketVarsayilan(b, tip));
     } else if (b.alan === 'TERBIYE' && typeof terbiyeHareketVarsayilan === 'function') Object.assign(v, terbiyeHareketVarsayilan(b, tip));
     return v;
 }
@@ -43376,6 +44103,13 @@ function fasonHareketDogrula(tip, v) {
     }
     if ((tip === 'GELEN' || tip === 'TAMIR_GELEN') && !(v.adet > 0) && !(v.hatali > 0)) return 'Sağlam ya da hatalı adet girin.';
     if (tip === 'HAM' && v.k2_mt > v.mt) return '2. kalite metresi toplam metreden büyük olamaz.';
+    if (tip === 'HASIL_RAPOR' && v.giren_mt > 0 && v.mt > v.giren_mt) return 'Haşıldan çıkan metre, haşıla girenden fazla olamaz.';
+    if (tip === 'LEVENT_GECIS' && fasonFirmaKey(v.hedef_firma) === fasonFirmaKey(v.firma)) return 'Teslim alan dokumacı, gönderen firmayla aynı olamaz.';
+    /* Çözgücü hesabında rapor iplik başına tutulur: hangi iplikle çözüldüğü şart (22.10.2026) */
+    if (tip === 'COZGU_RAPOR' && String(_fasonForm?.anahtar || '').startsWith('C|') && !String(v.iplik_kodu || '').trim()) return 'Leventin hangi iplikle çözüldüğünü (iplik kodu) girin.';
+    /* İade / sayım da iplik başına (kutu birden çok iplik gidince boş açılır — 41 fasonCbHareketVarsayilan) */
+    if ((tip === 'IPLIK_IADE' || tip === 'SAYIM') && /^[CB]\|/.test(String(_fasonForm?.anahtar || '')) && !String(v.iplik_kodu || '').trim()) return 'Hangi iplik olduğunu seçin (iplik kodu).';
+    if (v.hasil_pct >= 50) return 'Haşıl payı %50\'den küçük olmalı.';
     return null;
 }
 
@@ -43386,12 +44120,34 @@ async function fasonHareketKaydet() {
     if (!fasonYazabilir(ctx.alan)) { erpToast('Bu kaydı girme yetkiniz yok.', 'error'); return; }
     const t = FASON_TIPLER[ctx.tip];
     const b = fasonBaglam(ctx.anahtar);
+    if (fasonAnahtarKapaliMi(b)) { erpToast(FASON_DOKUMA_KAPALI_UYARI, 'error', 7000); return; }
     const v = fasonHareketFormOku(ctx.tip);
     const eski = ctx.fgid ? fasonDurum().hareketler.get(ctx.fgid) : null;
     const hata = fasonHareketDogrula(ctx.tip, { ...(eski || {}), ...v });
     if (hata) { erpToast(hata, 'error', 5000); return; }
+    /* Fason dokuma: iplik numarası teknik bilgiyle tutmuyorsa sor (14 dokumaFasonHareketIpNoUyarisi; 21.10.2026 kullanıcı isteği) */
+    if (b.alan === 'DOKUMA' && typeof dokumaFasonHareketIpNoUyarisi === 'function') {
+        const soru = dokumaFasonHareketIpNoUyarisi(b.row, ctx.tip, { ...(eski || {}), ...v });
+        if (soru && !(await erpAskConfirm(soru))) return;
+    }
     if (ctx.fgid) return fasonHareketDuzeltKaydet(ctx, b, v);
     const depoYaz = !!document.getElementById('fh-depo')?.checked;
+    /* Boyalı iplik renk kartı (42): taze okunur, ilk dönüşte (depoya yazılıyorsa) bir kez açılır; kod elle yazılmaz */
+    if (ctx.renkKart && typeof terbiyeRenkKartiHazirla === 'function') {
+        _fasonMesgul = true;
+        let rk;
+        try { rk = await terbiyeRenkKartiHazirla(ctx.renkKart, depoYaz); } finally { _fasonMesgul = false; }
+        if (!rk.ok) { erpToast(rk.hata, 'error', 8000); return; }
+        v.iplik_kodu = rk.kod;
+        if (rk.yeni) erpToast(`Renk kartı açıldı: ${rk.kod}`, 'success', 4000);
+    }
+    /* Boyalı kumaş Konfeksiyon'a: kalem şart, depoya yazılmaz (kumaş Dokuma Depo / depodan zaten çıkmıştı) */
+    const konfDonus = ctx.kumasDonus?.hedef === 'KONFEKSIYON' ? ctx.kumasDonus : null;
+    if (konfDonus) {
+        konfDonus.ki = fasonDeger('fh-donus-kalem');
+        if (konfDonus.ki === '' || !Number.isFinite(parseInt(konfDonus.ki, 10))) { erpToast('Kumaşın hangi kalemin kesimine gittiğini seçin.', 'error', 6000); return; }
+        if (depoYaz) { erpToast('Konfeksiyon’a giden kumaş depoya yazılmaz — depo kutusunu kaldırın ya da hedefi değiştirin.', 'error', 6000); return; }
+    }
     const etki = depoYaz ? fasonDepoEtki(ctx.tip, v) : null;
     if (etki && !etki.kod) { erpToast(etki.tablo === 'iplik_stok' ? 'Depoya yazmak için iplik kodunu girin (ya da depo kutusunu kaldırın).' : 'Depoya yazmak için kumaş kodunu girin (ya da depo kutusunu kaldırın).', 'error', 6000); return; }
     _fasonMesgul = true;
@@ -43427,6 +44183,25 @@ async function fasonHareketKaydet() {
         const n = { kaynak: 'MASAUSTU_FASON', oid: fgid, fgid, tip: ctx.tip, alan: ctx.alan, anahtar: b.anahtar || '', is_id: b.anahtar ? ctx.isId : '',
             kalem_idx: b.alan === 'KONF' ? b.ki : undefined, dfid: b.alan === 'DOKUMA' ? b.dfid : undefined, user: fasonKullanici(), ts: new Date().toISOString(), ...v };
         if (ikiz) n.ikiz_onaylandi = true;
+        /* Boyahaneden Konfeksiyon'a (42): Kesim önü satırı (KUMAS_GELIS) YAZMADAN kurulur — kalem yoksa hiçbir şey yazılmaz */
+        let konfGelisSatir = null;
+        if (konfDonus && typeof terbiyeKonfGelisSatir === 'function') {
+            const ks = terbiyeKonfGelisSatir(b, konfDonus, v, fgid);
+            if (!ks.ok) { erpToast(ks.hata, 'error', 9000); return; }
+            konfGelisSatir = ks.satir;
+        }
+        /* M6 karşılaştırma: olay + depo ters kaydı + Kesim önü satırı kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım
+           aşağıda aynen — konf_gelis bağını kapı yazar, denemedeki olayda yok) */
+        try {
+            /* M6c: SQL kuruluysa ödeme olayı kapalı deftere gider — kapıya sorulmaz (fasonFiyatAcikOlay → null) */
+            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(t.islem, n) : n;
+            if (an && typeof yapiFasonDeneBekle === 'function') {
+                await yapiFasonDeneBekle([fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), an)],
+                    etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`), olay: 0 }] : [], undefined,
+                    konfGelisSatir ? { kesim_onu: [{ olay: 0, siparis_id: konfGelisSatir.siparis_id, kalem_ad: konfGelisSatir.kalem_ad,
+                        miktar: konfGelisSatir.miktar, notlar: konfGelisSatir.notlar }] } : null);
+            }
+        } catch (e) {}
         let depoId = null;
         if (etki) {
             const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`));
@@ -43434,8 +44209,17 @@ async function fasonHareketKaydet() {
             depoId = r.id;
             n.depo = { dus: true, tablo: etki.tablo, id: depoId };
         }
-        const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), n, 'Fason hareketi');
+        /* Boyahaneden Konfeksiyon'a (42): Kesim önü satırı (KUMAS_GELIS) önce; hareket yazılamazsa geri silinir */
+        let konfGelisId = null;
+        if (konfGelisSatir && typeof terbiyeKonfGelisYaz === 'function') {
+            const kg = await terbiyeKonfGelisYaz(konfGelisSatir);
+            if (!kg.ok) { erpToast(kg.hata, 'error', 9000); return; }
+            konfGelisId = kg.id;
+            n.konf_gelis = { id: kg.id, sid: konfDonus.sid, ki: parseInt(konfDonus.ki, 10) };
+        }
+        const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), n, 'Fason hareketi', { yapiSoruldu: true });
         if (!res.ok) {
+            if (konfGelisId != null && !(await terbiyeKonfGelisGeriAl(konfGelisId))) erpToast('Hareket yazılamadı; Kesim önüne yazılan satır geri alınamadı — Kesim ekranından kontrol edin.', 'error', 10000);
             if (depoId != null) {
                 const { error } = await sb.from(etki.tablo).delete().eq('id', depoId);
                 if (!error && Array.isArray(dataCache[etki.tablo])) dataCache[etki.tablo] = dataCache[etki.tablo].filter(x => String(x.id) !== String(depoId));
@@ -43447,6 +44231,8 @@ async function fasonHareketKaydet() {
         fasonPencereKapat();
         fasonEkranYenile();
         erpToast(`${t.ad} — kaydedildi${etki ? ' (depoya da yazıldı)' : ''}.`, 'success', 3500);
+        /* Bobin boyaya gönderimde talimat sorulur (42-terbiye-bobin.js; yalnız okur, PDF) */
+        if (typeof terbiyeGonderimSonrasi === 'function') terbiyeGonderimSonrasi(n);
     } catch (e) {
         erpToast('Kaydedilemedi: ' + (e.message || e), 'error', 8000);
     } finally {
@@ -43468,10 +44254,19 @@ async function fasonHareketDuzeltKaydet(ctx, b, v) {
         });
         if (!Object.keys(yeni).length) { erpToast('Değişiklik yok.', 'info', 2000); return; }
         if (fasonDokumaDepoSevkiMi(h) && ['mt', 'kg', 'top', 'kumas_kodu', 'lot_no'].some(a => a in yeni)) { erpToast(FASON_DOKUMA_DEPO_UYARI, 'error', 12000); return; }
+        if (h.konfGelis && ['mt', 'kg', 'top', 'kumas_kodu', 'lot_no'].some(a => a in yeni)) { erpToast('Bu dönüş Konfeksiyon’a (Kesim önüne) gitti — miktarı buradan düzeltilmez; kaydı silip doğrusunu yeniden girin.', 'error', 10000); return; }
         const n = { kaynak: 'MASAUSTU_FASON', oid: fasonId('fd'), hedef_fgid: h.fgid, tip: h.tip, alan: h.alan, anahtar: h.anahtar, is_id: h.isId,
             user: fasonKullanici(), ts: new Date().toISOString(), eski, yeni, neden: fasonDeger('fh-neden'), giris_user: h.user, giris_ts: h.ts };
+        /* M6 karşılaştırma: düzeltme olayı + depo ters kayıtları kapıya TEK denemede (yazım aşağıda aynen) */
+        try {
+            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.DUZENLE, n) : n;   /* M6c: ödeme düzeltmesi sorulmaz */
+            if (an && typeof yapiFasonDeneBekle === 'function') {
+                await yapiFasonDeneBekle([fasonOlaySatir(b, FASON_ISLEM.DUZENLE, null, 0, an)], h.depo?.dus
+                    ? fasonDepoDuzeltmeSatirlari(b, { ...h, ...yeni }.firma, h.fgid, fasonDepoEtki(h.tip, h), fasonDepoEtki(h.tip, { ...h, ...yeni }), 'Fason hareketi düzeltildi') : []);
+            }
+        } catch (e) {}
         /* Önce iz: yazılamazsa düzeltme yapılmaz */
-        const res = await fasonOlayYaz(b, FASON_ISLEM.DUZENLE, null, 0, n, 'Fason düzeltme kaydı');
+        const res = await fasonOlayYaz(b, FASON_ISLEM.DUZENLE, null, 0, n, 'Fason düzeltme kaydı', { yapiSoruldu: true });
         if (!res.ok) return;
         let depoUyari = '';
         if (h.depo?.dus) {
@@ -43497,9 +44292,15 @@ async function fasonHareketSil() {
     if (!ctx || ctx.tur !== 'HAREKET' || !ctx.fgid) return;
     if (!fasonYazabilir(ctx.alan)) { erpToast('Bu kaydı silme yetkiniz yok.', 'error'); return; }
     const b = fasonBaglam(ctx.anahtar);
+    if (fasonAnahtarKapaliMi(b)) { erpToast(FASON_DOKUMA_KAPALI_UYARI, 'error', 7000); return; }
     const h0 = fasonDurum().hareketler.get(ctx.fgid);
     if (!h0) return;
     if (fasonDokumaDepoSevkiMi(h0)) { erpToast(FASON_DOKUMA_DEPO_UYARI, 'error', 12000); return; }
+    /* Konfeksiyon'a giden boyahane dönüşü: kumaşı kesilmişse silinmez (42) */
+    if (h0.konfGelis && typeof terbiyeKonfGelisEngeli === 'function') {
+        const engel = await terbiyeKonfGelisEngeli(h0);
+        if (engel) { erpToast(engel, 'error', 9000); return; }
+    }
     const neden = fasonDeger('fh-neden');
     if (!(await erpAskConfirm(`Bu fason kaydı silinsin mi?\n\n${FASON_TIPLER[h0.tip].ad} · ${fasonHareketMiktarMetin(h0)} · ${fasonTarihYaz(h0.tarih)}\n\n${h0.depo?.dus ? 'Depoya ters kayıt yazılır (depo eski haline döner).\n\n' : ''}Silinen kaydın tam kopyası işlem defterinde kalır.${neden ? `\n\nNeden: ${neden}` : ''}`))) return;
     _fasonMesgul = true;
@@ -43513,12 +44314,27 @@ async function fasonHareketSil() {
         FASON_HAREKET_ALANLARI.forEach(a => { eski[a] = h[a]; });
         const n = { kaynak: 'MASAUSTU_FASON', oid: fasonId('fs'), hedef_fgid: h.fgid, tip: h.tip, alan: h.alan, anahtar: h.anahtar, is_id: h.isId,
             user: fasonKullanici(), ts: new Date().toISOString(), eski, neden, giris_user: h.user, giris_ts: h.ts, depo: h.depo || null };
-        const res = await fasonOlayYaz(b, FASON_ISLEM.SIL, null, 0, n, 'Fason silme kaydı');
+        /* M6 karşılaştırma: silme olayı + depo ters kaydı + boyahane dönüşünün Kesim önü satırı (42) kapıya TEK denemede (yazım
+           aşağıda aynen) */
+        try {
+            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.SIL, n) : n;   /* M6c: ödeme silmesi sorulmaz */
+            if (an && typeof yapiFasonDeneBekle === 'function') {
+                await yapiFasonDeneBekle([fasonOlaySatir(b, FASON_ISLEM.SIL, null, 0, an)],
+                    h.depo?.dus ? fasonDepoDuzeltmeSatirlari(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)') : [], undefined,
+                    h.konfGelis?.id != null && typeof terbiyeKonfGelisIz === 'function'
+                        ? { kesim_onu: [{ olay: 0, tur: 'sil', id: String(h.konfGelis.id), iz: terbiyeKonfGelisIz(h) }] } : null);
+            }
+        } catch (e) {}
+        const res = await fasonOlayYaz(b, FASON_ISLEM.SIL, null, 0, n, 'Fason silme kaydı', { yapiSoruldu: true });
         if (!res.ok) return;
         let depoUyari = '';
         if (h.depo?.dus) {
             const r = await fasonDepoDuzeltmeYaz(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)');
             if (!r.ok) depoUyari = ' Depo ters kaydı yazılamadı — Depo Hareketleri\'nden elle düzeltin.';
+        }
+        if (h.konfGelis && typeof terbiyeKonfGelisSil === 'function') {
+            const r = await terbiyeKonfGelisSil(h, neden);
+            if (!r.ok) depoUyari += ' ' + r.hata;
         }
         _fasonMesgul = false;
         fasonPencereKapat();
@@ -43586,6 +44402,7 @@ function fasonFoyFormAc(anahtar, bolum, isId) {
             ${ekBilgi}
             ${gecmis.length ? `<details style="font-size:10px"><summary style="cursor:pointer;color:var(--text2)">🕘 Değişiklik geçmişi (${gecmis.length})</summary>
                 ${[...gecmis].reverse().map(g => `<div style="margin:4px 0"><b>${pdfEsc(g.user)}</b> · ${fasonZamanYaz(g.ts)} — ${fasonFarkMetin(g.eski, g.yeni)}</div>`).join('')}</details>` : ''}
+            ${bolum === 'is' && !yeniIs && typeof fasonFiyatGecmisYeri === 'function' ? fasonFiyatGecmisYeri() : '' /* M6c: kapalı fiyat geçmişi, yalnız yetkiliye */}
             <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
                 ${bolum === 'is' && yaz && !yeniIs ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:8px 14px;color:var(--rose-c)" ${isHareket ? 'disabled title="Bu işe bağlı hareket var — önce hareketleri silin"' : ''} onclick="fasonIsSil()">🗑 İşi kaldır</button>`
                     : b.agac && ['ebat', 'malzeme'].includes(bolum) && yaz && !yeniIs ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:8px 14px;color:var(--rose-c)" ${kaldirEngel ? `disabled title="${pdfEsc(kaldirEngel)}"` : ''} onclick="fasonAgacBolumKaldir()">🗑 Kaldır</button>` : '<span></span>'}
@@ -43597,6 +44414,7 @@ function fasonFoyFormAc(anahtar, bolum, isId) {
         </div>`, 780);
     if (alanlar.some(([a, , t]) => a === 'kumas_kodu' && t === 'kumas')) fasonKumasKodDegisti('ff');
     fasonFoyHesapGuncelle();
+    if (bolum === 'is' && !yeniIs && typeof fasonFiyatGecmisDoldur === 'function') fasonFiyatGecmisDoldur(anahtar, isId).catch(() => {});
 }
 function fasonFoyFormOku() {
     const ctx = _fasonForm;
@@ -43634,9 +44452,11 @@ async function fasonFoyKaydet() {
         if (ctx.yeniIs || ctx.eskiTam._ortuk || ev !== String(yeniForm[a] ?? '')) { eski[a] = ctx.yeniIs || ctx.eskiTam._ortuk ? '' : ev; yeni[a] = yeniForm[a]; }
     });
     if (!Object.keys(yeni).length) { erpToast('Değişiklik yok.', 'info', 2000); return; }
-    await fasonFoyOlayYaz(ctx.anahtar, ctx.bolum, ctx.isId, eski, yeni);
+    /* M6c: iş formunun okuduğu fiyat zamanı — bu arada başkası değiştirdiyse fiyat yazılmaz (40-fason-fiyat.js) */
+    await fasonFoyOlayYaz(ctx.anahtar, ctx.bolum, ctx.isId, eski, yeni,
+        ctx.bolum === 'is' ? { fiyatGordugu: { [`${ctx.anahtar}#${ctx.isId}`]: ctx.eskiTam._fiyatZaman ?? null } } : {});
 }
-async function fasonFoyOlayYaz(anahtar, bolum, isId, eski, yeni) {
+async function fasonFoyOlayYaz(anahtar, bolum, isId, eski, yeni, opts = {}) {
     _fasonMesgul = true;
     const btn = document.getElementById('ff-kaydet');
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
@@ -43644,13 +44464,13 @@ async function fasonFoyOlayYaz(anahtar, bolum, isId, eski, yeni) {
         const b = fasonBaglam(anahtar);
         const n = { kaynak: 'MASAUSTU_FASON', oid: fasonId('ff'), alan: b.alan, anahtar, bolum, is_id: isId || '',
             kalem_idx: b.alan === 'KONF' ? b.ki : undefined, dfid: b.alan === 'DOKUMA' ? b.dfid : undefined, user: fasonKullanici(), ts: new Date().toISOString(), eski, yeni };
-        const res = await fasonOlayYaz(b, FASON_ISLEM.FOY, null, 0, n, 'Fason föy kaydı');
+        const res = await fasonOlayYaz(b, FASON_ISLEM.FOY, null, 0, n, 'Fason föy kaydı', opts);
         if (!res.ok) return false;
         _fasonMesgul = false;
         fasonPencereKapat();
         fasonEkranYenile();
         erpToast({ foy: 'Teknik föy kaydedildi.', dfoy: 'Dokuma föyü kaydedildi.', is: 'Fason iş kaydedildi.', bilgi: 'Fason bilgisi kaydedildi.',
-            afoy: 'Genel föy kaydedildi.', ebat: 'Ebat föyü kaydedildi.', malzeme: 'Malzeme listesi kaydedildi.' }[bolum] || 'Kaydedildi.', 'success', 2500);
+            afoy: 'Genel föy kaydedildi.', ebat: 'Ebat föyü kaydedildi.', malzeme: 'Malzeme listesi kaydedildi.', cbad: 'Firma yazımı güncellendi.', cbdisla: 'Gönderim hesabı güncellendi.' }[bolum] || 'Kaydedildi.', 'success', 2500);
         return true;
     } catch (e) {
         erpToast('Kaydedilemedi: ' + (e.message || e), 'error', 8000);
@@ -43674,6 +44494,7 @@ async function fasonIsSil() {
 function fasonDegerMetin(alan, v) {
     if (v == null || v === '') return '—';
     if (['birim_fiyat', 'para_birimi', 'tutar', 'kdv_pct', 'tevkifat', 'k2_kesinti_pct', 'gecikme_ceza', 'fiyat_birim'].includes(alan) && !fasonFiyatGorur()) return '•••';
+    if (alan === 'ids') { const n = String(v).split(',').filter(Boolean).length; return n ? n + ' gönderim' : 'yok'; }
     if (['tarih', 'termin', 'bilgi_tarih'].includes(alan)) return fasonTarihYaz(v);
     if (alan === 'turler') return String(v).split(',').filter(Boolean).map(x => fasonSecenekAd([...FASON_KONF_ISLEMLER, ...FASON_DOKUMA_ISLEMLER], x)).join(' + ');
     if (alan === 'aks_key') return UA_AKSESUARLAR.find(a => a.id === v)?.label || v;
@@ -43705,7 +44526,7 @@ function fasonOlayMetin(o) {
     }
     if (o.islem === FASON_ISLEM.FOY) {
         const adlar = { foy: '📋 Teknik föy', dfoy: '📋 Dokuma föyü', is: '🏭 Fason iş', bilgi: 'ℹ️ Fason ara durum',
-            afoy: '📋 Fason ağacı genel föy', malzeme: '🧵 Fason malzeme listesi', ebat: '📐 Fason ağacı ebatı', satir: '🎨 Fason ağacı kalemi', kapama: '🔒 Kapama kararı', kesim: '✂️ Fason kesim girişi', tis: '🎨 Boya işi' };
+            afoy: '📋 Fason ağacı genel föy', malzeme: '🧵 Fason malzeme listesi', ebat: '📐 Fason ağacı ebatı', satir: '🎨 Fason ağacı kalemi', kapama: '🔒 Kapama kararı', kesim: '✂️ Fason kesim girişi', tis: '🎨 Boya işi', cbad: '⇄ Firma birleştirme (çözgü / büküm)', cbdisla: '↷ Hesap dışı gönderimler (çözgü / büküm)' };
         if (Array.isArray(n.coklu)) {
             return `<span style="color:var(--accent);font-weight:700">🌳 Fason ürün ağacı (${n.coklu.length} kayıt)</span>${n.aciklama ? ' · ' + pdfEsc(n.aciklama) : ''}`
                 + n.coklu.map(c => `<div style="margin-top:2px">${adlar[c.bolum] || 'Föy'}${c.anahtar && c.anahtar !== n.anahtar ? ` (${pdfEsc(fasonBaglam(c.anahtar).baslik)})` : ''} — ${fasonFarkMetin(c.eski, c.yeni)}</div>`).join('');
@@ -43715,7 +44536,8 @@ function fasonOlayMetin(o) {
     const hal = { ...(h || {}), ...fasonAlanlar(n), tip: n.tip };
     return `<span style="color:${t.renk};font-weight:700">${t.ikon || ''} ${pdfEsc(t.ad || n.tip)}</span> · ${fasonHareketMiktarMetin(hal)}${fasonHareketDetayMetin(hal) ? ' · ' + pdfEsc(fasonHareketDetayMetin(hal)) : ''}${n.depo?.dus ? ' · 📦 depo' : ''}`;
 }
-function fasonDefterHtml(alanFiltre, filtre) {
+/** İşlem defteri satırları (en yeni üstte): { o, b, firma } — süzgeç { arama, defterTur, firma } (ana program + mobil). */
+function fasonDefterSatirlari(alanFiltre, filtre) {
     const f = filtre || {};
     const q = String(f.arama || '').trim().toLocaleLowerCase('tr-TR');
     const tur = String(f.defterTur || 'HEPSI');
@@ -43734,6 +44556,12 @@ function fasonDefterHtml(alanFiltre, filtre) {
         if (!q) return true;
         return [x.b.baslik, x.firma, x.o.user, x.o.n.fis_no, x.o.n.not].join(' ').toLocaleLowerCase('tr-TR').includes(q);
     }).reverse();
+    return satirlar;
+}
+function fasonDefterHtml(alanFiltre, filtre) {
+    const f = filtre || {};
+    const tur = String(f.defterTur || 'HEPSI');
+    const satirlar = fasonDefterSatirlari(alanFiltre, f);
     const toplam = satirlar.length;
     const gorunen = satirlar.slice(0, _fasonDefterSinir);
     const secenek = (v, ad) => `<option value="${v}" ${tur === v ? 'selected' : ''}>${ad}</option>`;
@@ -43784,8 +44612,10 @@ function fasonHareketTabloHtml(hareketler, opt = {}) {
             h.ikiz ? `<span style="font-size:9px;color:var(--amber-c)" title="Aynı miktar kısa süre önce girilmişti; kullanıcı onayladı">⚠ ikiz onaylı</span>` : '',
             h.yerel ? `<span style="font-size:9px;color:var(--amber-c)">📡 bekliyor</span>` : '',
             h.depo?.dus ? `<span style="font-size:9px;color:#06b6d4" title="Depoya yazıldı">📦 depo</span>` : '',
+            h.konfGelis ? `<span style="font-size:9px;color:var(--emerald-c)" title="Konfeksiyon'a gitti — Kesim önünde">✂️ Kesim önü</span>` : '',
         ].filter(Boolean).join(' ');
         const islemler = [
+            !sil && typeof opt.ekIslem === 'function' ? opt.ekIslem(h) : '',
             !sil && t.islem === FASON_ISLEM.GIDEN ? `<button type="button" title="Sevk fişi (PDF)" class="btn-pro btn-ghost-pro" style="padding:2px 7px;font-size:10px" onclick="fasonHareketFisPdf(${fasonArg(h.fgid)})">🖨</button>` : '',
             yaz && !sil && !h.yerel ? `<button type="button" title="Düzelt / sil" class="btn-pro btn-ghost-pro" style="padding:2px 7px;font-size:10px" onclick="fasonHareketFormAc(${fasonArg(h.anahtar)},'${h.tip}',${fasonArg(h.fgid)})">✎</button>` : '',
         ].join('');
@@ -43813,12 +44643,15 @@ function fasonHareketTabloHtml(hareketler, opt = {}) {
 }
 
 /* ── Firmalar ve cari ekranı ────────────────────────────────────── */
+/** Firmalar & cari listesi: işi ya da cari satırı olan firmalar, ada göre (ana program + mobil). */
+function fasonCariListesi(alanFiltre) {
+    return fasonCari(alanFiltre).filter(r => r.is || r.satirlar.length).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+}
 function fasonFirmaCariHtml(alanFiltre) {
     const fiyatGor = fasonFiyatGorur();
     const hesapYaz = fasonYazabilir('HESAP');
-    const cari = fasonCari(alanFiltre).filter(r => r.is || r.satirlar.length);
+    const cari = fasonCariListesi(alanFiltre);
     if (!cari.length) return `<div class="empty-pro" style="padding:30px"><div class="empty-pro-title">Fason firma yok</div></div>`;
-    cari.sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
     return `<div class="panel-box" style="padding:0;overflow:auto">
         <table class="dt-table" style="width:100%;min-width:${fiyatGor ? 900 : 500}px;font-size:11px">
             <thead><tr style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">
@@ -43845,12 +44678,21 @@ function fasonEkstreSatirlari(firmaAd, alanFiltre) {
     const r = fasonCari(alanFiltre || null).find(x => x.key === fasonFirmaKey(firmaAd));
     return r ? r.satirlar : [];
 }
+/** Cari ekstre: satır + o satırdan sonraki bakiye (para birimi başına) — yalnız fiyat yetkilisine (ana program + mobil). */
+function fasonEkstreModeli(firmaAd, alanFiltre) {
+    if (!fasonFiyatGorur()) return null;
+    const bakiye = {};
+    const satirlar = fasonEkstreSatirlari(firmaAd, alanFiltre).map(s => {
+        bakiye[s.pb] = (bakiye[s.pb] || 0) + s.tutar;
+        return { s, bakiye: bakiye[s.pb] };
+    });
+    return { satirlar, bakiye };
+}
 function fasonEkstreAc(firmaAd, alanFiltre) {
     if (!fasonFiyatGorur()) { erpToast('Ekstre için fason fiyat yetkisi gerekir.', 'error'); return; }
-    const satirlar = fasonEkstreSatirlari(firmaAd, alanFiltre);
-    const bakiye = {};
-    const tablo = satirlar.map(s => {
-        bakiye[s.pb] = (bakiye[s.pb] || 0) + s.tutar;
+    const em = fasonEkstreModeli(firmaAd, alanFiltre);
+    const bakiye = em.bakiye;
+    const tablo = em.satirlar.map(({ s, bakiye: kalan }) => {
         return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:5px 8px;white-space:nowrap">${fasonTarihYaz(s.tarih)}</td>
             <td style="padding:5px 8px">${pdfEsc({ HAKEDIS: 'Hakediş', ODEME: 'Ödeme', KESINTI: 'Kesinti', EK_UCRET: 'Ek ücret' }[s.tur])}</td>
@@ -43859,7 +44701,7 @@ function fasonEkstreAc(firmaAd, alanFiltre) {
             <td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace">${s.kdv ? fasonFmtPara(s.kdv, s.pb) : ''}</td>
             <td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace">${s.tevkifat ? fasonFmtPara(-s.tevkifat, s.pb) : ''}</td>
             <td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:${s.tutar < 0 ? 'var(--emerald-c)' : 'inherit'}">${fasonFmtPara(s.tutar, s.pb)}</td>
-            <td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace">${fasonFmtPara(bakiye[s.pb], s.pb)}</td>
+            <td style="padding:5px 8px;text-align:right;font-family:'DM Mono',monospace">${fasonFmtPara(kalan, s.pb)}</td>
         </tr>`;
     }).join('');
     fasonPencereAc(fasonPencereBaslik('📄', 'Cari ekstre — ' + pdfEsc(firmaAd), 'Bakiye: ' + fasonParaMetin(bakiye)) + `
@@ -44040,6 +44882,7 @@ function fasonFoyEkHtml(b, bolum) {
         ${aks.length ? `<div><b>Aksesuar planı:</b> ${aks.map(a => `${pdfEsc(a.ad)} ${fasonFmtM(a.birim)}/ad = ${fasonFmtM(a.plan)}`).join(' · ')}</div>` : ''}</div>`;
 }
 function fasonHareketIpucu(b, tip, is) {
+    if (b.cb) return '';   /* çözgücü / bükümcü (41): açıklama gösterilmez (kullanıcı 22.10.2026) */
     if (b.alan === 'DOKUMA') return typeof dokumaFasonHareketIpucu === 'function' ? dokumaFasonHareketIpucu(b, tip, is) : '';
     if (b.alan === 'TERBIYE') return typeof terbiyeHareketIpucu === 'function' ? terbiyeHareketIpucu(b, tip) : '';
     if (b.alan !== 'KONF' || !b.siparis) return '';
@@ -44130,16 +44973,16 @@ function fasonSiparisKalemIdleri(siparis) {
         .filter(i => !agacta.has(i) || fasonAnahtarHareketleri(`${on}${i}`).some(h => !h.silindi))
         .sort((a, b) => a - b);
 }
-function fasonTakipFiltreliSiparisler() {
-    const durumF = String(fasonTakipFiltre?.siparisDurum || 'AKTIF');
+function fasonTakipFiltreliSiparisler(siparisDurum) {   /* süzgeç verilmezse ekranınki (yeni mobil kendi süzgecini verir) */
+    const durumF = String(siparisDurum || fasonTakipFiltre?.siparisDurum || 'AKTIF');
     let siparisler = (dataCache.siparisler || []).slice();
     if (durumF === 'AKTIF') siparisler = siparisler.filter(s => !siparisKapaliMi(s));
     else if (durumF === 'TAMAMLANDI') siparisler = siparisler.filter(s => siparisKapaliMi(s));
     return siparisler;
 }
-function fasonGruplar() {
+function fasonGruplar(siparisDurum) {
     const gruplar = [];
-    fasonTakipFiltreliSiparisler().forEach(s => {
+    fasonTakipFiltreliSiparisler(siparisDurum).forEach(s => {
         const idler = fasonSiparisKalemIdleri(s);
         /* Fason ürün ağacı (20-fason-agac.js): kalemleri yukarıda tek blok */
         const agac = typeof fasonAgacOku === 'function' && fasonAgacOku(s.id).var ? fasonAgacOzet(s.id) : null;
@@ -44164,8 +45007,8 @@ function fasonGruplar() {
         return String(a.sno).localeCompare(String(b.sno), 'tr');
     });
 }
-function fasonGrupFiltrele(gruplar) {
-    const f = fasonTakipFiltre || {};
+function fasonGrupFiltrele(gruplar, filtre) {
+    const f = filtre || fasonTakipFiltre || {};
     const q = String(f.arama || '').trim().toLocaleLowerCase('tr-TR');
     const firmaF = String(f.firma || 'HEPSI');
     const isF = String(f.isDurum || 'HEPSI');
@@ -44229,7 +45072,8 @@ async function fasonYenile() {
     fasonEkranYenile();
     erpToast('Fason verileri yenilendi.', 'success', 2000);
 }
-function fasonKpiHtml(gruplar) {
+/** Üst kutuların sayıları (ağaç kalemleri dahil) — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
+function fasonKpiModeli(gruplar) {
     /* Fason ağacının kalemleri de sayılır: her ağaç kalemi bir satır gibi */
     const agacKalemler = gruplar.filter(g => g.agac).flatMap(g => g.agac.satirlar.map(s => ({
         durum: s.hedef > 0 && s.gelen >= s.hedef ? 'TAMAM' : 'ACIK', kalan: s.kalan, netKumas: 0, gelen: s.gelen, hatali: s.hatali, tamirde: s.tamirde,
@@ -44244,13 +45088,22 @@ function fasonKpiHtml(gruplar) {
     const acik = kalemler.filter(k => k.durum !== 'TAMAM');
     const hakedis = {};
     tumu.forEach(k => Object.entries(k.hakedis).forEach(([p, t]) => { hakedis[p] = (hakedis[p] || 0) + t; }));
+    return {
+        kalem: kalemler.length, acik: acik.length, siparis: gruplar.length,
+        beklenen: acik.reduce((a, k) => a + k.kalan, 0), netKumas: tumu.reduce((a, k) => a + k.netKumas, 0),
+        gelen: kalemler.reduce((a, k) => a + k.gelen, 0), hatali: kalemler.reduce((a, k) => a + k.hatali, 0), tamirde: kalemler.reduce((a, k) => a + k.tamirde, 0),
+        geciken: kalemler.filter(k => k.gecikme > 0).length, eksik: tumu.filter(k => k.eksik.length).length, hakedis
+    };
+}
+function fasonKpiHtml(gruplar) {
+    const m = fasonKpiModeli(gruplar);
     return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
-        ${fasonKpiKutu('Fason kalem', fasonFmtI(kalemler.length), 'var(--amber-c)', `${fasonFmtI(acik.length)} açık · ${fasonFmtI(gruplar.length)} sipariş`)}
-        ${fasonKpiKutu('Fasondan beklenen', fasonFmtI(acik.reduce((a, k) => a + k.kalan, 0)) + ' ad', 'var(--rose-c)', 'açık kalemlerde hedef − gelen')}
-        ${fasonKpiKutu('Gönderilen kumaş (net)', fasonFmtM(tumu.reduce((a, k) => a + k.netKumas, 0)) + ' m', '#06b6d4', 'gönderilen − iade')}
-        ${fasonKpiKutu('Gelen ürün', fasonFmtI(kalemler.reduce((a, k) => a + k.gelen, 0)) + ' ad', 'var(--emerald-c)', `${fasonFmtI(kalemler.reduce((a, k) => a + k.hatali, 0))} hatalı · ${fasonFmtI(kalemler.reduce((a, k) => a + k.tamirde, 0))} tamirde`)}
-        ${fasonKpiKutu('Geciken / föyü eksik', `${fasonFmtI(kalemler.filter(k => k.gecikme > 0).length)} / ${fasonFmtI(tumu.filter(k => k.eksik.length).length)}`, 'var(--amber-c)', 'kalem')}
-        ${fasonFiyatGorur() ? fasonKpiKutu('Hakediş (matrah)', `<span style="font-size:14px">${fasonParaMetin(hakedis)}</span>`, 'var(--emerald-c)', 'gelen × fiyat, KDV hariç') : ''}
+        ${fasonKpiKutu('Fason kalem', fasonFmtI(m.kalem), 'var(--amber-c)', `${fasonFmtI(m.acik)} açık · ${fasonFmtI(m.siparis)} sipariş`)}
+        ${fasonKpiKutu('Fasondan beklenen', fasonFmtI(m.beklenen) + ' ad', 'var(--rose-c)', 'açık kalemlerde hedef − gelen')}
+        ${fasonKpiKutu('Gönderilen kumaş (net)', fasonFmtM(m.netKumas) + ' m', '#06b6d4', 'gönderilen − iade')}
+        ${fasonKpiKutu('Gelen ürün', fasonFmtI(m.gelen) + ' ad', 'var(--emerald-c)', `${fasonFmtI(m.hatali)} hatalı · ${fasonFmtI(m.tamirde)} tamirde`)}
+        ${fasonKpiKutu('Geciken / föyü eksik', `${fasonFmtI(m.geciken)} / ${fasonFmtI(m.eksik)}`, 'var(--amber-c)', 'kalem')}
+        ${fasonFiyatGorur() ? fasonKpiKutu('Hakediş (matrah)', `<span style="font-size:14px">${fasonParaMetin(m.hakedis)}</span>`, 'var(--emerald-c)', 'gelen × fiyat, KDV hariç') : ''}
     </div>`;
 }
 function fasonTakipListeYenile() {
@@ -44298,6 +45151,7 @@ function fasonTakipListeYenile() {
     </div>`;
 }
 function fasonDurumPill(durum) {
+    if (durum === 'KAPANDI') return '<span class="pill pill-green" style="font-size:8px">✓ Bitti</span>';   /* dokuma fason işi kapatıldı (14) */
     if (durum === 'TAMAM') return '<span class="pill pill-green" style="font-size:8px">Tamam</span>';
     if (durum === 'KISMI') return '<span class="pill pill-amber" style="font-size:8px">Kısmi geldi</span>';
     if (durum === 'FASONDA') return '<span class="pill pill-cyan" style="font-size:8px">Fasonda</span>';
@@ -44501,10 +45355,15 @@ try {
 
 function dokumaFasonFasonMu(row) { return String(row?.dokuma_uretim_yeri || '').toUpperCase() === 'FASON_DOKUMA'; }
 
+/* Föydeki "kalite kabul" (kabul hata puanı / 100 m²) — 22.10.2026 kullanıcı: "kaldır şimdilik". false = formda yok, varsayılan
+   28 yazılmaz, PDF'te / ölçüm kutusunda sınır karşılaştırması yok (kayıtlı eski değer veride durur, kullanılmaz). Geri açmak:
+   true + 12 FASON_FOY_ALAN.dfoy'daki yorum satırı. Ham kumaş gelişindeki "hata puanı" (ölçüm) olduğu gibi kalır. */
+const DOKUMA_FASON_KALITE_KABUL = false;
+
 /* ── 12-fason.js'nin çağırdığı dokuma parçaları ─────────────────── */
 function dokumaFasonFoyVarsayilan(b, bolum) {
     if (bolum !== 'dfoy') return {};
-    return { kumas_ad: b.row?.kumas_adi || '', hata_puan_limit: '28', iplik_fire_pct: '3' };
+    return DOKUMA_FASON_KALITE_KABUL ? { kumas_ad: b.row?.kumas_adi || '', hata_puan_limit: '28', iplik_fire_pct: '3' } : { kumas_ad: b.row?.kumas_adi || '', iplik_fire_pct: '3' };
 }
 function dokumaFasonFoyHesapMetin(b, bolum, f) {
     if (bolum !== 'is' || !b.row) return '';
@@ -44519,24 +45378,60 @@ function dokumaFasonFoyHesapMetin(b, bolum, f) {
     const kdvT = matrah * fasonTakipNum(f.kdv_pct) / 100;
     return `${f.fiyat_birim === 'ATKI' ? `Metre fiyatı: ${fasonFmtM(atki)} × ${fasonFmtPara(fiyat, f.para_birimi)} = <b>${fasonFmtPara(mf, f.para_birimi)}</b><br>` : ''}Tahmini (${fasonFmtM(metre)} m): matrah <b>${fasonFmtPara(matrah, f.para_birimi)}</b> + KDV ${fasonFmtPara(kdvT, f.para_birimi)} − tevkifat ${fasonFmtPara(kdvT * fasonTevkifatOran(f.tevkifat), f.para_birimi)}`;
 }
+/** Teknik özelliklerin tek satırlık metinleri (föy kutusu + PDF aynı metni kullanır) */
+function dokumaFasonTeknikMetin(r) {
+    const h = typeof dokumaFasonHesapla === 'function' ? dokumaFasonHesapla(r) : null;
+    const sis = r.ip_no_sistemi || 'NE';
+    const yz = (v) => (v == null || v === '' ? '—' : '%' + fasonFmtM(v));
+    const tarakCm = (fasonTakipNum(r.tarak_eni_m) || 0) * (typeof dokumaFasonTarakEniSupheli === 'function' && dokumaFasonTarakEniSupheli(r) ? 1 : 100);
+    const atkilar = h ? h.atkilar : [];
+    return {
+        h,
+        cozgu: `${fasonFmtM(r.cozgu_sikligi)} tel/cm · ${fasonFmtI(r.cozgu_tel_sayisi)} tel · ${r.cozgu_iplik_kodu ? r.cozgu_iplik_kodu + ' · ' : ''}ip no ${r.cozgu_ip_no || '—'} (${sis}) · çekme ${yz(r.cozgu_cekme_pct)} · fire %${fasonFmtM(r.cozgu_fire_payi)}`,
+        atki: `${fasonFmtM(r.atki_sikligi)} atkı/cm · ` + (atkilar.length > 1
+            ? atkilar.map((a, i) => `${i + 1}) ${a.kod || '—'} ip no ${a.ip_no || '—'} %${fasonFmtM(Math.round(a.oran * 1000) / 10)}`).join(', ')
+            : `${atkilar[0]?.kod ? atkilar[0].kod + ' · ' : ''}ip no ${atkilar[0]?.ip_no || r.atki_ip_no || '—'} (${sis})`) + ` · çekme ${yz(r.atki_cekme_pct)} · fire %${fasonFmtM(r.atki_fire_payi)}`
+            + (Object.prototype.hasOwnProperty.call(r, 'atki_artik_cm') ? ` · artık ${r.atki_artik_cm == null || r.atki_artik_cm === '' ? '—' : fasonFmtM(r.atki_artik_cm) + ' cm/atkı'}` : '')
+            + (Object.prototype.hasOwnProperty.call(r, 'boyuna_cekme_pct') ? ` · boyuna çekme ${yz(r.boyuna_cekme_pct)} (tezgah → yer)` : ''),
+        tarak: `${fasonFmtM(Math.round(tarakCm * 10) / 10)} cm${h && h.beklenenHamEnCm ? ` → beklenen ham en ${fasonFmtM(Math.round(h.beklenenHamEnCm * 10) / 10)} cm` : ''} · haşıl payı ${yz(r.hasil_payi_pct)}`,
+        ihtiyac: h && h.toplamKg ? `çözgü ${fasonFmtM(Math.round(h.cozguKg * 10) / 10)} kg · atkı ${fasonFmtM(Math.round(h.atkiKg * 10) / 10)} kg${atkilar.length > 1 ? ' (' + atkilar.map((a, i) => `${a.kod || (i + 1) + '.'} ${fasonFmtM(Math.round(a.kg * 10) / 10)}`).join(' · ') + ')' : ''} · toplam ${fasonFmtM(Math.round(h.toplamKg * 10) / 10)} kg` : ''
+    };
+}
 function dokumaFasonFoyEkHtml(b, bolum) {
     if (bolum !== 'dfoy' || !b.row) return '';
     const r = b.row;
-    const h = typeof dokumaFasonHesapla === 'function' ? dokumaFasonHesapla(r) : null;
+    const t = dokumaFasonTeknikMetin(r);
+    const h = t.h;
     return `<div style="padding:10px 12px;border:1px dashed var(--border);border-radius:10px;font-size:10px;color:var(--text2);line-height:1.6">
-        <b>Teknik özellikler (dokuma siparişinden):</b> ${fasonFmtM(r.metre)} m · çözgü ${fasonFmtM(r.cozgu_sikligi)} tel/cm, ${fasonFmtI(r.cozgu_tel_sayisi)} tel, ip no ${pdfEsc(r.cozgu_ip_no || '—')} ·
-        atkı ${fasonFmtM(r.atki_sikligi)} atkı/cm, ip no ${pdfEsc(r.atki_ip_no || '—')} · tarak eni ${fasonFmtM(r.tarak_eni_m)} m · ${pdfEsc(r.ip_no_sistemi || 'NE')}
-        ${h && h.toplamKg ? `<br>İplik ihtiyacı (fire dahil): çözgü <b>${fasonFmtM(h.cozguKg)} kg</b> · atkı <b>${fasonFmtM(h.atkiKg)} kg</b> · toplam <b>${fasonFmtM(h.toplamKg)} kg</b>` : ''}
+        <b>Teknik özellikler (dokuma siparişinden):</b> ${fasonFmtM(r.metre)} m<br>
+        Çözgü: ${pdfEsc(t.cozgu)}<br>Atkı: ${pdfEsc(t.atki)}<br>Tarak eni: ${pdfEsc(t.tarak)}
+        ${typeof dokumaFasonTarakEniSupheli === 'function' && dokumaFasonTarakEniSupheli(r) ? '<br><b style="color:var(--amber-c)">⚠ Tarak eni metre alanına santimetre girilmiş görünüyor — teknik özellikleri açıp kaydedin.</b>' : ''}
+        ${h && h.toplamKg ? `<br>İplik ihtiyacı (fire dahil): <b>${pdfEsc(t.ihtiyac)}</b>` : ''}
+        ${h && h.beklenenHamKg > 0 ? `<br>Beklenen ham kumaş (firesiz, haşıllı): <b>${fasonFmtM(Math.round(h.beklenenHamKg))} kg</b>${h.beklenenGramaj ? ` · ≈ ${fasonFmtI(h.beklenenGramaj)} g/m²` : ''}` : ''}
         ${fasonYazabilir('DOKUMA') ? `<div style="margin-top:6px"><button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px" onclick="fasonPencereKapat();dokumaSiparisDuzenle(${fasonArg(String(r.id))})">✎ Teknik özellikleri düzenle</button></div>` : ''}
     </div>`;
 }
 function dokumaFasonHareketIpucu(b, tip, is) {
     if (!b.row) return '';
     const d = dokumaFasonKayitOzet(b.row);
-    if (tip === 'IPLIK') return `İhtiyaç: çözgü ${fasonFmtM(d.ihtiyac.cozguKg)} kg · atkı ${fasonFmtM(d.ihtiyac.atkiKg)} kg — gönderilen net: çözgü ${fasonFmtM(d.oAll.netIplikC)} kg · atkı ${fasonFmtM(d.oAll.netIplikA)} kg.`;
-    if (tip === 'HAM') return `Hedef ${fasonFmtM(d.hedef)} m · şimdiye kadar ${fasonFmtM(d.oAll.hamMt)} m geldi. Hata puanı: 4 puan sistemine göre 100 m² başına (kabul sınırı ${fasonFmtM(d.dfoy.hata_puan_limit || 0)}).`;
+    if (tip === 'IPLIK' || tip === 'IPLIK_IADE') {
+        /* Teknik bilgideki iplikler (numara tutmazsa kaydederken sorulur) */
+        const r = b.row;
+        const atk = dokumaFasonAtkiListesi(r).filter(a => a.kod || a.ip_no > 0);
+        const no = (x) => (parseFloat(x) > 0 ? fasonFmtM(x) : '—');
+        const teknik = `Teknik bilgi: çözgü ${r.cozgu_iplik_kodu ? r.cozgu_iplik_kodu + ' · ' : ''}ip no ${no(r.cozgu_ip_no)} · atkı ${atk.length ? atk.map(a => `${a.kod ? a.kod + ' · ' : ''}ip no ${no(a.ip_no)}`).join(', ') : '—'}.`;
+        if (tip === 'IPLIK') return `${teknik} İhtiyaç: çözgü ${fasonFmtM(Math.round(d.ihtiyac.cozguKg * 10) / 10)} kg · atkı ${fasonFmtM(Math.round(d.ihtiyac.atkiKg * 10) / 10)} kg — gönderilen net: çözgü ${fasonFmtM(d.oAll.netIplikC)} kg · atkı ${fasonFmtM(d.oAll.netIplikA)} kg.`;
+        return teknik;
+    }
+    if (tip === 'HAM') return `Hedef ${fasonFmtM(d.hedef)} m · şimdiye kadar ${fasonFmtM(d.oAll.hamMt)} m geldi. Hata puanı: 4 puan sistemine göre 100 m² başına${DOKUMA_FASON_KALITE_KABUL && d.dfoy.hata_puan_limit ? ` (kabul sınırı ${fasonFmtM(d.dfoy.hata_puan_limit)})` : ''}.`;
     if (tip === 'LEVENT' || tip === 'LEVENT_GELEN') return `Çözgü uzunluğu ihtiyacı ${fasonFmtM(b.row.cozgu_ihtiyaci_m)} m · gönderilen ${fasonFmtM(d.oAll.leventGiden)} m · gelen ${fasonFmtM(d.oAll.leventGelen)} m.`;
-    if (tip === 'KONTROL') return 'Ham kumaş kontrolünde 4 puan sistemi: hata boyuna göre 1–4 puan, toplam puan / 100 m² kabul sınırıyla karşılaştırılır.';
+    if (tip === 'KONTROL') return `Ham kumaş kontrolünde 4 puan sistemi: hata boyuna göre 1–4 puan, toplam puan / 100 m²${DOKUMA_FASON_KALITE_KABUL ? ' kabul sınırıyla karşılaştırılır' : ''}.`;
+    /* İplik hesabı raporları (21.10.2026) — fasonun bildirdiği, depoya dokunmaz */
+    const h = d.ihtiyac;
+    if (tip === 'COZGU_RAPOR') return `Fasonun çözdüğü her levent için ayrı girin. Teknik: ${fasonFmtI(b.row.cozgu_tel_sayisi)} tel · gereken çözgü uzunluğu ${fasonFmtM(Math.round(h.cozguUzunlukM))} m (fire dahil). Şimdiye kadar çözülen ${fasonFmtM(d.oAll.cozguMt)} m (${fasonFmtI(d.oAll.cozguLevent)} levent) · gönderilen çözgülük ${fasonFmtM(d.oAll.netIplikC)} kg. Sarılan kg boş bırakılırsa tel × metre ÷ ip no ile hesaplanır. Depoya yazılmaz.`;
+    if (tip === 'HASIL_RAPOR') return `Haşıla giren − çıkan metre = haşılda kalan çözgü. Kalan kg'ı biliyorsanız girin; bilmiyorsanız metreden hesaplanır. Şimdiye kadar haşıldan çıkan ${fasonFmtM(d.oAll.hasilCikan)} m. Depoya yazılmaz.`;
+    if (tip === 'LEVENT_GECIS') return `Çözgü / haşıl ayrı firmada yapıldıysa: levent o firmadan dokumacıya geçti. Depoya yazılmaz; iki firma arasındaki takip içindir. Şimdiye kadar geçen ${fasonFmtM(d.oAll.leventGecis)} m.`;
+    if (tip === 'SAYIM') return `İş sonunda fasonda kalanı İPLİK BAŞINA ayrı girin (çözgülük artık + her atkı ipliği). Kalmadıysa 0 girin. Aynı ipliğin son sayımı geçerlidir. Gönderilen net: çözgülük ${fasonFmtM(d.oAll.netIplikC)} kg · atkılık ${fasonFmtM(d.oAll.netIplikA)} kg. Kalan iplik geri gelince "İplik iadesi" ile depoya girer.`;
     return '';
 }
 
@@ -44563,17 +45458,434 @@ function dokumaFasonKayitOzet(row) {
     if (!firmalar.length) eksik.push('fason firma');
     if (!String(dfoy.kumas_kodu || '').trim()) eksik.push('kumaş kodu');
     if (!(ihtiyac.toplamKg > 0)) eksik.push('teknik özellik');
+    if (typeof dokumaFasonTarakEniSupheli === 'function' && dokumaFasonTarakEniSupheli(row)) eksik.push('tarak eni (cm / m karışmış)');
+    /* İplik hesabı bilgileri (kolonlar kuruluysa; 21.10.2026) */
+    if (Object.prototype.hasOwnProperty.call(row, 'atki_iplikleri')) {
+        if (!String(row.cozgu_iplik_kodu || '').trim() || (ihtiyac.atkilar || []).some(a => !a.kod)) eksik.push('iplik kartı');
+        if (row.cozgu_cekme_pct == null) eksik.push('çekme');
+    }
+    /* Atkı artığı / boyuna çekme kolonları kuruluysa ve girilmemişse (21–22.10.2026) */
+    if (Object.prototype.hasOwnProperty.call(row, 'atki_artik_cm') && (row.atki_artik_cm == null || row.atki_artik_cm === '')) eksik.push('atkı artığı');
+    if (Object.prototype.hasOwnProperty.call(row, 'boyuna_cekme_pct') && (row.boyuna_cekme_pct == null || row.boyuna_cekme_pct === '')) eksik.push('boyuna çekme');
+    if (dokumaFasonIpNoUyumsuzluklari(row, dokumaFasonGonderilenIplikler(row)).length) eksik.push('iplik numarası gönderilenle tutmuyor');
     if (fasonFiyatGorur() && isler.some(is => !(fasonTakipNum(is.birim_fiyat) > 0))) eksik.push('fiyat');
-    const gecikme = !tamam && fasonGunFarki(row.ttarih) > 0 ? fasonGunFarki(row.ttarih) : 0;
+    const kapali = dokumaFasonKapaliMi(row);   /* ✓ Bitti = dokuma siparişi Tamamlandı */
+    const gecikme = !tamam && !kapali && fasonGunFarki(row.ttarih) > 0 ? fasonGunFarki(row.ttarih) : 0;
     const hs = fasonAnahtarHareketleri(anahtar);
-    const durum = tamam ? 'TAMAM' : oAll.hamMt > 0 ? 'KISMI' : hs.some(h => !h.silindi && h.tip !== 'KONTROL') ? 'FASONDA' : 'BEKLIYOR';
-    const hpAsim = dfoy.hata_puan_limit && oAll.ortHata > fasonTakipNum(dfoy.hata_puan_limit);
-    return { row, anahtar, isler, isOzet, oAll, dfoy, hedef, ihtiyac, teorik, iplikFark, fireYuzde, tamam, durum, gecikme, hakedis, firmalar,
+    const durum = kapali ? 'KAPANDI' : tamam ? 'TAMAM' : oAll.hamMt > 0 ? 'KISMI' : hs.some(h => !h.silindi && h.tip !== 'KONTROL') ? 'FASONDA' : 'BEKLIYOR';
+    const hpAsim = DOKUMA_FASON_KALITE_KABUL && dfoy.hata_puan_limit && oAll.ortHata > fasonTakipNum(dfoy.hata_puan_limit);
+    return { row, anahtar, isler, isOzet, oAll, dfoy, hedef, ihtiyac, teorik, iplikFark, fireYuzde, tamam, kapali, durum, gecikme, hakedis, firmalar,
         firma: firmalar.join(' · ') || String(row.dokuma_fason_firma || '—'), eksik, hareketler: hs, hpAsim,
         kalan: Math.max(0, hedef - oAll.hamMt), pct: hedef > 0 ? Math.min(100, Math.round((oAll.hamMt / hedef) * 100)) : 0 };
 }
 
+/* ── Gönderilen iplik ↔ teknik bilgi (21.10.2026, kullanıcı: "gönderilen ipliğin numarası teknik bilgiyle tutmazsa programa
+   uyarı ekle" — DK31145053'te çözgü / atkı ip no yer değiştirmişti). Numara önce iplik kartından ("40/1" → 40), kart yoksa
+   hareketteki iplik adından. Yalnız uyarır; hiçbir şeyi engellemez, değiştirmez. ─────────────────────────────────────── */
+function dokumaFasonIplikNoBul(kod, ad, kartlar) {
+    const k = String(kod || '').trim().toUpperCase();
+    const kart = k ? (kartlar || new Map(dokumaFasonIplikKartlari().map(x => [x.kod, x]))).get(k) : null;
+    const ipNo = kart && kart.ipNo > 0 ? kart.ipNo : dokumaFasonIplikNoOner(ad);
+    return { kod: k, ipNo, etiket: [k, kart?.iplik_no || String(ad || '').trim()].filter(Boolean).join(' ') };
+}
+/** Bu işe gönderilen iplikler, yer başına: { COZGU: [{ kod, ipNo, etiket, kg }], ATKI: [...] } */
+function dokumaFasonGonderilenIplikler(row) {
+    const out = { COZGU: [], ATKI: [] };
+    if (!row) return out;
+    const kartlar = new Map(dokumaFasonIplikKartlari().map(x => [x.kod, x]));
+    fasonAnahtarHareketleri(`D|${row.id}`).filter(h => !h.silindi && h.tip === 'IPLIK').forEach(h => {
+        const g = dokumaFasonIplikNoBul(h.iplik_kodu, h.iplik_ad, kartlar);
+        if (!(g.ipNo > 0)) return;
+        const liste = out[h.iplik_yer === 'ATKI' ? 'ATKI' : 'COZGU'];
+        const v = liste.find(x => x.kod === g.kod && Math.abs(x.ipNo - g.ipNo) < 0.05);
+        if (v) v.kg += h.kg; else liste.push({ ...g, kg: h.kg });
+    });
+    return out;
+}
+/** Teknik bilgi (kayıt ya da formdaki değerler) ile iplikler tutmuyor mu → uyarı metinleri. fiil: "gönderilmiş" / "iade geliyor" */
+function dokumaFasonIpNoUyumsuzluklari(spec, gonderilen, fiil = 'gönderilmiş') {
+    const uyarilar = [];
+    const esit = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.05;
+    const kg = (x) => (x > 0 ? ` (${fasonFmtM(Math.round(x * 10) / 10)} kg)` : '');
+    const cNo = parseFloat(spec?.cozgu_ip_no) || 0;
+    (gonderilen.COZGU || []).forEach(g => {
+        if (cNo > 0 && !esit(g.ipNo, cNo)) uyarilar.push(`Çözgüye ${g.etiket || fasonFmtM(g.ipNo)} ${fiil}${kg(g.kg)} — teknik bilgide çözgü ip no ${fasonFmtM(cNo)}`);
+    });
+    const atkilar = dokumaFasonAtkiListesi(spec || {}).filter(a => a.ip_no > 0);
+    (gonderilen.ATKI || []).forEach(g => {
+        if (!atkilar.length) return;
+        const eslesen = g.kod ? atkilar.find(a => a.kod && a.kod === g.kod) : null;
+        const tutuyor = eslesen ? esit(eslesen.ip_no, g.ipNo) : (atkilar.length === 1 ? esit(atkilar[0].ip_no, g.ipNo) : atkilar.some(a => esit(a.ip_no, g.ipNo)));
+        if (!tutuyor) uyarilar.push(`Atkıya ${g.etiket || fasonFmtM(g.ipNo)} ${fiil}${kg(g.kg)} — teknik bilgide atkı ip no ${(eslesen ? [eslesen] : atkilar).map(a => fasonFmtM(a.ip_no)).join(' / ')}`);
+    });
+    return uyarilar;
+}
+/** Hareket formu (iplik gönderimi / iadesi) için: bu satır teknik bilgiyle tutmuyorsa soru metni, tutuyorsa null */
+function dokumaFasonHareketIpNoUyarisi(row, tip, v) {
+    if (!row || !['IPLIK', 'IPLIK_IADE'].includes(tip)) return null;
+    const g = dokumaFasonIplikNoBul(v.iplik_kodu, v.iplik_ad);
+    if (!(g.ipNo > 0)) return null;
+    const u = dokumaFasonIpNoUyumsuzluklari(row, { [v.iplik_yer === 'ATKI' ? 'ATKI' : 'COZGU']: [{ ...g, kg: fasonTakipNum(v.kg) }] }, tip === 'IPLIK' ? 'gönderiliyor' : 'iade geliyor');
+    return u.length ? `⚠ İplik numarası teknik bilgiyle tutmuyor:\n\n${u.join('\n')}\n\nİplik seçimi ya da teknik bilgi (✎ Teknik özellikler) yanlış olabilir. Yine de kaydedilsin mi?` : null;
+}
+
+/* ── İplik hesabı (21.10.2026, kullanıcı: "üretilen metrede ne kadar iplik kullanılmış, çözgüye gönderilen ipten ne kadar
+   çözgü çözülmüş, haşılda ne kadar kalmış, iş sonunda ne kadar atkılık kalmış") ────────────────────────────────────────
+   Bütün işler birlikte (dokuma işinin anahtarı), hesap GELEN HAM KUMAŞ metresine göre:
+   Çözgü: gönderilen − iade = net → çözgüye sarılan (rapor kg'ı ya da tel × metre ÷ m/kg) → haşılda kalan (rapor ya da giren − çıkan
+          metreden) → kumaşa giren = dokunan × (1 + çözgü çekmesi) × tel ÷ m/kg → leventte kalan = haşıldan çıkan − kumaşa giren (m);
+          fasonda kalması gereken çözgülük = net − sarılan (rapor yoksa net − kumaşa giren: haşıl / levent kaybı dahil).
+   Atkı (her iplik ayrı, gönderim iplik koduyla eşleşir; tek atkıda kodsuz gönderim ona sayılır): net − kumaşa giren
+          (TEZGAH ÜSTÜ boy = dokunan × (1 + çözgü çekmesi); × sıklık × 100 × tarak eni × pay ÷ m/kg) = fasonda kalması gereken.
+   Sayım (iplik başına son sayım) + telef düşülünce kalan = açıklanmayan kayıp (fire payı DÜŞÜLMEZ — fark gerçek firedir).
+   Kg kontrolü: beklenen ham kumaş = kumaşa giren çözgü × (1 + haşıl payı) + kumaşa giren atkı ↔ gelen ham kumaş kg'ı.
+   Yalnız hesap; hiçbir şey yazmaz. */
+const DOKUMA_FASON_KG_SAPMA_PCT = 3;
+function dokumaFasonIplikHesabi(d) {
+    const r = d.row, o = d.oAll;
+    const sis = r.ip_no_sistemi || 'NE';
+    const hs = (d.hareketler || []).filter(h => !h.silindi);
+    const tarakSupheli = dokumaFasonTarakEniSupheli(r);
+    const tel = fasonTakipNum(r.cozgu_tel_sayisi);
+    const cMpk = dokumaFasonIplikMetrePerKg(sis, r.cozgu_ip_no);
+    const cozguKg = (m, t) => { const tt = fasonTakipNum(t) || tel; return cMpk > 0 && tt > 0 ? tt * m / cMpk : null; };
+    const dokunan = o.hamMt;
+    const cekme = fasonTakipNum(r.cozgu_cekme_pct) / 100;
+    const hasilPayi = r.hasil_payi_pct == null || r.hasil_payi_pct === '' ? null : fasonTakipNum(r.hasil_payi_pct) / 100;
+    const tolerans = fasonTakipNum(d.dfoy.iplik_fire_pct || 0);
+    const eksik = [];
+    if (!(tel > 0)) eksik.push('çözgü tel sayısı');
+    if (!(cMpk > 0)) eksik.push('çözgü ip no');
+    if (tarakSupheli) eksik.push('tarak eni (cm / m karışmış)');
+    if (r.cozgu_cekme_pct == null || r.cozgu_cekme_pct === '') eksik.push('çözgü çekmesi');
+
+    /* Sütunlar: çözgü + her atkı ipliği (+ listede olmayan kodla gönderilen atkı) */
+    const atkilar = dokumaFasonAtkiListesi(r);
+    const kol = [{ yer: 'COZGU', kod: String(r.cozgu_iplik_kodu || '').toUpperCase(), ad: 'Çözgü', gon: 0, iade: 0, sayim: null, telef: 0, leventKalanSay: 0 }];
+    atkilar.forEach((a, i) => kol.push({ yer: 'ATKI', kod: a.kod, ip_no: a.ip_no, oran: a.oran, ad: atkilar.length > 1 ? `${i + 1}. atkı` : 'Atkı', gon: 0, iade: 0, sayim: null, telef: 0 }));
+    let diger = null;
+    const atkiKolonu = (kod) => {
+        const k = String(kod || '').trim().toUpperCase();
+        const i = atkilar.findIndex(a => a.kod && a.kod === k);
+        if (i >= 0) return kol[i + 1];
+        if (atkilar.length === 1) return kol[1];
+        if (!diger) { diger = { yer: 'ATKI', kod: '', ad: 'Listede olmayan atkı', gon: 0, iade: 0, sayim: null, telef: 0, diger: true }; }
+        return diger;
+    };
+    const zaman = (h) => `${h.tarih || ''}|${h.ts || ''}`;
+    hs.forEach(h => {
+        if (h.tip !== 'IPLIK' && h.tip !== 'IPLIK_IADE') return;
+        const k = h.iplik_yer === 'ATKI' ? atkiKolonu(h.iplik_kodu) : kol[0];
+        if (h.tip === 'IPLIK') k.gon += h.kg;
+        else { k.iade += h.kg; (k.iadeler = k.iadeler || []).push({ z: zaman(h), kg: h.kg }); }
+    });
+    Object.values(o.sayimlar || {}).forEach(s => {
+        const k = s.iplik_yer === 'COZGU' ? kol[0] : atkiKolonu(s.iplik_kodu);
+        k.sayim = (k.sayim || 0) + s.kg;
+        k.telef += s.telef_kg;
+        k.sayimTarih = !k.sayimTarih || String(s.tarih) > k.sayimTarih ? String(s.tarih) : k.sayimTarih;
+        k.sayimZaman = !k.sayimZaman || zaman(s) > k.sayimZaman ? zaman(s) : k.sayimZaman;
+        if (k === kol[0]) k.leventKalanSay += s.levent_kalan_mt;
+    });
+    if (diger) kol.push(diger);
+    /* Sayımdan SONRA gelen iade sayılan iplikten çıkmıştır (iki kez düşülmesin): fasonda şu an = sayım − sonraki iade */
+    kol.forEach(k => {
+        k.iadeSonra = k.sayim == null ? 0 : (k.iadeler || []).filter(x => x.z > k.sayimZaman).reduce((s, x) => s + x.kg, 0);
+        k.fasondaSimdi = k.sayim == null ? null : k.sayim - k.iadeSonra;
+    });
+
+    /* Çözgü */
+    const c = kol[0];
+    c.net = c.gon - c.iade;
+    const cozguRap = hs.filter(h => h.tip === 'COZGU_RAPOR');
+    if (cozguRap.length) {
+        const parca = cozguRap.map(h => (h.kg > 0 ? h.kg : cozguKg(h.mt, h.tel)));
+        c.sarilan = parca.some(x => x == null) ? null : parca.reduce((s, x) => s + x, 0);
+        c.sarilanM = o.cozguMt;
+        c.levent = o.cozguLevent;
+    } else c.sarilan = null;
+    const hasilRap = hs.filter(h => h.tip === 'HASIL_RAPOR');
+    if (hasilRap.length) {
+        c.hasilKalan = hasilRap.reduce((s, h) => {
+            if (s == null) return null;
+            if (h.hasil_kalan_kg > 0) return s + h.hasil_kalan_kg;
+            if (!(h.giren_mt > 0)) return s;
+            const kg = cozguKg(Math.max(0, h.giren_mt - h.mt));
+            return kg == null ? null : s + kg;
+        }, 0);
+    } else c.hasilKalan = null;
+    const kumasCozguM = dokunan * (1 + cekme);
+    c.kumasaGiren = dokunan > 0 ? cozguKg(kumasCozguM) : 0;
+    const leventCikanM = o.hasilCikan > 0 ? o.hasilCikan : (o.leventGecis > 0 ? o.leventGecis : o.cozguMt);
+    c.leventCikanM = leventCikanM;
+    c.leventKalanM = leventCikanM > 0 ? leventCikanM - kumasCozguM : null;
+    c.leventKalanKg = c.leventKalanM != null ? cozguKg(Math.max(0, c.leventKalanM)) : null;
+    c.raporYok = c.sarilan == null;
+    c.beklenen = c.sarilan != null ? c.net - c.sarilan : (c.kumasaGiren != null ? c.net - c.kumasaGiren : null);
+
+    /* Atkılar */
+    const tarakM = fasonTakipNum(r.tarak_eni_m);
+    /* Atkı TEZGAH ÜSTÜ boydan: dokunan (yerdeki metre) × (1 + BOYUNA çekme) — kullanıcı 21.10 + 22.10.2026 (çözgü çekmesinden ayrı;
+       boş = girilmemiş → yerdeki metre) */
+    const boyunaVar = Object.prototype.hasOwnProperty.call(r, 'boyuna_cekme_pct');
+    if (boyunaVar && (r.boyuna_cekme_pct == null || r.boyuna_cekme_pct === '')) eksik.push('boyuna çekme');
+    const tezgahM = dokunan * (1 + fasonTakipNum(r.boyuna_cekme_pct) / 100);
+    const atkiSay = fasonTakipNum(r.atki_sikligi) * tezgahM * 100;
+    /* Atkı artığı (makas / kenar, cm / atkı): kumaşa girmez ama tüketilir → açıklanmış kayıp (kullanıcı 21.10.2026) */
+    const artikM = fasonTakipNum(r.atki_artik_cm) / 100;
+    const artikKolonVar = Object.prototype.hasOwnProperty.call(r, 'atki_artik_cm');
+    if (artikKolonVar && (r.atki_artik_cm == null || r.atki_artik_cm === '')) eksik.push('atkı artığı');
+    kol.slice(1).forEach(k => {
+        k.net = k.gon - k.iade;
+        if (k.diger) { k.kumasaGiren = null; k.beklenen = null; return; }
+        const mpk = dokumaFasonIplikMetrePerKg(sis, k.ip_no);
+        k.kumasaGiren = dokunan > 0 ? (mpk > 0 && tarakM > 0 && !tarakSupheli && atkiSay > 0 ? atkiSay * tarakM * k.oran / mpk : null) : 0;
+        k.artik = dokunan > 0 && artikM > 0 ? (mpk > 0 && atkiSay > 0 ? atkiSay * artikM * k.oran / mpk : null) : 0;
+        if (k.kumasaGiren == null && !(mpk > 0)) eksik.push(`${k.ad.toLocaleLowerCase('tr-TR')} ip no`);
+        k.beklenen = k.kumasaGiren != null && k.artik != null ? k.net - k.kumasaGiren - k.artik : null;
+    });
+    if (!(fasonTakipNum(r.atki_sikligi) > 0)) eksik.push('atkı sıklığı');
+
+    /* Fark (sayım varsa): beklenen (bütün iadeler düşülmüş) − fasonda şu an (sayım − sonraki iade) − telef; yüzde kumaşa girene göre */
+    kol.forEach(k => {
+        if (k.beklenen == null || k.sayim == null) { k.fark = null; return; }
+        k.fark = k.beklenen - k.fasondaSimdi - k.telef;
+        k.farkPct = k.kumasaGiren > 0 ? (k.fark / k.kumasaGiren) * 100 : null;
+        k.asim = k.farkPct != null && tolerans > 0 && k.farkPct > tolerans;
+        k.fazla = k.fark < -0.5;   /* fasonun saydığı, kalması gerekenden fazla */
+    });
+
+    /* Kg kontrolü */
+    const atkiGiren = kol.slice(1).filter(k => !k.diger);
+    const kgKontrol = { gelen: o.hamKg, beklenen: null, sapma: null, hasilPayiYok: hasilPayi == null };
+    if (dokunan > 0 && c.kumasaGiren != null && atkiGiren.every(k => k.kumasaGiren != null)) {
+        kgKontrol.beklenen = c.kumasaGiren * (1 + (hasilPayi || 0)) + atkiGiren.reduce((s, k) => s + k.kumasaGiren, 0);
+        if (o.hamKg > 0 && kgKontrol.beklenen > 0) kgKontrol.sapma = ((o.hamKg - kgKontrol.beklenen) / kgKontrol.beklenen) * 100;
+    }
+    kgKontrol.uyari = kgKontrol.sapma != null && Math.abs(kgKontrol.sapma) > DOKUMA_FASON_KG_SAPMA_PCT;
+    const netIplik = kol.reduce((s, k) => s + k.net, 0);
+    kgKontrol.randiman = o.hamKg > 0 && netIplik > 0 ? (o.hamKg / netIplik) * 100 : null;
+    /* Kapanış için: toplam fire, sayımı olmayan iplikler, fasonda hâlâ görünen iplik */
+    const farkli = kol.filter(k => k.fark != null);
+    const toplamFark = farkli.reduce((s, k) => s + k.fark, 0);
+    const toplamGiren = farkli.reduce((s, k) => s + (k.kumasaGiren || 0), 0);
+    return { kol, dokunan, kumasCozguM, tezgahM, artikCm: fasonTakipNum(r.atki_artik_cm), eksik: [...new Set(eksik)], tolerans, kgKontrol, hareketVar: hs.some(h => h.tip === 'IPLIK'),
+        ipUyari: dokumaFasonIpNoUyumsuzluklari(r, dokumaFasonGonderilenIplikler(r)),
+        toplamFark: farkli.length ? toplamFark : null, toplamPct: farkli.length && toplamGiren > 0 ? (toplamFark / toplamGiren) * 100 : null,
+        sayimYok: kol.filter(k => k.net > 0.5 && k.sayim == null), fasondaKalan: kol.filter(k => k.fasondaSimdi != null && k.fasondaSimdi > 0.5) };
+}
+
+/* ── ✓ Bitti / Yeniden aç (21.10.2026, kullanıcı: "sayım ve iade sonrası ✓ Bitti ile işi kapatma, fire yüzdesi, dokuma siparişi
+   durumu Tamamlandı"). TEK doğru: dokuma_fason_siparisleri.durum (TAMAMLANDI = kapalı, 02 siparisKapaliMi). Kim / ne zaman: işlem izi
+   (erpIslemIzYaz, kaynak DOKUMA_FASON_BITTI). Kapalı işe hareket girilmez / düzeltilmez (12 fasonHareketFormAc / Kaydet / Sil sorar). */
+function dokumaFasonKapaliMi(row) { return !!row && typeof siparisKapaliMi === 'function' && siparisKapaliMi(row); }
+function dokumaFasonFireMetni(ih) {
+    const pct = (x) => `%${fasonFmtM(Math.round(x * 10) / 10)}`;
+    /* Eksi fark = fasonun bildirdiği, kalması gerekenden FAZLA (fire değil — raporlar / teknik bilgiler kontrol edilmeli) */
+    const parca = ih.kol.filter(k => k.fark != null).map(k => `${k.ad.toLocaleLowerCase('tr-TR')} ${k.fazla ? `${fasonFmtM(Math.round(-k.fark * 10) / 10)} kg fazla` : (k.farkPct != null ? pct(k.farkPct) : fasonFmtM(Math.round(k.fark * 10) / 10) + ' kg')}`);
+    const hepsiFire = ih.kol.filter(k => k.fark != null).every(k => !k.fazla);
+    return parca.length ? `fire ${parca.join(' · ')}${hepsiFire && ih.toplamPct != null && parca.length > 1 ? ` · toplam ${pct(ih.toplamPct)}` : ''}` : '';
+}
+async function dokumaFasonDurumYaz(row, durum, etiket) {
+    if (!fasonYazabilir('DOKUMA')) { erpToast('Dokuma fason işini kapatma / açma yetkiniz yok.', 'error'); return false; }
+    /* Taze oku: başka yerden değiştiyse üstüne yazma */
+    const { data: taze, error: e1 } = await sb.from('dokuma_fason_siparisleri').select('id,updated_at,durum').eq('id', row.id).limit(1);
+    if (e1 || !taze || !taze.length) { erpToast('Dokuma siparişi okunamadı: ' + (e1?.message || 'bulunamadı'), 'error', 7000); return false; }
+    const eskiDurum = taze[0].durum || '';
+    const yeni = { durum, updated_at: new Date().toISOString() };
+    let q = sb.from('dokuma_fason_siparisleri').update(yeni).eq('id', row.id);
+    q = taze[0].updated_at ? q.eq('updated_at', taze[0].updated_at) : q;
+    const { data, error } = await q.select('id');
+    if (error) { erpToast('Kaydedilemedi: ' + error.message, 'error', 8000); return false; }
+    if (!data || !data.length) { erpToast('Bu dokuma siparişi bu arada başka yerden değişti — yenileyip tekrar deneyin.', 'error', 8000); return false; }
+    Object.assign(row, yeni);
+    if (typeof erpIslemIzYaz === 'function') erpIslemIzYaz({ tablo: 'dokuma_fason_siparisleri', kayit_id: row.id, islem: 'DEGISTIR', kaynak: 'DOKUMA_FASON_BITTI',
+        etiket, eski: { durum: eskiDurum }, yeni: { durum } });
+    return true;
+}
+async function dokumaFasonBitti(dfid) {
+    const row = fasonDokumaBul(dfid);
+    if (!row) return;
+    if (!fasonYazabilir('DOKUMA')) { erpToast('Dokuma fason işini kapatma yetkiniz yok.', 'error'); return; }
+    try { await fasonAkisYukle(true); } catch (e) {}
+    const d = dokumaFasonKayitOzet(row);
+    const ih = dokumaFasonIplikHesabi(d);
+    const kg = (x) => `${fasonFmtM(Math.round(x * 10) / 10)} kg`;
+    const satirlar = [
+        `${row.sno || ''} · ${row.kumas_adi || ''} işi kapatılsın mı?`, '',
+        `Gelen ham kumaş: ${fasonFmtM(d.oAll.hamMt)} / ${fasonFmtM(d.hedef)} m${d.kalan > 0 ? ` (${fasonFmtM(d.kalan)} m eksik)` : ''}`,
+    ];
+    const farkli = ih.kol.filter(k => k.fark != null);
+    if (farkli.length) {
+        satirlar.push('', 'Açıklanmayan iplik kaybı (fire):');
+        farkli.forEach(k => satirlar.push(k.fazla
+            ? ` · ${k.ad}${k.kod ? ' ' + k.kod : ''}: ⚠ ${kg(-k.fark)} FAZLA — fasonun bildirdiği, kalması gerekenden fazla (raporları / teknik bilgileri kontrol edin)`
+            : ` · ${k.ad}${k.kod ? ' ' + k.kod : ''}: ${kg(k.fark)}${k.farkPct != null ? ` (%${fasonFmtM(Math.round(k.farkPct * 10) / 10)})` : ''}${k.asim ? ' ⚠ tolerans aşıldı' : ''}`));
+        if (ih.toplamPct != null && farkli.length > 1 && farkli.every(k => !k.fazla)) satirlar.push(` · Toplam: ${kg(ih.toplamFark)} (%${fasonFmtM(Math.round(ih.toplamPct * 10) / 10)})`);
+    }
+    if (ih.sayimYok.length) satirlar.push('', `⚠ Sayım girilmemiş: ${ih.sayimYok.map(k => k.ad + (k.kod ? ' ' + k.kod : '')).join(', ')} — bu ipliklerin firesi hesaplanamaz.`);
+    if (ih.fasondaKalan.length) satirlar.push('', `⚠ Fasonda hâlâ iplik görünüyor (sayım − sonradan gelen iade): ${ih.fasondaKalan.map(k => `${k.ad} ${kg(k.fasondaSimdi)}`).join(', ')} — iade gelmeden kapatılıyor.`);
+    if (ih.kgKontrol.uyari) satirlar.push('', `⚠ Kg kontrolü: gelen kumaş beklenenden %${fasonFmtM(Math.round(ih.kgKontrol.sapma * 10) / 10)} farklı.`);
+    satirlar.push('', 'Kapatınca dokuma siparişinin durumu «Tamamlandı» olur ve bu işe hareket girilemez («Yeniden aç» ile açılır).');
+    if (!(await erpAskConfirm(satirlar.join('\n')))) return;
+    const fire = dokumaFasonFireMetni(ih);
+    const ok = await dokumaFasonDurumYaz(row, 'TAMAMLANDI', `${row.sno || ''} · ✓ Bitti · ${fasonFmtM(d.oAll.hamMt)} / ${fasonFmtM(d.hedef)} m${fire ? ' · ' + fire : ''}`);
+    if (!ok) return;
+    erpToast(`✓ ${row.sno || 'Dokuma işi'} kapatıldı — durum Tamamlandı.${fire ? ' ' + fire.charAt(0).toUpperCase() + fire.slice(1) + '.' : ''}`, 'success', 6000);
+    fasonEkranYenile();
+}
+async function dokumaFasonYenidenAc(dfid) {
+    const row = fasonDokumaBul(dfid);
+    if (!row) return;
+    if (!fasonYazabilir('DOKUMA')) { erpToast('Dokuma fason işini açma yetkiniz yok.', 'error'); return; }
+    if (!(await erpAskConfirm(`${row.sno || ''} · ${row.kumas_adi || ''} işi yeniden açılsın mı?\n\nDurum «Beklemede» olur; hareket girilebilir, iplik hesabı yeniden değişebilir.`))) return;
+    const ok = await dokumaFasonDurumYaz(row, 'BEKLEMEDE', `${row.sno || ''} · yeniden açıldı`);
+    if (!ok) return;
+    erpToast(`${row.sno || 'Dokuma işi'} yeniden açıldı.`, 'success', 4000);
+    fasonEkranYenile();
+}
+/** İplik hesabı tablosunun satırları — ekran ve PDF AYNI tanımı çizer (rakam iki yerde ayrı hesaplanmasın).
+ *  Hücre: { t: ana metin, a: alt satır, r: renk (kirmizi | sari | yesil | gri), ar: alt satırın rengi } — metinler düz yazı (çizen kaçışlar). */
+function dokumaFasonIplikSatirlari(ih) {
+    const c = ih.kol[0];
+    const kg = (x) => (x == null ? { t: '—', r: 'gri' } : { t: `${fasonFmtM(Math.round(x * 10) / 10)} kg` });
+    const bos = { t: '' };
+    const yuzde = (x) => `%${fasonFmtM(Math.round(x * 10) / 10)}`;
+    const raporYok = { t: 'rapor yok', r: 'gri' };
+    const satirlar = [
+        { et: 'Gönderilen', f: k => kg(k.gon) },
+        { et: '− İade gelen', f: k => kg(k.iade) },
+        { et: '= Fasona net giden', kalin: true, f: k => kg(k.net) },
+        { et: 'Çözgüye sarılan (levent)', f: k => (k !== c ? bos : k.sarilan == null ? raporYok : { ...kg(k.sarilan), a: `${fasonFmtI(k.levent)} levent · ${fasonFmtM(k.sarilanM)} m` }) },
+        { et: 'Haşılda kalan', f: k => (k !== c ? bos : k.hasilKalan == null ? raporYok : kg(k.hasilKalan)) },
+        { et: `Kumaşa giren (${fasonFmtM(ih.dokunan)} m yerde · tezgahta ${fasonFmtM(Math.round(ih.tezgahM))} m)`, f: k => (k.diger ? bos : { ...kg(k.kumasaGiren),
+            a: ih.dokunan > 0 ? (k === c ? `${fasonFmtM(Math.round(ih.kumasCozguM))} m çözgü` : `tezgah üstü ${fasonFmtM(Math.round(ih.tezgahM))} m üzerinden`) : '' }) },
+        ...(ih.kol.some(k => k.artik > 0) ? [{ et: `Kenar / makas artığı (${fasonFmtM(ih.artikCm)} cm / atkı)`, f: k => (k === c || k.diger ? bos : (k.artik == null ? { t: '—', r: 'gri' } : { ...kg(k.artik), a: 'kumaşta kalmaz, tüketilir' })) }] : []),
+        { et: 'Leventte kalması gereken', f: k => {
+            if (k !== c) return bos;
+            if (k.leventKalanM == null) return raporYok;
+            const asiri = k.leventKalanM < -Math.max(1, (k.leventCikanM || 0) * 0.005);
+            return { t: `${fasonFmtM(Math.round(k.leventKalanM))} m`, a: [k.leventKalanKg != null ? `≈ ${fasonFmtM(Math.round(k.leventKalanKg * 10) / 10)} kg` : '', asiri ? 'dokunan, leventten fazla — çekme yüksek girilmiş olabilir' : ''].filter(Boolean).join(' · '), ar: asiri ? 'kirmizi' : null };
+        } },
+        { et: '= Fasonda kalması gereken iplik', kalin: true, f: k => ({ ...kg(k.beklenen), a: k === c && k.raporYok && k.beklenen != null ? 'haşıl / levent kaybı dahil' : '' }) },
+        { et: 'Sayım (fasonun bildirdiği)', f: k => (k.sayim == null ? { t: 'sayım yok', r: 'gri' }
+            : { ...kg(k.sayim), a: `${fasonTarihYaz(k.sayimTarih)}${k === c && k.leventKalanSay ? ` · leventte ${fasonFmtM(k.leventKalanSay)} m` : ''}` }) },
+    ];
+    if (ih.kol.some(k => k.iadeSonra > 0)) {
+        satirlar.push({ et: '− Sayımdan sonra iade gelen', f: k => (k.iadeSonra > 0 ? kg(k.iadeSonra) : bos) });
+        satirlar.push({ et: '= Fasonda şu an', kalin: true, f: k => (k.fasondaSimdi == null ? bos : kg(k.fasondaSimdi)) });
+    }
+    if (ih.kol.some(k => k.telef)) satirlar.push({ et: '− Telef / döküntü', f: k => (k.telef ? kg(k.telef) : bos) });
+    satirlar.push({ et: 'Fark (açıklanmayan kayıp)', kalin: true, f: k => {
+        if (k.fark == null) return { t: '—', r: 'gri' };
+        if (k.fazla) return { t: `${fasonFmtM(Math.round(-k.fark * 10) / 10)} kg fazla`, r: 'sari', a: 'bildirilen, kalması gerekenden fazla — raporları / teknik bilgileri kontrol edin', ar: 'sari' };
+        return { ...kg(k.fark), r: k.asim ? 'kirmizi' : 'yesil', a: k.farkPct != null ? `${yuzde(k.farkPct)} kumaşa girenin${k.asim ? ' ⚠ tolerans aşıldı' : ''}` : '', ar: k.asim ? 'kirmizi' : null };
+    } });
+    return satirlar;
+}
+/** Sütun başlığı: "Çözgü" / "1. atkı" + kod (+ pay, çok atkıda) */
+function dokumaFasonIplikKolonAdi(ih, k) {
+    return { ad: k.ad, alt: k.kod ? `${k.kod}${k.oran != null && ih.kol.length > 2 ? ' · %' + fasonFmtM(Math.round(k.oran * 1000) / 10) : ''}` : '' };
+}
+/** Kg kontrolü + uyarılar (düz yazı parçaları; ekran ve PDF aynı) */
+function dokumaFasonIplikNotlari(ih) {
+    const kk = ih.kgKontrol;
+    const kgm = (x) => `${fasonFmtM(Math.round(x * 10) / 10)} kg`;
+    const kgKontrol = kk.beklenen != null && kk.gelen > 0 ? {
+        on: `gelen ham kumaş ${kgm(kk.gelen)} · beklenen ${kgm(kk.beklenen)} (kumaşa giren çözgü${kk.hasilPayiYok ? '' : ' × haşıl payı'} + atkı) → `,
+        sapma: `${kk.sapma >= 0 ? '+' : ''}%${fasonFmtM(Math.round(kk.sapma * 10) / 10)}`, uyari: kk.uyari,
+        son: [kk.uyari ? `⚠ ±%${DOKUMA_FASON_KG_SAPMA_PCT}'ten fazla — çekme, haşıl payı, iplik no ya da sıklıkları kontrol edin` : '',
+            kk.hasilPayiYok ? 'haşıl payı girilmemiş (haşıl ağırlığı hesapta yok)' : ''].filter(Boolean).join(' · '),
+    } : null;
+    return {
+        baslikAlt: `gelen ham kumaş metresine göre · fire payı düşülmez, fark gerçek firedir · tolerans %${fasonFmtM(ih.tolerans)}`,
+        eksik: ih.eksik.length ? `⚠ Hesap için eksik: ${ih.eksik.join(', ')} — teknik özelliklerden girin.` : '',
+        ipNo: ih.ipUyari.length ? `⚠ İplik numarası gönderilenle tutmuyor: ${ih.ipUyari.join(' · ')} — hesap teknik bilgideki numarayla yapılıyor; ✎ Teknik özelliklerden düzeltin.` : '',
+        diger: ih.kol.some(k => k.diger) ? '⚠ Atkı listesinde olmayan iplik koduyla gönderim var — teknik özelliklerde atkı ipliklerini kontrol edin.' : '',
+        kgKontrol, kgBekle: !kgKontrol && kk.gelen > 0 ? 'teknik bilgiler tamamlanınca gelen kumaşın kg\'ı beklenenle karşılaştırılır.' : '',
+        randiman: kk.randiman != null ? `randıman: gelen kumaş / net iplik = %${fasonFmtM(Math.round(kk.randiman * 10) / 10)}` : '',
+    };
+}
+function dokumaFasonIplikHesabiHtml(d) {
+    const ih = dokumaFasonIplikHesabi(d);
+    if (!ih.hareketVar) return '';
+    const RENK = { kirmizi: 'var(--rose-c)', sari: 'var(--amber-c)', yesil: 'var(--emerald-c)', gri: 'var(--text3)' };
+    const th = 'padding:5px 8px;text-align:right;font-size:9px;color:var(--text3);font-family:\'DM Mono\',monospace;text-transform:uppercase';
+    const td = 'padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;white-space:nowrap';
+    const hucre = (h) => `${h.r ? `<span style="color:${RENK[h.r]}">${pdfEsc(h.t)}</span>` : pdfEsc(h.t)}${h.a ? `<div style="font-size:8px;color:${RENK[h.ar] || 'var(--text3)'}">${pdfEsc(h.a)}</div>` : ''}`;
+    const govde = dokumaFasonIplikSatirlari(ih).map(s => `<tr style="border-top:1px solid var(--border)${s.kalin ? ';font-weight:700' : ''}">
+        <td style="padding:5px 8px;color:var(--text2)">${pdfEsc(s.et)}</td>${ih.kol.map(k => `<td style="${td}">${hucre(s.f(k))}</td>`).join('')}</tr>`).join('');
+    const n = dokumaFasonIplikNotlari(ih);
+    const kgSatir = n.kgKontrol
+        ? `⚖️ <b>Kg kontrolü:</b> ${pdfEsc(n.kgKontrol.on)}<b style="color:${n.kgKontrol.uyari ? 'var(--rose-c)' : 'var(--emerald-c)'}">${pdfEsc(n.kgKontrol.sapma)}</b>${n.kgKontrol.son ? ` · <span style="color:var(--amber-c)">${pdfEsc(n.kgKontrol.son)}</span>` : ''}`
+        : (n.kgBekle ? `⚖️ <b>Kg kontrolü:</b> ${pdfEsc(n.kgBekle)}` : '');
+    return `<div class="panel-box" style="padding:0;overflow:auto;border:1px solid var(--border)">
+        <div style="padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid var(--border)">
+            <div style="font-size:10px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:0.05em">🧮 İplik hesabı</div>
+            <div style="font-size:9px;color:var(--text3);flex:1;min-width:200px">${pdfEsc(n.baslikAlt)}</div>
+        </div>
+        ${n.ipNo ? `<div style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--rose-c)">${pdfEsc(n.ipNo)}</div>` : ''}
+        ${n.eksik ? `<div style="padding:6px 10px;font-size:10px;color:var(--amber-c)">${pdfEsc(n.eksik)}</div>` : ''}
+        <table style="width:100%;min-width:${260 + ih.kol.length * 120}px;border-collapse:collapse;font-size:10px">
+            <thead><tr><th style="${th};text-align:left"></th>${ih.kol.map(k => { const b = dokumaFasonIplikKolonAdi(ih, k); return `<th style="${th}">${pdfEsc(b.ad)}${b.alt ? `<div style="font-weight:400;text-transform:none">${pdfEsc(b.alt)}</div>` : ''}</th>`; }).join('')}</tr></thead>
+            <tbody>${govde}</tbody>
+        </table>
+        ${n.diger ? `<div style="padding:6px 10px;font-size:9px;color:var(--amber-c)">${pdfEsc(n.diger)}</div>` : ''}
+        ${kgSatir ? `<div style="padding:8px 10px;font-size:10px;line-height:1.6;color:var(--text2);border-top:1px solid var(--border)">${kgSatir}${n.randiman ? ` · ${pdfEsc(n.randiman)}` : ''}</div>` : ''}
+    </div>`;
+}
+/** Föy PDF'i için aynı tablo (açık zemin, sabit renkler) */
+function dokumaFasonIplikHesabiPdf(d) {
+    const ih = dokumaFasonIplikHesabi(d);
+    if (!ih.hareketVar) return '';
+    const RENK = { kirmizi: '#dc2626', sari: '#b45309', yesil: '#047857', gri: '#94a3b8' };
+    const td = 'border:1px solid #d9dee9;padding:4px 6px;font-size:9px;vertical-align:top';
+    const hucre = (h) => `${h.r ? `<span style="color:${RENK[h.r]}">${pdfEsc(h.t)}</span>` : pdfEsc(h.t)}${h.a ? `<div style="font-size:8px;color:${RENK[h.ar] || '#64748b'}">${pdfEsc(h.a)}</div>` : ''}`;
+    const n = dokumaFasonIplikNotlari(ih);
+    const tablo = `<table style="width:100%;border-collapse:collapse;margin-bottom:6px">
+        <tr><td style="${td};background:#f3f5fa;width:30%"></td>${ih.kol.map(k => { const b = dokumaFasonIplikKolonAdi(ih, k); return `<td style="${td};background:#f3f5fa;font-weight:700;text-align:right">${pdfEsc(b.ad)}${b.alt ? `<div style="font-weight:400;font-size:8px">${pdfEsc(b.alt)}</div>` : ''}</td>`; }).join('')}</tr>
+        ${dokumaFasonIplikSatirlari(ih).map(s => `<tr${s.kalin ? ' style="font-weight:700"' : ''}><td style="${td};background:#f8fafc">${pdfEsc(s.et)}</td>${ih.kol.map(k => `<td style="${td};text-align:right;white-space:nowrap">${hucre(s.f(k))}</td>`).join('')}</tr>`).join('')}
+    </table>`;
+    /* Notlar HTML olarak kurulur (her parça kaçışlı) */
+    const notlar = [n.ipNo ? `<b style="color:${RENK.kirmizi}">${pdfEsc(n.ipNo)}</b>` : '', n.eksik ? pdfEsc(n.eksik) : '', n.diger ? pdfEsc(n.diger) : '',
+        n.kgKontrol ? `<b>Kg kontrolü:</b> ${pdfEsc(n.kgKontrol.on)}<b style="color:${n.kgKontrol.uyari ? RENK.kirmizi : RENK.yesil}">${pdfEsc(n.kgKontrol.sapma)}</b>${n.kgKontrol.son ? ' · ' + pdfEsc(n.kgKontrol.son) : ''}`
+            : (n.kgBekle ? `<b>Kg kontrolü:</b> ${pdfEsc(n.kgBekle)}` : ''),
+        n.randiman ? pdfEsc(n.randiman) : ''].filter(Boolean);
+    return fasonPdfBaslik(`İplik hesabı <span style="font-weight:400;font-size:9px;color:#64748b">— ${pdfEsc(n.baslikAlt)}</span>`) + tablo
+        + (notlar.length ? `<div style="font-size:9px;line-height:1.5;color:#334155;margin-bottom:6px">${notlar.join('<br>')}</div>` : '');
+}
+
 /* ── Filtre / liste ─────────────────────────────────────────────── */
+/** Dokuma fason listesi: süzgeç (sipariş durumu, firma, iş durumu, arama), kayıt özetleri ve üst toplamlar — ekrana dokunmaz.
+    Masaüstü ekranı ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı"). */
+function dokumaFasonListeModeli(f) {
+    f = f || {};
+    const kayitlar = dokumaFasonKayitlari(f.siparisDurum);
+    const ozetler = new Map();
+    kayitlar.filter(dokumaFasonFasonMu).forEach(r => ozetler.set(String(r.id), dokumaFasonKayitOzet(r)));
+    const firmaSet = [...new Set([...ozetler.values()].flatMap(d => d.firmalar))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const q = String(f.arama || '').trim().toLocaleLowerCase('tr-TR');
+    const filtreli = kayitlar.filter(s => {
+        const d = ozetler.get(String(s.id));
+        if (f.firma && f.firma !== 'HEPSI' && !(d && d.firmalar.some(x => fasonFirmaKey(x) === fasonFirmaKey(f.firma)))) return false;
+        if (f.isDurum === 'ACIK' && !(d && !d.kapali)) return false;
+        if (f.isDurum === 'GECIKEN' && !(d && d.gecikme > 0)) return false;
+        if (f.isDurum === 'EKSIK' && !(d && d.eksik.length)) return false;
+        if (!q) return true;
+        return [s.sno, s.hangi_is, s.dokuma_fason_firma, s.kumas_adi, s.notlar, d?.firma].join(' ').toLocaleLowerCase('tr-TR').includes(q);
+    });
+    const fasonlar = filtreli.map(s => ozetler.get(String(s.id))).filter(Boolean);
+    const hakedis = {};
+    fasonlar.forEach(d => Object.entries(d.hakedis).forEach(([p, t]) => { hakedis[p] = (hakedis[p] || 0) + t; }));
+    const kpi = {
+        siparis: filtreli.length, fason: fasonlar.length, acik: fasonlar.filter(d => !d.kapali).length,
+        beklenen: fasonlar.filter(d => !d.kapali).reduce((a, d) => a + d.kalan, 0),
+        netIplik: fasonlar.reduce((a, d) => a + d.oAll.netIplik, 0),
+        hamMt: fasonlar.reduce((a, d) => a + d.oAll.hamMt, 0), hamK2: fasonlar.reduce((a, d) => a + d.oAll.hamK2, 0),
+        geciken: fasonlar.filter(d => d.gecikme > 0).length, eksik: fasonlar.filter(d => d.eksik.length).length
+    };
+    return { kayitlar, ozetler, firmaSet, filtreli, fasonlar, hakedis, kpi };
+}
 function dokumaFasonFiltreGuncelle(key, val) {
     if (!dokumaFasonFiltre) dokumaFasonFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
     dokumaFasonFiltre[key] = val;
@@ -44603,28 +45915,18 @@ function dokumaFasonListeYenile() {
     if (!list) return;
     if (!dokumaFasonFiltre) dokumaFasonFiltre = { arama: '', firma: 'HEPSI', siparisDurum: 'AKTIF' };
     const f = dokumaFasonFiltre;
-    const gorunum = ['IS', 'FIRMA', 'DEFTER'].includes(f.gorunum) ? f.gorunum : 'IS';
-    const kayitlar = dokumaFasonKayitlari();
-    const ozetler = new Map();
-    kayitlar.filter(dokumaFasonFasonMu).forEach(r => ozetler.set(String(r.id), dokumaFasonKayitOzet(r)));
-    const firmaSet = [...new Set([...ozetler.values()].flatMap(d => d.firmalar))].sort((a, b) => a.localeCompare(b, 'tr'));
-    const q = String(f.arama || '').trim().toLocaleLowerCase('tr-TR');
-    const filtreli = kayitlar.filter(s => {
-        const d = ozetler.get(String(s.id));
-        if (f.firma && f.firma !== 'HEPSI' && !(d && d.firmalar.some(x => fasonFirmaKey(x) === fasonFirmaKey(f.firma)))) return false;
-        if (f.isDurum === 'ACIK' && !(d && !d.tamam)) return false;
-        if (f.isDurum === 'GECIKEN' && !(d && d.gecikme > 0)) return false;
-        if (f.isDurum === 'EKSIK' && !(d && d.eksik.length)) return false;
-        if (!q) return true;
-        return [s.sno, s.hangi_is, s.dokuma_fason_firma, s.kumas_adi, s.notlar, d?.firma].join(' ').toLocaleLowerCase('tr-TR').includes(q);
-    });
-    const fasonlar = filtreli.map(s => ozetler.get(String(s.id))).filter(Boolean);
-    const hakedis = {};
-    fasonlar.forEach(d => Object.entries(d.hakedis).forEach(([p, t]) => { hakedis[p] = (hakedis[p] || 0) + t; }));
+    const gorunum = ['IS', 'FIRMA', 'DEFTER', 'COZGU', 'BUKUM'].includes(f.gorunum) ? f.gorunum : 'IS';
+    const cbGorunum = gorunum === 'COZGU' || gorunum === 'BUKUM';   /* çözgücü / bükümcü hesabı (41-fason-cozgu-bukum.js) */
+    if (cbGorunum && !(dataCache.iplik_stok || []).length && typeof erpSyncAllDataBekle === 'function' && !window._fasonCbYukleniyor) {
+        window._fasonCbYukleniyor = true;
+        erpSyncAllDataBekle({ silent: true, tables: ['iplik_stok'], light: true }).catch(() => {}).finally(() => { window._fasonCbYukleniyor = false; if (appMode === 'DOKUMA_FASON_TAKIP') dokumaFasonListeYenile(); });
+    }
+    const { ozetler, firmaSet, filtreli, fasonlar, hakedis, kpi } = dokumaFasonListeModeli(f);
     const sekme = (id, ad) => `<button type="button" class="btn-pro ${gorunum === id ? 'btn-primary-pro' : 'btn-ghost-pro'}" style="padding:6px 12px;font-size:11px" onclick="dokumaFasonFiltreGuncelle('gorunum','${id}')">${ad}</button>`;
     let govde;
     if (gorunum === 'FIRMA') govde = fasonFirmaCariHtml('DOKUMA');
     else if (gorunum === 'DEFTER') govde = fasonDefterHtml('DOKUMA', f);
+    else if (cbGorunum) govde = typeof fasonCbHtml === 'function' ? fasonCbHtml(gorunum === 'COZGU' ? 'C' : 'B') : '';
     else govde = filtreli.length ? filtreli.map(s => dokumaFasonSatirHtml(s, ozetler.get(String(s.id)))).join('')
         : `<div class="empty-pro" style="padding:40px"><div class="empty-pro-icon">🧶</div><div class="empty-pro-title">Dokuma siparişi yok</div><div class="empty-pro-sub">"+ Yeni Dokuma Siparişi" ile ilk kaydı oluşturun.</div></div>`;
     list.innerHTML = `<div data-fason-ekran="DOKUMA" style="display:flex;flex-direction:column;gap:12px">
@@ -44637,18 +45939,18 @@ function dokumaFasonListeYenile() {
             ${fasonYazabilir('DOKUMA') ? `<button type="button" class="btn-pro btn-primary-pro" style="padding:8px 16px;font-size:11px;white-space:nowrap" onclick="dokumaSiparisYeniAc()">＋ Yeni Dokuma Siparişi</button>` : ''}
         </div>
         ${_fasonAkis.hata ? `<div class="panel-box" style="padding:10px 14px;border-left:3px solid var(--rose-c);font-size:11px;color:var(--rose-c)">Fason kayıtları okunamadı: ${pdfEsc(_fasonAkis.hata)}</div>` : ''}
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
-            ${fasonKpiKutu('Dokuma siparişi', fasonFmtI(filtreli.length), 'var(--amber-c)', `${fasonFmtI(fasonlar.length)} fason · ${fasonFmtI(fasonlar.filter(d => !d.tamam).length)} açık`)}
-            ${fasonKpiKutu('Fasondan beklenen', fasonFmtM(fasonlar.filter(d => !d.tamam).reduce((a, d) => a + d.kalan, 0)) + ' m', 'var(--rose-c)', 'hedef − gelen ham kumaş')}
-            ${fasonKpiKutu('Gönderilen iplik (net)', fasonFmtM(fasonlar.reduce((a, d) => a + d.oAll.netIplik, 0)) + ' kg', '#06b6d4', 'gönderilen − iade')}
-            ${fasonKpiKutu('Gelen ham kumaş', fasonFmtM(fasonlar.reduce((a, d) => a + d.oAll.hamMt, 0)) + ' m', 'var(--emerald-c)', `${fasonFmtM(fasonlar.reduce((a, d) => a + d.oAll.hamK2, 0))} m 2. kalite`)}
-            ${fasonKpiKutu('Geciken / eksik', `${fasonFmtI(fasonlar.filter(d => d.gecikme > 0).length)} / ${fasonFmtI(fasonlar.filter(d => d.eksik.length).length)}`, 'var(--amber-c)', 'iş')}
+        ${cbGorunum ? '' : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+            ${fasonKpiKutu('Dokuma siparişi', fasonFmtI(kpi.siparis), 'var(--amber-c)', `${fasonFmtI(kpi.fason)} fason · ${fasonFmtI(kpi.acik)} açık`)}
+            ${fasonKpiKutu('Fasondan beklenen', fasonFmtM(kpi.beklenen) + ' m', 'var(--rose-c)', 'hedef − gelen ham kumaş')}
+            ${fasonKpiKutu('Gönderilen iplik (net)', fasonFmtM(kpi.netIplik) + ' kg', '#06b6d4', 'gönderilen − iade')}
+            ${fasonKpiKutu('Gelen ham kumaş', fasonFmtM(kpi.hamMt) + ' m', 'var(--emerald-c)', `${fasonFmtM(kpi.hamK2)} m 2. kalite`)}
+            ${fasonKpiKutu('Geciken / eksik', `${fasonFmtI(kpi.geciken)} / ${fasonFmtI(kpi.eksik)}`, 'var(--amber-c)', 'iş')}
             ${fasonFiyatGorur() ? fasonKpiKutu('Hakediş (matrah)', `<span style="font-size:14px">${fasonParaMetin(hakedis)}</span>`, 'var(--emerald-c)', 'KDV hariç') : ''}
-        </div>
+        </div>`}
         <div class="panel-box" style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-            ${sekme('IS', '🧶 Dokuma işleri')}${sekme('FIRMA', '🏭 Firmalar & cari')}${sekme('DEFTER', '🕘 İşlem defteri')}
+            ${sekme('IS', '🧶 Dokuma işleri')}${sekme('COZGU', '🧵 Çözgücüler')}${sekme('BUKUM', '🌀 Bükümcüler')}${sekme('FIRMA', '🏭 Firmalar & cari')}${sekme('DEFTER', '🕘 İşlem defteri')}
             <span style="flex:1"></span>
-            <input class="pro-input" placeholder="Ara: sipariş no, kumaş, firma…" value="${pdfEsc(f.arama || '')}" oninput="dokumaFasonFiltreGuncelle('arama', this.value)" style="min-width:180px;flex:1;max-width:280px;padding:6px 10px">
+            ${cbGorunum ? '' : `<input class="pro-input" placeholder="Ara: sipariş no, kumaş, firma…" value="${pdfEsc(f.arama || '')}" oninput="dokumaFasonFiltreGuncelle('arama', this.value)" style="min-width:180px;flex:1;max-width:280px;padding:6px 10px">
             <select class="pro-input" onchange="dokumaFasonFiltreGuncelle('firma', this.value)" style="min-width:150px;width:auto;padding:6px 10px">
                 <option value="HEPSI">Tüm fason firmalar</option>${firmaSet.map(x => `<option value="${pdfEsc(x)}" ${f.firma === x ? 'selected' : ''}>${pdfEsc(x)}</option>`).join('')}
             </select>
@@ -44657,7 +45959,7 @@ function dokumaFasonListeYenile() {
             </select>
             <select class="pro-input" onchange="dokumaFasonFiltreGuncelle('siparisDurum', this.value)" style="width:auto;padding:6px 10px">
                 ${[['AKTIF', 'Aktif'], ['TAMAMLANDI', 'Tamamlanan'], ['HEPSI', 'Tümü']].map(([k, a]) => `<option value="${k}" ${(f.siparisDurum || 'AKTIF') === k ? 'selected' : ''}>${a}</option>`).join('')}
-            </select>
+            </select>`}
         </div>
         ${govde}
     </div>`;
@@ -44695,29 +45997,44 @@ function dokumaFasonKartHtml(d) {
         fasonDegerKutu('İplik ihtiyacı', fasonFmtM(d.ihtiyac.toplamKg) + ' kg', null, `çözgü ${fasonFmtM(d.ihtiyac.cozguKg)} · atkı ${fasonFmtM(d.ihtiyac.atkiKg)}`),
         fasonDegerKutu('Gönderilen iplik (net)', fasonFmtM(o.netIplik) + ' kg', '#06b6d4', `çözgü ${fasonFmtM(o.netIplikC)} · atkı ${fasonFmtM(o.netIplikA)}`),
         o.leventGiden || o.leventGelen ? fasonDegerKutu('Levent', `${fasonFmtM(o.leventGelen || o.leventGiden)} m`, null, `giden ${fasonFmtM(o.leventGiden)} · gelen ${fasonFmtM(o.leventGelen)}`) : '',
-        o.enM || o.grM || o.hpM ? fasonDegerKutu('Ölçüm ortalaması', `${o.enM ? fasonFmtM(Math.round(o.ortEn * 10) / 10) + ' cm' : '—'} · ${o.grM ? fasonFmtI(o.ortGramaj) + ' g/m²' : '—'}`, d.hpAsim ? 'var(--rose-c)' : null, o.hpM ? `hata ${fasonFmtM(Math.round(o.ortHata * 10) / 10)} puan${d.dfoy.hata_puan_limit ? ' (sınır ' + fasonFmtM(d.dfoy.hata_puan_limit) + ')' : ''}` : '') : '',
+        o.cozguMt || o.hasilCikan ? fasonDegerKutu('Çözgü / haşıl', `${fasonFmtM(o.cozguMt)} m`, null,
+            `${fasonFmtI(o.cozguLevent)} levent çözüldü${o.hasilCikan ? ` · haşıldan çıkan ${fasonFmtM(o.hasilCikan)} m` : ''}${o.hasilKalanKg ? ` · haşılda kalan ${fasonFmtM(o.hasilKalanKg)} kg` : ''}${o.leventGecis ? ` · dokumacıya ${fasonFmtM(o.leventGecis)} m` : ''}`) : '',
+        Object.keys(o.sayimlar).length ? fasonDegerKutu('Son sayım (fasonda kalan)', `${fasonFmtM(Object.values(o.sayimlar).reduce((s, x) => s + x.kg, 0))} kg`, 'var(--amber-c)',
+            Object.values(o.sayimlar).map(x => `${x.iplik_yer === 'COZGU' ? 'çözgülük' : 'atkılık'}${x.iplik_kodu ? ' ' + x.iplik_kodu : ''} ${fasonFmtM(x.kg)} kg`).join(' · ')) : '',
+        o.enM || o.grM || o.hpM ? fasonDegerKutu('Ölçüm ortalaması', `${o.enM ? fasonFmtM(Math.round(o.ortEn * 10) / 10) + ' cm' : '—'} · ${o.grM ? fasonFmtI(o.ortGramaj) + ' g/m²' : '—'}`, d.hpAsim ? 'var(--rose-c)' : null, o.hpM ? `hata ${fasonFmtM(Math.round(o.ortHata * 10) / 10)} puan${DOKUMA_FASON_KALITE_KABUL && d.dfoy.hata_puan_limit ? ' (sınır ' + fasonFmtM(d.dfoy.hata_puan_limit) + ')' : ''}` : '') : '',
         fiyatGor ? fasonDegerKutu('Hakediş (matrah)', fasonParaMetin(d.hakedis), 'var(--emerald-c)', 'gelen × iş fiyatı') : '',
     ].filter(Boolean).join('');
-    let mut = '';
-    if (o.hamMt > 0 && o.netIplik > 0 && d.teorik.toplamKg > 0) {
-        const asim = d.fireYuzde != null && d.fireYuzde > fasonTakipNum(d.dfoy.iplik_fire_pct || 0);
-        mut = `<div style="font-size:10px;line-height:1.6;color:var(--text2)">🧮 <b>İplik mutabakatı:</b> net gönderilen ${fasonFmtM(o.netIplik)} kg − gelen ${fasonFmtM(o.hamMt)} m için gereken ${fasonFmtM(d.teorik.toplamKg)} kg (firesiz) =
-            <b style="color:${asim ? 'var(--rose-c)' : 'inherit'}">${fasonFmtM(d.iplikFark)} kg</b> ${d.tamam ? (d.fireYuzde != null ? `→ fire %${fasonFmtM(d.fireYuzde)} (tolerans %${fasonFmtM(d.dfoy.iplik_fire_pct || 0)})${asim ? ' ⚠ tolerans aşıldı — iplik iadesi ya da açıklama isteyin' : ''}` : '') : '→ fasonda olması gereken iplik'}
-            ${o.hamKg > 0 ? ` · kg randımanı: gelen kumaş ${fasonFmtM(o.hamKg)} kg / net iplik = %${fasonFmtM(Math.round(o.hamKg / o.netIplik * 1000) / 10)}` : ''}</div>`;
-    }
+    /* İplik hesabı tablosu (21.10.2026) — eski tek satırlık "iplik mutabakatı"nın yerine (çözgü / atkı ayrı, çekmeli, sayımlı) */
+    const mut = dokumaFasonIplikHesabiHtml(d);
     const isKartlari = d.isler.map(is => {
         const io = d.isOzet[is.id];
         const tur = String(is.turler || '');
         const dokumaIs = tur.includes('DOKUMA');
-        const parca = [io.netIplik ? `iplik ${fasonFmtM(io.netIplik)} kg` : '', io.leventGiden ? `levent giden ${fasonFmtM(io.leventGiden)} m` : '', io.leventGelen ? `levent gelen ${fasonFmtM(io.leventGelen)} m` : '', io.hamMt ? `ham kumaş ${fasonFmtM(io.hamMt)} m` : ''].filter(Boolean);
+        const parca = [io.netIplik ? `iplik ${fasonFmtM(io.netIplik)} kg` : '',
+            io.cozguMt ? `çözgü ${fasonFmtM(io.cozguMt)} m (${fasonFmtI(io.cozguLevent)} levent)` : '',
+            io.hasilCikan ? `haşıl ${io.hasilGiren ? fasonFmtM(io.hasilGiren) + ' → ' : ''}${fasonFmtM(io.hasilCikan)} m` : '',
+            io.leventGecis ? `dokumacıya ${fasonFmtM(io.leventGecis)} m` : '',
+            Object.keys(io.sayimlar).length ? `sayım ${fasonFmtI(Object.keys(io.sayimlar).length)} iplik` : '', io.leventGiden ? `levent giden ${fasonFmtM(io.leventGiden)} m` : '', io.leventGelen ? `levent gelen ${fasonFmtM(io.leventGelen)} m` : '', io.hamMt ? `ham kumaş ${fasonFmtM(io.hamMt)} m` : ''].filter(Boolean);
         const html = `<div style="font-size:10px;color:var(--text2)">${parca.join(' · ') || 'Henüz hareket yok'}</div>`;
+        /* Akış sırasıyla: gönderim → çözgü / haşıl raporu → (ayrı firmada levent dokumacıya) → ham kumaş → iade → sayım (21.10.2026) */
         const dugmeler = dokumaIs
-            ? [is.girdi === 'LEVENT' ? 'LEVENT' : 'IPLIK', 'IPLIK', 'HAM', 'IPLIK_IADE', 'KONTROL'].filter((x, i, arr) => arr.indexOf(x) === i)
-            : ['IPLIK', 'LEVENT', 'LEVENT_GELEN', 'IPLIK_IADE', 'KONTROL'];
-        return fasonIsKartHtml(d.anahtar, is, io, { html, tamam: d.tamam }, dugmeler);
+            ? [is.girdi === 'LEVENT' ? 'LEVENT' : 'IPLIK', 'IPLIK', ...(is.girdi === 'LEVENT' ? [] : ['COZGU_RAPOR', 'HASIL_RAPOR']), 'HAM', 'IPLIK_IADE', 'SAYIM', 'KONTROL'].filter((x, i, arr) => arr.indexOf(x) === i)
+            : ['IPLIK', 'LEVENT', 'COZGU_RAPOR', 'HASIL_RAPOR', 'LEVENT_GECIS', 'LEVENT_GELEN', 'IPLIK_IADE', 'SAYIM', 'KONTROL'];
+        return fasonIsKartHtml(d.anahtar, is, io, { html, tamam: d.tamam || d.kapali }, d.kapali ? null : dugmeler);
     }).join('');
     const eksik = d.eksik.length ? `<span class="pill pill-amber" style="font-size:8px">⚠ Eksik: ${pdfEsc(d.eksik.join(', '))}</span>` : '<span class="pill pill-green" style="font-size:8px">✓ Bilgiler tam</span>';
+    const dfidArg = fasonArg(String(d.row.id));
+    /* ✓ Bitti şeridi (kapalı iş): fire özeti iplik hesabından canlı */
+    const bittiSerit = d.kapali ? (() => {
+        const fire = dokumaFasonFireMetni(dokumaFasonIplikHesabi(d));
+        return `<div style="padding:8px 12px;border-radius:10px;background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <div style="flex:1;min-width:220px;font-size:11px;color:var(--text)"><b style="color:var(--emerald-c)">✓ Bitti</b> — dokuma siparişi Tamamlandı${d.row.updated_at ? ` · ${fasonTarihYaz(String(d.row.updated_at).slice(0, 10))}` : ''}${fire ? ` · ${pdfEsc(fire)}` : ''}
+                <div style="font-size:9px;color:var(--text3);margin-top:2px">Kapalı işe hareket girilmez; düzeltme gerekirse yeniden açın.</div></div>
+            ${yaz ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 12px;font-size:10px" onclick="dokumaFasonYenidenAc(${dfidArg})">↺ Yeniden aç</button>` : ''}
+        </div>`;
+    })() : '';
     return `<div style="display:flex;flex-direction:column;gap:10px">
+        ${bittiSerit}
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
             <div style="flex:1;min-width:200px;font-size:10px;color:var(--text3)">${pdfEsc(d.row.kumas_adi || '')} · ${fasonFmtM(d.hedef)} m${d.dfoy.kumas_kodu ? ' · depo kodu ' + pdfEsc(d.dfoy.kumas_kodu) : ''}${d.row.hangi_is ? ' · ' + pdfEsc(d.row.hangi_is) : ''}</div>
             ${fasonKontrolRozetleri(o)} ${eksik}
@@ -44728,8 +46045,9 @@ function dokumaFasonKartHtml(d) {
         <div style="display:flex;flex-wrap:wrap;gap:6px">
             <button type="button" class="btn-pro btn-primary-pro" style="padding:5px 12px;font-size:10px" onclick="fasonFoyFormAc(${a},'dfoy')">📋 Dokuma föyü</button>
             <button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="fasonFoyPdf(${a})">🖨 Föy PDF</button>
-            ${yaz ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="fasonFoyFormAc(${a},'is','')">＋ Fason iş ekle (haşıl, çözgü, terbiye…)</button>
-            <button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="dokumaSiparisDuzenle(${fasonArg(String(d.row.id))})">✎ Teknik özellikler</button>` : ''}
+            ${yaz && !d.kapali ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="fasonFoyFormAc(${a},'is','')">＋ Fason iş ekle (haşıl, çözgü, terbiye…)</button>` : ''}
+            ${yaz ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="dokumaSiparisDuzenle(${dfidArg})">✎ Teknik özellikler</button>` : ''}
+            ${yaz && !d.kapali && o.hareketSay > 0 ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 12px;font-size:10px;color:var(--emerald-c);border-color:rgba(16,185,129,0.45)" title="Sayım ve iade girildikten sonra işi kapatır: dokuma siparişi Tamamlandı" onclick="dokumaFasonBitti(${dfidArg})">✓ Bitti</button>` : ''}
             ${d.row.hangi_is && fasonDokumaSiparisId(d.row) ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="fasonTakipSiparisIncelemeAc(${fasonArg(String(fasonDokumaSiparisId(d.row)))})">🔍 Müşteri siparişi</button>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -44746,14 +46064,16 @@ function dokumaFasonFoyPdfGovde(b, ozet) {
     const r = b.row;
     const d = dokumaFasonKayitOzet(r);
     const fiyatGor = fasonFiyatGorur();
+    const tk = dokumaFasonTeknikMetin(r);
     let html = fasonPdfBaslik('Kumaş ve teknik özellikler') + fasonPdfTablo([
         ['Dokuma siparişi', pdfEsc(`${r.sno || ''} · ${r.hangi_is || ''}`)], ['Kumaş', pdfEsc([d.dfoy.kumas_kodu, r.kumas_adi].filter(Boolean).join(' · '))],
-        ['Metre', `<b>${fasonFmtM(r.metre)} m</b>`], ['Çözgü', pdfEsc(`${fasonFmtM(r.cozgu_sikligi)} tel/cm · ${fasonFmtI(r.cozgu_tel_sayisi)} tel · ip no ${r.cozgu_ip_no || '—'} (${r.ip_no_sistemi || 'NE'})`)],
-        ['Atkı', pdfEsc(`${fasonFmtM(r.atki_sikligi)} atkı/cm · ip no ${r.atki_ip_no || '—'}`)], ['Tarak eni', `${fasonFmtM(r.tarak_eni_m)} m`],
+        ['Metre', `<b>${fasonFmtM(r.metre)} m</b>`], ['Çözgü', pdfEsc(tk.cozgu)],
+        ['Atkı', pdfEsc(tk.atki)], ['Tarak eni', pdfEsc(tk.tarak)],
         d.dfoy.hedef_en ? ['Hedef ham en', `${fasonFmtM(d.dfoy.hedef_en)} cm`] : null, d.dfoy.hedef_gramaj ? ['Hedef gramaj', `${fasonFmtI(d.dfoy.hedef_gramaj)} g/m²`] : null,
         d.dfoy.orgu ? ['Örgü', pdfEsc(d.dfoy.orgu)] : null, d.dfoy.kenar ? ['Kenar', pdfEsc(d.dfoy.kenar)] : null,
-        ['İplik ihtiyacı (fire dahil)', `çözgü <b>${fasonFmtM(d.ihtiyac.cozguKg)} kg</b> · atkı <b>${fasonFmtM(d.ihtiyac.atkiKg)} kg</b>`],
-        d.dfoy.hata_puan_limit ? ['Kalite kabul', pdfEsc(`4 puan sistemi · en fazla ${d.dfoy.hata_puan_limit} puan / 100 m²`)] : null,
+        ['İplik ihtiyacı (fire dahil)', tk.ihtiyac ? pdfEsc(tk.ihtiyac) : '—'],
+        tk.h && tk.h.beklenenHamKg > 0 ? ['Beklenen ham kumaş', pdfEsc(`${fasonFmtM(Math.round(tk.h.beklenenHamKg))} kg (firesiz, haşıllı)${tk.h.beklenenGramaj ? ` · ≈ ${fasonFmtI(tk.h.beklenenGramaj)} g/m²` : ''}`)] : null,
+        DOKUMA_FASON_KALITE_KABUL && d.dfoy.hata_puan_limit ? ['Kalite kabul', pdfEsc(`4 puan sistemi · en fazla ${d.dfoy.hata_puan_limit} puan / 100 m²`)] : null,
         ['Termin', pdfEsc(fasonTarihYaz(r.ttarih))],
     ]);
     if (ozet) return html;
@@ -44761,10 +46081,28 @@ function dokumaFasonFoyPdfGovde(b, ozet) {
         pdfEsc(`${fasonIsAd(is)} · termin ${fasonTarihYaz(is.termin)}`) + (fiyatGor && fasonTakipNum(is.birim_fiyat) > 0 ? ` · ${fasonFmtPara(is.birim_fiyat, is.para_birimi)} / ${pdfEsc(fasonSecenekAd(FASON_FIYAT_BIRIM, is.fiyat_birim).split(' ')[0].toLowerCase())}` : '')]))
         + (d.dfoy.aciklama ? fasonPdfBaslik('Açıklama') + fasonPdfTablo([['Talimat', pdfEsc(d.dfoy.aciklama)]]) : '')
         + fasonPdfBaslik('Durum') + fasonPdfTablo([
+            ['Durum', pdfEsc(d.kapali
+                ? `✓ Bitti — dokuma siparişi Tamamlandı${r.updated_at ? ' · ' + fasonTarihYaz(String(r.updated_at).slice(0, 10)) : ''}${(() => { const f = dokumaFasonFireMetni(dokumaFasonIplikHesabi(d)); return f ? ' · ' + f : ''; })()}`
+                : ({ TAMAM: 'Ham kumaşın hepsi geldi (kapatılmadı)', KISMI: 'Ham kumaş kısmen geldi', FASONDA: 'Fasonda', BEKLIYOR: 'Gönderilmedi' }[d.durum] || d.durum))],
             ['Gönderilen iplik (net)', `çözgü ${fasonFmtM(d.oAll.netIplikC)} kg · atkı ${fasonFmtM(d.oAll.netIplikA)} kg`],
+            d.oAll.cozguMt || d.oAll.hasilCikan ? ['Çözgü / haşıl', pdfEsc(`${fasonFmtM(d.oAll.cozguMt)} m çözüldü (${fasonFmtI(d.oAll.cozguLevent)} levent)${d.oAll.hasilCikan ? ` · haşıldan çıkan ${fasonFmtM(d.oAll.hasilCikan)} m` : ''}${d.oAll.hasilKalanKg ? ` · haşılda kalan ${fasonFmtM(d.oAll.hasilKalanKg)} kg` : ''}${d.oAll.leventGecis ? ` · dokumacıya ${fasonFmtM(d.oAll.leventGecis)} m` : ''}`)] : null,
             ['Gelen ham kumaş', `${fasonFmtM(d.oAll.hamMt)} m (${fasonFmtM(d.oAll.hamK2)} m 2. kalite) · kalan ${fasonFmtM(d.kalan)} m`],
-        ]) + fasonImzaHtml(d.firma);
+        ])
+        + dokumaFasonRaporlarPdf(d)
+        + dokumaFasonIplikHesabiPdf(d)
+        + fasonImzaHtml(d.firma);
     return html;
+}
+/** Föy PDF'i: fasonun bildirdikleri (çözgü / haşıl raporu, levent geçişi, kalan iplik sayımı) tarih sırasıyla */
+function dokumaFasonRaporlarPdf(d) {
+    const tipler = ['COZGU_RAPOR', 'HASIL_RAPOR', 'LEVENT_GECIS', 'SAYIM'];
+    const hs = (d.hareketler || []).filter(h => !h.silindi && tipler.includes(h.tip))
+        .sort((a, b) => `${a.tarih}|${a.ts}`.localeCompare(`${b.tarih}|${b.ts}`));
+    if (!hs.length) return '';
+    return fasonPdfBaslik('Çözgü / haşıl raporları ve sayımlar') + fasonPdfTablo(hs.map(h => [
+        `${fasonTarihYaz(h.tarih)} · ${FASON_TIPLER[h.tip].ad}`,
+        pdfEsc([fasonHareketMiktarMetin(h), fasonHareketDetayMetin(h)].filter(Boolean).join(' · '))
+    ]));
 }
 function dokumaFasonFoyPdf(b) {
     if (!b.row) return;
@@ -44773,7 +46111,7 @@ function dokumaFasonFoyPdf(b) {
 }
 
 try {
-    Object.assign(window, { renderDokumaFasonTakip, dokumaFasonListeYenile, dokumaFasonFiltreGuncelle, dokumaFasonToggleSiparis });
+    Object.assign(window, { renderDokumaFasonTakip, dokumaFasonListeYenile, dokumaFasonFiltreGuncelle, dokumaFasonToggleSiparis, dokumaFasonBitti, dokumaFasonYenidenAc });
 } catch (e) {}
 /* ════ NUMUNE (NUMUNE), 01.10.2026 ═══════════════════════════════════════
    Kumaş / mamül numunesi. Numune, stok kartının AYNI formuyla girilir ve aynı
@@ -45072,11 +46410,13 @@ function numuneFiltreGuncelle(alan, deger) {
     numuneFiltre[alan] = deger;
     numuneListeYenile();
 }
-function numuneListeSatirlari() {
-    const q = String(document.getElementById('search')?.value || '').toLocaleLowerCase('tr-TR').trim();
-    const f = numuneFiltre.durum;
+/** Liste satırları: tür + durum süzgeci + arama, deneme sırasıyla. Verilmeyen ekranın kendi seçimi (ana program + mobil). */
+function numuneListeSatirlari(ara, tur, durum) {
+    const q = String(ara != null ? ara : (document.getElementById('search')?.value || '')).toLocaleLowerCase('tr-TR').trim();
+    const f = durum || numuneFiltre.durum;
+    const t = tur || numuneTur;
     return _numune.liste.filter(r => {
-        if (r.tur !== numuneTur) return false;
+        if (r.tur !== t) return false;
         if (f === 'SILINEN') { if (!r.silindi) return false; }
         else if (r.silindi) return false;
         if (f === 'ACIK' && NUMUNE_KAPALI.includes(r.durum)) return false;
@@ -45091,16 +46431,26 @@ function numuneListeSatirlari() {
         return kb - ka || numuneDenemeNo(b.numune_no) - numuneDenemeNo(a.numune_no);
     });
 }
+/** Durum süzgecinin sayıları (silinenler hariç): { ACIK, HEPSI, <durum>: n } */
+function numuneDurumSayilari(tur) {
+    const turdeki = _numune.liste.filter(r => r.tur === tur && !r.silindi);
+    const o = { ACIK: turdeki.filter(r => !NUMUNE_KAPALI.includes(r.durum)).length, HEPSI: turdeki.length };
+    NUMUNE_DURUMLAR.forEach(([d]) => { o[d] = turdeki.filter(r => r.durum === d).length; });
+    return o;
+}
+/** Termini geçmiş, kapanmamış numune mi */
+function numuneGeciktiMi(r, bugun) {
+    return !!(r.termin && r.termin < (bugun || numuneBugun()) && !NUMUNE_KAPALI.includes(r.durum) && !r.silindi);
+}
 function numuneListeYenile() {
     if (appMode !== 'NUMUNE') return;
     const list = document.getElementById('main-list');
     if (!list) return;
     const tur = NUMUNE_TURLER[numuneTur];
     const sekme = (id) => `<button type="button" class="btn-pro ${numuneTur === id ? 'btn-primary-pro' : 'btn-ghost-pro'}" style="padding:6px 14px;font-size:12px" onclick="numuneEkraniAc('${id}')">${NUMUNE_TURLER[id].ikon} ${NUMUNE_TURLER[id].ad}</button>`;
-    const turdeki = _numune.liste.filter(r => r.tur === numuneTur && !r.silindi);
-    const sayac = (d) => turdeki.filter(r => r.durum === d).length;
-    const durumSec = [['ACIK', `Açık (${turdeki.filter(r => !NUMUNE_KAPALI.includes(r.durum)).length})`], ['HEPSI', `Hepsi (${turdeki.length})`]]
-        .concat(NUMUNE_DURUMLAR.map(([d, ad]) => [d, `${ad} (${sayac(d)})`]))
+    const say = numuneDurumSayilari(numuneTur);
+    const durumSec = [['ACIK', `Açık (${say.ACIK})`], ['HEPSI', `Hepsi (${say.HEPSI})`]]
+        .concat(NUMUNE_DURUMLAR.map(([d, ad]) => [d, `${ad} (${say[d]})`]))
         .concat([['SILINEN', 'Silinenler']])
         .map(([v, ad]) => `<option value="${v}" ${numuneFiltre.durum === v ? 'selected' : ''}>${ad}</option>`).join('');
     const ust = `
@@ -45124,7 +46474,7 @@ function numuneListeYenile() {
     const salt = numuneSaltOkunur();
     const govde = satirlar.length ? satirlar.map(r => {
         const [, dAd, dRenk] = numuneDurumBilgi(r.durum);
-        const gecikti = r.termin && r.termin < bugun && !NUMUNE_KAPALI.includes(r.durum) && !r.silindi;
+        const gecikti = numuneGeciktiMi(r, bugun);
         const id = Number(r.id);
         let islem;
         const foyBtn = `<button type="button" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:10px" onclick="numuneGoster(${id})" title="Numune föyü — salt okunur, PDF">Föy</button>`;
@@ -45732,7 +47082,8 @@ const ERP_UYARI_ESIK = {
     ikizSaat: 48,           // aynı ürüne aynı adedin tekrar girildiği pencere
     tezgahDurusSaat: 4,     // tezgah bu kadar saattir duruyorsa
     numuneDonusGun: 10,     // numune müşteride, bu kadar gündür cevap yoksa
-    boyahaneGun: 14         // boyahanede mal var, bu kadar gündür hareket yoksa
+    boyahaneGun: 14,        // boyahanede mal var, bu kadar gündür hareket yoksa
+    boyahaneTerminGun: 2    // boya işinin termini bu kadar gün içindeyse (mal gelmedi)
 };
 const ERP_UYARI_SEVIYE = {
     KRITIK: { ad: 'Kritik', renk: 'var(--rose-c)', sira: 0 },
@@ -45983,6 +47334,13 @@ function erpUyariTerbiye(ekle) {
         baslik: `Boyahanede ${geciken.length} iş gecikti`,
         ornekler: geciken.sort((a, b) => b.gecikme - a.gecikme).map(o => `${ad(o)} · ${o.gecikme} gün · ${o.giden.say ? 'boyahanede ' + m(o, o.kalan) : 'gönderilmedi'}`), git
     });
+    /* Termine yaklaşan (22.10.2026): boyahanenin verdiği (yoksa istediğimiz) termine 0–2 gün kalmış, mal gelmemiş */
+    const yaklasan = acik.filter(o => o.terminKalan != null && o.terminKalan >= 0 && o.terminKalan <= ERP_UYARI_ESIK.boyahaneTerminGun);
+    if (yaklasan.length) ekle({
+        id: 'terbiye-yaklas', seviye: 'BILGI', grup: 'URETIM', mod: 'BOYAHANE_URETIM', sayi: yaklasan.length,
+        baslik: `Boyahanede ${yaklasan.length} işin termini yaklaştı`,
+        ornekler: yaklasan.sort((a, b) => a.terminKalan - b.terminKalan).map(o => `${ad(o)} · ${o.terminKalan === 0 ? 'bugün' : o.terminKalan + ' gün kaldı'} (${fasonTarihYaz(o.termin)}) · ${o.giden.say ? 'boyahanede ' + m(o, o.kalan) : 'gönderilmedi'}`), git
+    });
     const bekleyen = acik.filter(o => o.kalan > 0.004 && !(o.gecikme > 0) && (() => { const g = erpUyariGunFarki(o.sonTarih); return g != null && -g > ERP_UYARI_ESIK.boyahaneGun; })());
     if (bekleyen.length) ekle({
         id: 'terbiye-bekle', seviye: 'BILGI', grup: 'URETIM', mod: 'BOYAHANE_URETIM', sayi: bekleyen.length,
@@ -46043,7 +47401,7 @@ async function erpUyariVeriTazele(zorla) {
     });
     is('terbiye', can('BOYAHANE_URETIM') && typeof fasonAkisYukle === 'function', () => fasonAkisYukle(false));
     /* Veri tutarlılığı: açık siparişlerin sevk sayaçları (yalnız düzeltme yetkisi olana) */
-    is('veri', typeof erpVeriBekciVeriTazele === 'function' && typeof depoDuzeltYetkiliMi === 'function' && depoDuzeltYetkiliMi(),
+    is('veri', typeof erpVeriBekciVeriTazele === 'function' && typeof erpVeriBekciGorurMu === 'function' && erpVeriBekciGorurMu(),
         () => erpVeriBekciVeriTazele());
     is('depoIz', typeof erpIsAdmin === 'function' && erpIsAdmin(), async () => {
         const sinir = new Date(Date.now() - 86400000).toISOString();
@@ -46265,6 +47623,11 @@ function erpNabizPlatform() {
     if (window.erpDesktop) return 'MASAUSTU';
     return 'TARAYICI';
 }
+/** Nabızda / canlı kanalda bildirilen açık ekran: yeni mobil kendi ekran kodunu verir (window.erpEkranKoduAl), masaüstü appMode */
+function erpNabizEkran() {
+    if (typeof window.erpEkranKoduAl === 'function') { try { return String(window.erpEkranKoduAl() || ''); } catch (e) { return ''; } }
+    return String(typeof appMode === 'string' ? appMode : '');
+}
 function erpRpcYokMu(error) {
     const t = String(error?.code || '') + ' ' + String(error?.message || '');
     return /PGRST202|42883|could not find the function|does not exist/i.test(t);
@@ -46285,7 +47648,7 @@ async function erpNabizGonder(ekranDegisti) {
     if (_erpAktif.nabizYok && Date.now() - _erpAktif.nabizYokZaman < 10 * 60000) return;
     const token = typeof erpGetToken === 'function' ? erpGetToken() : '';
     if (!token) return;
-    const ekran = String(typeof appMode === 'string' ? appMode : '');
+    const ekran = erpNabizEkran();
     const gecen = Date.now() - _erpAktif.sonNabiz;
     if (ekran === _erpAktif.sonEkran && gecen < (ekranDegisti ? 8000 : 55000)) return;
     _erpAktif.sonNabiz = Date.now();
@@ -46335,7 +47698,7 @@ function erpCevrimiciTrack() {
     if (!ch || _erpAktif.kanalDurum !== 'SUBSCRIBED') return;
     const b = erpBostaMi() ? 1 : 0;
     _erpAktif.izlenenBosta = b;
-    try { ch.track({ p: erpNabizPlatform(), e: String(typeof appMode === 'string' ? appMode : ''), b, t: Date.now() }); } catch (e) {}
+    try { ch.track({ p: erpNabizPlatform(), e: erpNabizEkran(), b, t: Date.now() }); } catch (e) {}
 }
 /* ── Kullanıcı hareketi (fare / klavye / dokunma): olay başına tek atama, yük yok ──
    Boştan dönünce kanal ve nabız hemen güncellenir; aktif → boşta geçişi dakikalık zamanlayıcıda. */
@@ -46437,7 +47800,9 @@ async function erpAktifYukle() {
 function erpEkranAdi(kod) {
     const k = String(kod || '').trim();
     if (!k) return '';
-    const ek = { DASHBOARD: 'Anasayfa', KULLANICI_YONETIMI: 'Kullanıcı yönetimi', GUNLUK_ISLEMLER: 'Günlük işlemler', NUMUNE: 'Numune', KART_LISTE: 'Stok kartları' };
+    const ek = { DASHBOARD: 'Anasayfa', KULLANICI_YONETIMI: 'Kullanıcı yönetimi', GUNLUK_ISLEMLER: 'Günlük işlemler', NUMUNE: 'Numune', KART_LISTE: 'Stok kartları',
+        /* yeni mobilin kendi sekmeleri (mobil-yeni/app.js ymEkranKodu) */
+        MOBIL_STOK: 'Stok ve depo', MOBIL_UYARI: 'Uyarılar', MOBIL_EKRANLAR: 'Ekranlar' };
     if (ek[k]) return ek[k];
     const m = (typeof ERP_PERM_MODES !== 'undefined' ? ERP_PERM_MODES : []).find(x => x[0] === k);
     if (m) return m[1];
@@ -46685,27 +48050,50 @@ function erpAktifKyaHtml(username) {
 const erpAktifNoktaRenk = (p) => (!p.cevrimici ? 'var(--text3)' : p.aktif === false ? 'var(--amber-c,#f59e0b)' : 'var(--emerald-c)');
 /* Çevrimiçi bilgisinin göründüğü ekran açık mı (yönetici: ana sayfa paneli, Kullanıcı Yönetimi) */
 function erpAktifEkranAcik() {
+    if (typeof window.erpAktifPanelAcikMi === 'function') return !!window.erpAktifPanelAcikMi();   /* yeni mobil */
     if (appMode === 'DASHBOARD') return !!document.getElementById('dash-aktif-panel');
     if (appMode === 'KULLANICI_YONETIMI') return !!document.getElementById('kya-liste');
     return false;
+}
+/* Panelin gösterdiği her şey (ana sayfa paneli + yeni mobil aynı modelden çizer — mobilde kopya hesap yok):
+   durum KURULUM / HATA / YUKLENIYOR / TAMAM; TAMAM'da sayılar + alttaki uyarı notlarının ham bilgisi */
+function erpAktifPanelModeli() {
+    if (_erpAktif.kurulumYok && !_erpAktif.veri) return { durum: 'KURULUM' };
+    const h = erpAktifHesapla();
+    if (!h) return { durum: _erpAktif.hata ? 'HATA' : 'YUKLENIYOR', hata: _erpAktif.hata || '' };
+    const { v, kanal, kisiler, bilinenKanal, eslesmeyen } = h;
+    return {
+        durum: 'TAMAM', h, kisiler,
+        cevrimici: kisiler.filter(p => p.cevrimici).length,
+        aktifSay: kisiler.filter(p => p.aktif === true).length,
+        canli: !!(kanal && !_erpAktif.kanalParamYok),
+        kanalParamYok: !!_erpAktif.kanalParamYok,
+        eslenmeyenCihaz: kanal && !_erpAktif.kanalParamYok ? [...kanal.keys()].filter(k => k !== _erpAktif.kanalId && !bilinenKanal.has(k)).length : 0,
+        eslesmeyen: eslesmeyen.slice(0, 6).map(([a, n]) => [ERP_AKTIF_SISTEM_ADLARI.get(a) || a, n]),
+        sayimHata: v.sayim_hata || '', degisiklikHata: v.degisiklik_hata || '',
+        /* Son tazeleme başarısızsa önceki liste kalır, sebebi yazılır */
+        tazeHata: _erpAktif.hata || (_erpAktif.kurulumYok ? 'liste fonksiyonu bulunamadı' : ''),
+        tazeZaman: _erpAktif.veriZaman,
+        /* SQL 3. sürüm: giriş-çıkış defteri ve değişiklik sayımı yok */
+        eskiSurum: (Number(v.surum) || 0) < 4
+    };
 }
 function erpAktifPanelHtml() {
     const bas = (meta, govde) => `<div class="dash-col" id="dash-aktif-panel">
         <div class="dash-col-head"><div class="dash-col-title">Aktif kullanıcılar</div><div class="dash-col-meta">${meta}</div></div>
         <div style="flex:1;max-height:420px;overflow:auto">${govde}</div>
     </div>`;
-    if (_erpAktif.kurulumYok && !_erpAktif.veri) {
+    const m = erpAktifPanelModeli();
+    if (m.durum === 'KURULUM') {
         return bas('kurulum gerekli', `<div class="dash-empty"><strong>Aktif kullanıcı takibi kurulmamış</strong>
             <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> (1 → 5) Supabase SQL Editor'de çalıştırılmalı.
             Kurulduysa dakika içinde kendiliğinden düzelir.</div>`);
     }
-    const h = erpAktifHesapla();
-    if (!h) return bas(_erpAktif.hata ? 'okunamadı' : 'yükleniyor…', `<div class="dash-empty">${_erpAktif.hata
-        ? `<strong>Liste okunamadı</strong><span style="color:var(--rose-c,#f87171);font-family:'DM Mono',monospace;font-size:12px;user-select:text;white-space:normal;word-break:break-word">${pdfEsc(_erpAktif.hata)}</span>`
+    if (m.durum !== 'TAMAM') return bas(m.hata ? 'okunamadı' : 'yükleniyor…', `<div class="dash-empty">${m.hata
+        ? `<strong>Liste okunamadı</strong><span style="color:var(--rose-c,#f87171);font-family:'DM Mono',monospace;font-size:12px;user-select:text;white-space:normal;word-break:break-word">${pdfEsc(m.hata)}</span>`
         : 'Yükleniyor…'}</div>`);
-    const { v, simdi, kanal, kisiler, bilinenKanal, eslesmeyen } = h;
-    const cevrimici = kisiler.filter(p => p.cevrimici).length;
-    const aktifSay = kisiler.filter(p => p.aktif === true).length;
+    const { simdi } = m.h;
+    const { kisiler, cevrimici, aktifSay } = m;
     const muted = (ic, ek = '') => `<div class="dash-muted" style="white-space:normal;${ek}">${ic}</div>`;
     const satir = (p) => {
         const ad = String(p.display_name || p.username || '?');
@@ -46732,30 +48120,28 @@ function erpAktifPanelHtml() {
         </div>`;
     };
     const not = (ic, renk) => `<div class="dash-muted" style="padding:8px 18px;white-space:normal${renk ? `;color:${renk} !important` : ''}">${ic}</div>`;
-    const eslesmeyenHtml = (eslesmeyen.length
-        ? not(`<span title="Kayıttaki ad hiçbir kullanıcıyla eşleşmedi">Eşleşmeyen kayıt adları:</span> ${eslesmeyen.slice(0, 6).map(([a, n]) => `${pdfEsc(ERP_AKTIF_SISTEM_ADLARI.get(a) || a)} (${n})`).join(', ')}`)
+    const eslesmeyenHtml = (m.eslesmeyen.length
+        ? not(`<span title="Kayıttaki ad hiçbir kullanıcıyla eşleşmedi">Eşleşmeyen kayıt adları:</span> ${m.eslesmeyen.map(([a, n]) => `${pdfEsc(a)} (${n})`).join(', ')}`)
         : '')
         /* Sunucu sayımı bir kolon kaydığı için yapamadıysa sayılar "—" kalır; sebebi görünsün */
-        + (v.sayim_hata ? not(`Bugünkü kayıt sayıları okunamadı: ${pdfEsc(v.sayim_hata)}`, 'var(--rose-c,#f87171)') : '')
-        + (v.degisiklik_hata ? not(`Bugünkü değişiklik sayıları okunamadı: ${pdfEsc(v.degisiklik_hata)}`, 'var(--rose-c,#f87171)') : '');
-    /* Son tazeleme başarısızsa önceki liste kalır, sebebi yazılır */
-    const tazeHata = _erpAktif.hata || (_erpAktif.kurulumYok ? 'liste fonksiyonu bulunamadı' : '');
-    const tazeHtml = tazeHata ? not(`Liste tazelenemedi (${erpGoreceliZaman(_erpAktif.veriZaman, Date.now())} okunan bilgi gösteriliyor): ${pdfEsc(tazeHata)}`, 'var(--rose-c,#f87171)') : '';
-    /* SQL 3. sürüm: giriş-çıkış defteri ve değişiklik sayımı yok */
-    const surumHtml = tazeHtml + ((Number(v.surum) || 0) < 4
+        + (m.sayimHata ? not(`Bugünkü kayıt sayıları okunamadı: ${pdfEsc(m.sayimHata)}`, 'var(--rose-c,#f87171)') : '')
+        + (m.degisiklikHata ? not(`Bugünkü değişiklik sayıları okunamadı: ${pdfEsc(m.degisiklikHata)}`, 'var(--rose-c,#f87171)') : '');
+    const tazeHtml = m.tazeHata ? not(`Liste tazelenemedi (${erpGoreceliZaman(m.tazeZaman, Date.now())} okunan bilgi gösteriliyor): ${pdfEsc(m.tazeHata)}`, 'var(--rose-c,#f87171)') : '';
+    const surumHtml = tazeHtml + (m.eskiSurum
         ? not(`Giriş-çıkış saatleri, aktif / boşta ve değişiklik sayıları için <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> (1 → 5) çalıştırılmalı.`)
         : '');
-    const eslenmeyenCihaz = kanal && !_erpAktif.kanalParamYok ? [...kanal.keys()].filter(k => k !== _erpAktif.kanalId && !bilinenKanal.has(k)).length : 0;
-    const eslemeHtml = _erpAktif.kanalParamYok
+    const eslemeHtml = m.kanalParamYok
         ? not(`Anlık görünüm için <span style="font-family:'DM Mono',monospace">supabase/aktif-gunluk-adim</span> çalıştırılmalı — şimdilik dakikalık nabızla gösteriliyor.`)
-        : (eslenmeyenCihaz ? not(`Yeni açılan ${eslenmeyenCihaz} cihaz eşleniyor…`) : '');
-    const canliRozet = kanal && !_erpAktif.kanalParamYok ? ' · <span title="Açılan / kapanan program anında görünür" style="color:var(--emerald-c)">● anlık</span>' : '';
+        : (m.eslenmeyenCihaz ? not(`Yeni açılan ${m.eslenmeyenCihaz} cihaz eşleniyor…`) : '');
+    const canliRozet = m.canli ? ' · <span title="Açılan / kapanan program anında görünür" style="color:var(--emerald-c)">● anlık</span>' : '';
     return bas(`${cevrimici} çevrimiçi${aktifSay ? ` · ${aktifSay} aktif` : ''} · ${kisiler.length} kişi${canliRozet}`,
         (kisiler.length ? kisiler.map(satir).join('') : `<div class="dash-empty">Kullanıcı yok</div>`) + surumHtml + eslemeHtml + eslesmeyenHtml);
 }
 function erpAktifPanelYenile() {
     const el = document.getElementById('dash-aktif-panel');
     if (el) el.outerHTML = erpAktifPanelHtml();
+    /* Yeni mobil (mobil-yeni/app.js) kendi panelini çizer: liste / çevrimiçi kanalı değişince haber */
+    if (typeof window.erpAktifPanelKanca === 'function') { try { window.erpAktifPanelKanca(); } catch (e) {} }
     if (appMode === 'KULLANICI_YONETIMI' && document.getElementById('kya-liste') && typeof erpAdminListeCiz === 'function') erpAdminListeCiz();
 }
 /* renderDashboard ve Kullanıcı Yönetimi çağırır: ekran açıkken dakikada bir tazelenir */
@@ -47632,6 +49018,21 @@ function gunlukSuz(alan, deger) {
     _gunluk[alan] = _gunluk[alan] === deger ? '' : deger;
     gunlukListeCiz();
 }
+/** Günün listesi süzgeçle: { tum, kisiSay, turSay, gorunen, kisiler } — süzgeç { kisi, tur, ara } (ana program + mobil). */
+function gunlukListeModeli(satirlar, f) {
+    const tum = (satirlar || []).map(x => ({ ...x, kisiAd: gunlukKisiAd(x.kisi) }));
+    const ara = erpAktifAdNorm(f.ara);
+    const aramaUyar = (x) => !ara || erpAktifAdNorm(`${x.kisiAd} ${x.tur} ${x.ayrinti}`).includes(ara);
+    /* Çipler: kişi sayıları tür süzgecine, tür sayıları kişi süzgecine göre */
+    const kisiSay = new Map(), turSay = new Map();
+    tum.forEach(x => {
+        if (!aramaUyar(x)) return;
+        if (!f.tur || x.tur === f.tur) kisiSay.set(x.kisiAd, (kisiSay.get(x.kisiAd) || 0) + 1);
+        if (!f.kisi || x.kisiAd === f.kisi) turSay.set(x.tur, (turSay.get(x.tur) || 0) + 1);
+    });
+    const gorunen = tum.filter(x => aramaUyar(x) && (!f.kisi || x.kisiAd === f.kisi) && (!f.tur || x.tur === f.tur));
+    return { tum, kisiSay, turSay, gorunen, kisiler: new Set(tum.map(x => x.kisiAd)).size };
+}
 function gunlukListeCiz() {
     const tablo = document.getElementById('gi-tablo');
     if (!tablo || appMode !== 'GUNLUK_ISLEMLER') return;
@@ -47641,16 +49042,8 @@ function gunlukListeCiz() {
         tablo.innerHTML = '<div class="dash-empty" style="padding:2rem">Yükleniyor…</div>';
         return;
     }
-    const tum = _gunluk.satirlar.map(x => ({ ...x, kisiAd: gunlukKisiAd(x.kisi) }));
-    const ara = erpAktifAdNorm(_gunluk.ara);
-    const aramaUyar = (x) => !ara || erpAktifAdNorm(`${x.kisiAd} ${x.tur} ${x.ayrinti}`).includes(ara);
-    /* Çipler: kişi sayıları tür süzgecine, tür sayıları kişi süzgecine göre */
-    const kisiSay = new Map(), turSay = new Map();
-    tum.forEach(x => {
-        if (!aramaUyar(x)) return;
-        if (!_gunluk.tur || x.tur === _gunluk.tur) kisiSay.set(x.kisiAd, (kisiSay.get(x.kisiAd) || 0) + 1);
-        if (!_gunluk.kisi || x.kisiAd === _gunluk.kisi) turSay.set(x.tur, (turSay.get(x.tur) || 0) + 1);
-    });
+    const lm = gunlukListeModeli(_gunluk.satirlar, _gunluk);
+    const { tum, kisiSay, turSay } = lm;
     const cip = (alan, deger, n) => {
         const on = _gunluk[alan] === deger;
         return `<button type="button" onclick="gunlukSuz('${alan}', ${pdfEsc(JSON.stringify(deger))})" style="font:inherit;font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent)' : 'var(--surface)'};color:${on ? '#fff' : 'var(--text2)'};cursor:pointer">${pdfEsc(deger)} <b>${n}</b></button>`;
@@ -47659,8 +49052,8 @@ function gunlukListeCiz() {
     const kEl = document.getElementById('gi-kisiler'), tEl = document.getElementById('gi-turler');
     if (kEl) kEl.innerHTML = sirala(kisiSay).map(([k, n]) => cip('kisi', k, n)).join('');
     if (tEl) tEl.innerHTML = sirala(turSay).map(([k, n]) => cip('tur', k, n)).join('');
-    _gunluk.gorunen = tum.filter(x => aramaUyar(x) && (!_gunluk.kisi || x.kisiAd === _gunluk.kisi) && (!_gunluk.tur || x.tur === _gunluk.tur));
-    const kisiler = new Set(tum.map(x => x.kisiAd)).size;
+    _gunluk.gorunen = lm.gorunen;
+    const kisiler = lm.kisiler;
     if (ozet) {
         ozet.innerHTML = `<b style="color:var(--text)">${gunlukTrTarih(_gunluk.gun)}</b> · ${tum.length.toLocaleString('tr-TR')} işlem · ${kisiler} kişi`
             + (_gunluk.gorunen.length !== tum.length ? ` · süzülen ${_gunluk.gorunen.length.toLocaleString('tr-TR')}` : '')
@@ -47736,8 +49129,8 @@ function stoktanSevkAyniUrunMu(kalem, kartKod, kartAd, ek = {}) {
 /* Kalemin şimdiye kadarki sevki (siparişin "sevk edilen"i ile aynı kaynak) */
 function stoktanSevkMevcut(sid, ki) {
     const rowK = (_kdCache[`KD_KONFEKSIYON_${sid}`] || {})[`kalem_${ki}`] || {};
-    let n = typeof planlamaIhtiyacSevkAdet === 'function'
-        ? (Number(planlamaIhtiyacSevkAdet(sid, ki, rowK)) || 0)
+    let n = typeof planlamaIhtiyacSevkGoster === 'function'
+        ? (Number(planlamaIhtiyacSevkGoster(sid, ki, rowK)) || 0)
         : Math.max(parseInt(rowK.sevk_edilen || 0, 10) || 0, parseInt(rowK.sevk_adet || 0, 10) || 0);
     if (typeof sevkiyatSiparisKalemYuklemeFromDepo === 'function') {
         n = Math.max(n, Number(sevkiyatSiparisKalemYuklemeFromDepo(sid, ki)) || 0);
@@ -48394,7 +49787,10 @@ function fasonAgacKurPaketi(siparis, secilenKi, opts = {}) {
     let ebatSira = Math.max(0, ...ag.ebatlar.map(e => fasonTakipNum(e.sira)));
     let isSira = Math.max(0, ...fasonIsler(anahtar).filter(is => !is._ortuk).map(is => fasonTakipNum(is.sira)));
     const tasinan = new Map();
-    const isAlanlari = FASON_FOY_ALAN.is.map(([a]) => a);
+    /* M6c: SQL kuruluysa fiyat ağaç olayına yazılmaz — kalem işinin fiyatı ağaç işine sunucuda kopyalanır (fiyatKopya → 40
+       fasonFiyatKopyala; kuran kişi değeri görmez, farklı fiyatlı işler birleşmez) */
+    const fiyatKapali = typeof fasonFiyatKuruluMu === 'function' && fasonFiyatKuruluMu() === true;
+    const isAlanlari = FASON_FOY_ALAN.is.map(([a]) => a).filter(a => !(fiyatKapali && fasonFiyatAlanMi(a)));
     const ebatAlanlari = new Set(FASON_FOY_ALAN.ebat.map(([a]) => a));
     /* Kalemin kesileceği kumaş: ekranda seçildiyse o (elle eklenen dahil), yoksa rengine göre öneri */
     const kumasKey = (k) => String((opts.kalemKumas || {})[k.ki] || k.kumasKey);
@@ -48430,16 +49826,18 @@ function fasonAgacKurPaketi(siparis, secilenKi, opts = {}) {
                     const alanlar = {};
                     isAlanlari.forEach(a => { alanlar[a] = String(is[a] ?? ''); });
                     if (!(fasonTakipNum(alanlar.sira) > 0)) alanlar.sira = String(++isSira);
-                    tasinan.set(imza, { id: is.id, alanlar, kapsam: [] });
+                    tasinan.set(imza, { id: is.id, alanlar, kapsam: [], kaynaklar: [] });
                 }
                 tasinan.get(imza).kapsam.push(`K${k.ki}`);
+                tasinan.get(imza).kaynaklar.push({ anahtar: `K|${sid}|${k.ki}`, is_id: is.id });
                 coklu.push(fasonAgacParca(`K|${sid}|${k.ki}`, 'is', is.id, { silindi: '1' }));
             });
         });
     });
-    tasinan.forEach(t => coklu.push(fasonAgacParca(anahtar, 'is', t.id, { ...t.alanlar, kapsam: t.kapsam.join(','), fiyat_tipi: 'TEK', ebat_fiyat: '', silindi: '' })));
+    tasinan.forEach(t => coklu.push(fasonAgacParca(anahtar, 'is', t.id, { ...t.alanlar, kapsam: t.kapsam.join(','), ...(fiyatKapali ? {} : { fiyat_tipi: 'TEK', ebat_fiyat: '' }), silindi: '' })));
+    const fiyatKopya = fiyatKapali ? [...tasinan.values()].flatMap(t => t.kaynaklar.map(k => ({ kaynak: k, hedef: { anahtar, is_id: t.id } }))) : [];
     /* malzemeIdler: ekrandaki satır anahtarı → listedeki malzeme kimliği (kurulumla birlikte gönderim için) */
-    return { anahtar, coklu: [...malzemeParca, ...coklu], engel, malzemeIdler: Object.fromEntries(malzemeId) };
+    return { anahtar, coklu: [...malzemeParca, ...coklu], engel, malzemeIdler: Object.fromEntries(malzemeId), fiyatKopya };
 }
 
 /* ── Yazıcı: ağaç olayı tek satır (yalnız ekleme). Ekranı çağıran yeniler. ── */
@@ -48529,7 +49927,8 @@ async function fasonAgacTopluHareketYaz(sid, ortak, satirlar, opts = {}) {
     const is = isler.find(x => x.id === ortak.isId) || isler.find(x => fasonFirmaKey(x.firma) === fasonFirmaKey(ortak.firma)) || isler[0];
     const topluId = fasonId('ft');
     const yazilan = [];
-    for (const s of den.dolu) {
+    /* Önce bütün satırlar kurulur (yazmadan) — M6 karşılaştırması hepsini tek denemede sorar; yazım aşağıda satır satır, aynen */
+    const parcalar = den.dolu.map((s) => {
         const m = ag.malzemeMap.get(s.malzemeId);
         const tip = fasonAgacTopluTip(m, ortak.yon);
         const t = FASON_TIPLER[tip];
@@ -48544,6 +49943,17 @@ async function fasonAgacTopluHareketYaz(sid, ortak, satirlar, opts = {}) {
         if (den.ikizler.some(x => x.malzeme.id === m.id)) n.ikiz_onaylandi = true;
         /* Depo: yalnız depo kodu girilmiş kumaş (aksesuar depoda tutulmuyor); opts.depo === false ise hiç */
         const etki = opts.depo !== false && t.depo && v.kumas_kodu ? fasonDepoEtki(tip, v) : null;
+        return { m, tip, t, miktar, v, fgid, n, etki };
+    });
+    /* M6 karşılaştırma: bütün olaylar + depo ters kayıtları kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR) */
+    try {
+        if (typeof yapiFasonDeneBekle === 'function') {
+            const depo = [];
+            parcalar.forEach((x, i) => { if (x.etki) depo.push({ tablo: x.etki.tablo, satir: fasonDepoPayload(b, x.v.firma, x.fgid, x.etki, `Fason · ${x.t.ad}`), olay: i }); });
+            await yapiFasonDeneBekle(parcalar.map((x) => fasonOlaySatir(b, x.t.islem, [x.m.kod, x.m.ad, x.m.renk].filter(fasonAgacDolu).join(' '), x.miktar, x.n)), depo);
+        }
+    } catch (e) {}
+    for (const { m, tip, t, miktar, v, fgid, n, etki } of parcalar) {
         let depoId = null;
         if (etki) {
             const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`));
@@ -48551,7 +49961,7 @@ async function fasonAgacTopluHareketYaz(sid, ortak, satirlar, opts = {}) {
             depoId = r.id;
             n.depo = { dus: true, tablo: etki.tablo, id: depoId };
         }
-        const res = await fasonOlayYaz(b, t.islem, [m.kod, m.ad, m.renk].filter(fasonAgacDolu).join(' '), miktar, n, 'Fason toplu ' + (ortak.yon === 'IADE' ? 'iade' : 'gönderim'));
+        const res = await fasonOlayYaz(b, t.islem, [m.kod, m.ad, m.renk].filter(fasonAgacDolu).join(' '), miktar, n, 'Fason toplu ' + (ortak.yon === 'IADE' ? 'iade' : 'gönderim'), { yapiSoruldu: true });
         if (!res.ok) {
             if (depoId != null) {
                 const { error } = await sb.from(etki.tablo).delete().eq('id', depoId);
@@ -49501,6 +50911,7 @@ async function fasonAgacKurKaydet() {
         const depoYok = gonderim.filter(s => s.tur !== 'AKSESUAR' && !s.kumas_kodu).map(s => s.kod);
         if (depoYok.length && !(await erpAskConfirm(`${depoYok.join(', ')}: depo kodu yok — depodan düşülmeyecek (depoda olmayan kumaş), yalnız fasona gönderim yazılacak.\n\nDevam edilsin mi?`))) return;
     }
+    try { if (typeof fasonFiyatDurumYukle === 'function') await fasonFiyatDurumYukle(); } catch (e) {}   /* M6c: fiyat kapalı mı (paket ona göre) */
     const paket = fasonAgacKurPaketi(siparis, secilen, { malzemeler, ekMalzemeler, kalemKumas });
     if (!paket.coklu.length) { erpToast(paket.engel.join(' ') || 'Eklenecek bir şey yok.', 'error', 6000); return; }
     const kalemSay = paket.coklu.filter(c => c.bolum === 'satir').length;
@@ -49509,6 +50920,11 @@ async function fasonAgacKurKaydet() {
     _fasonMesgul = true;
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     try {
+        /* M6c: kalem işlerinin fiyatı ağaç işine sunucuda kopyalanır (değer görülmez); kopyalanamazsa ağaç kurulmaz */
+        if (paket.fiyatKopya?.length && typeof fasonFiyatKopyala === 'function') {
+            const k = await fasonFiyatKopyala(paket.fiyatKopya);
+            if (k.ok !== true) return;
+        }
         const res = await fasonAgacOlayYaz(ctx.sid, paket.coklu, agacVardi ? 'Ağaca sipariş kalemi eklendi' : 'Fason ürün ağacı kuruldu');
         if (!res.ok) return;
         let gMetin = '';
@@ -50082,8 +51498,11 @@ try {
    Fason ortak motoru (12-fason.js) üzerine kurulu — yalnız ekleme, düzelt / sil (ters depo kaydı),
    çift giriş sorusu, iplik lot bakiyesi, firma carisi oradan gelir:
      anahtar "T|tid"  = bir BOYA İŞİ (sipariş kalemi ya da stok × renk × boyahane)
-     FASON_FOY 'tis'  = işin tanımı (tur BOBIN/KUMAS, sipariş, kalem, malzeme, renk, hedef, bitti)
-     FASON_FOY 'is'   = boyahane firması, termin, fiyat (tek iş: 'ana')
+     FASON_FOY 'tis'  = işin tanımı (tur BOBIN/KUMAS, sipariş, kalem, malzeme, renk, hedef, bitti;
+                        22.10.2026: istenen_termin, musteri, bobinde bobin_tipi / bobin_kg, kumaşta islem (BOYAMA / BASKI /
+                        YIKAMA) + talimat bilgileri ham_en / istenen_en / gramaj / boy_cekme_tol / en_cekme_tol / tuse — 42-terbiye-bobin.js;
+                        boyalı iplik iplik × müşteri renk kodu başına tek RENK KARTINA girer, aynı dosya)
+     FASON_FOY 'is'   = boyahane firması, BOYAHANENİN VERDİĞİ termin, fiyat (tek iş: 'ana')
      hareketler       = BOYA_IPLIK / BOYALI_IPLIK / BOYA_IPLIK_IADE ve BOYA_KUMAS / BOYALI_KUMAS / BOYA_KUMAS_IADE
    Boyahanede kalan = gönderilen − boyalı gelen − boyanmadan dönen. İş "bitti" denince kalan fire sayılır.
    Teknik veri (reçete, sıcaklık, pH…) yok. Ekran 24-terbiye-ekran.js. */
@@ -50092,6 +51511,23 @@ const TERBIYE_ALANLAR = {
     BOBIN: { id: 'BOBIN', ad: 'Bobin Boya', ikon: '🧵', birim: 'kg', ana: 'kg', gonder: 'BOYA_IPLIK', gelen: 'BOYALI_IPLIK', iade: 'BOYA_IPLIK_IADE', malzemeAd: 'Ham iplik' },
     KUMAS: { id: 'KUMAS', ad: 'Kumaş Boya', ikon: '🎨', birim: 'm', ana: 'mt', gonder: 'BOYA_KUMAS', gelen: 'BOYALI_KUMAS', iade: 'BOYA_KUMAS_IADE', malzemeAd: 'Ham kumaş' }
 };
+/* Bobin tipi (talimatta; 22.10.2026 kullanıcı: "bobin tipi / ağırlığı") — boş = belirtilmedi */
+const TERBIYE_BOBIN_TIPLERI = [['', '—'], ['KONIK', 'Konik bobin'], ['SILINDIR', 'Silindir (düz) bobin'], ['PERFORE', 'Perfore (delikli) masura'], ['DIGER', 'Diğer (nota yazın)']];
+/* Kumaşta işlem türü (22.10.2026 kullanıcı: "boyama, baskı, yıkama olsun, gerisini sonra ayarlarız"). Bobin hep boyama.
+   Eski kayıtta alan yok: renk "YIKAMA" yazılmışsa yıkama, değilse boyama sayılır. */
+const TERBIYE_ISLEMLER = [['BOYAMA', 'Boyama', '🎨'], ['BASKI', 'Baskı', '🖨'], ['YIKAMA', 'Yıkama', '🫧']];
+function terbiyeIslem(t) {
+    if ((t?.tur === 'KUMAS' ? 'KUMAS' : 'BOBIN') !== 'KUMAS') return 'BOYAMA';
+    const x = String(t.islem || '').toUpperCase();
+    if (TERBIYE_ISLEMLER.some(i => i[0] === x)) return x;
+    return String(t.renk || '').toLocaleUpperCase('tr-TR').trim() === 'YIKAMA' ? 'YIKAMA' : 'BOYAMA';
+}
+/* Gösterilecek renk: eski yıkama kaydında renk kutusundaki "YIKAMA" renk değildir */
+function terbiyeRenkGoster(t) {
+    const r = String(t?.renk || '').trim();
+    return r.toLocaleUpperCase('tr-TR') === 'YIKAMA' && terbiyeIslem(t) === 'YIKAMA' ? '' : r;
+}
+function terbiyeIslemAd(k) { const i = TERBIYE_ISLEMLER.find(x => x[0] === k) || TERBIYE_ISLEMLER[0]; return `${i[2]} ${i[1]}`; }
 function terbiyeAnahtar(tid) { return `T|${tid}`; }
 function terbiyeTanim(anahtar) { return fasonFoyOku(anahtar, 'tis'); }
 function terbiyeY(n, dec = 2) { const p = Math.pow(10, dec); return Math.round((Number(n) || 0) * p) / p; }
@@ -50132,12 +51568,20 @@ function terbiyeOzet(anahtar) {
     const fark = (g, n) => n > 0 && g > 0 ? terbiyeY((n - g) / n * 100, 1) : null;
     const is = fasonIsler(anahtar)[0] || fasonIsVarsayilan(anahtar);
     const hedef = fasonTakipNum(b.tanim.hedef);
-    const gecikmeGun = fasonGunFarki(is.termin);
+    /* İki termin (22.10.2026, kullanıcı kararı): istenen = bizim istediğimiz (tanım), boyahane = boyahanenin verdiği (is.termin,
+       değişince eski tarih fason olayında kalır → terbiyeTerminGecmisi). Uyarı boyahanenin tarihine, girilmemişse istenene bakar. */
+    const istenenTermin = String(b.tanim.istenen_termin || '').slice(0, 10);
+    const boyahaneTermin = String(is.termin || '').slice(0, 10);
+    const etkinTermin = boyahaneTermin || istenenTermin;
+    const gecikmeGun = fasonGunFarki(etkinTermin);
     const hakedis = {};
     fasonIsler(anahtar).forEach(x => fasonHakedisSatirlari(anahtar, x).forEach(s => { hakedis[s.pb] = (hakedis[s.pb] || 0) + s.toplam; }));
     const durum = kapali ? 'TAMAM' : giden.say === 0 ? 'BEKLIYOR' : kalan > 0.004 ? 'BOYAHANEDE' : 'GELDI';
     return {
-        b, A, tanim: b.tanim, tur: b.tur, siparis: b.siparis, is, firma: String(is.firma || '').trim(), termin: String(is.termin || ''),
+        b, A, tanim: b.tanim, tur: b.tur, siparis: b.siparis, is, firma: String(is.firma || '').trim(), termin: etkinTermin,
+        istenenTermin, boyahaneTermin, islem: terbiyeIslem(b.tanim),
+        /* Termine kaç gün var (0 = bugün, eksi = geçti); mal gelmişse / iş kapalıysa null */
+        terminKalan: !kapali && etkinTermin && (kalan > 0.004 || giden.say === 0) && gecikmeGun != null ? -gecikmeGun : null,
         hareketler: hs, giden, gelen, iade, net, kalan, kapali, hedef,
         gonderilecek: hedef > 0 ? terbiyeY(Math.max(0, hedef - net)) : 0,
         fire: kapali ? terbiyeY(Math.max(0, kalan)) : 0,
@@ -50212,7 +51656,7 @@ function terbiyeHareketIpucu(b, tip) {
     if (o.hedef) parcalar.push(`boyanacak ${m(o.hedef)}`);
     parcalar.push(`gönderilen ${m(o.net)}`, `boyalı gelen ${m(o.gelen[o.A.ana])}`, `boyahanede ${m(o.kalan)}`);
     if (tip === o.A.gonder && o.hedef) parcalar.push(o.gonderilecek ? `daha ${m(o.gonderilecek)} gönderilecek` : 'boyanacak miktar gönderildi');
-    if (tip === o.A.gelen && o.A.ana === 'kg') parcalar.push('boyalı iplik yeni koduyla (ör. "30/1 PENYE BEJ") iplik deposuna girer');
+    if (tip === o.A.gelen && o.A.ana === 'kg') parcalar.push('boyalı iplik bu rengin RENK KARTINA girer (iplik × müşteri renk kodu başına tek kart; ilk dönüşte kendiliğinden açılır)');
     return parcalar.join(' · ');
 }
 
@@ -50228,6 +51672,13 @@ async function terbiyeHareketYaz(anahtar, tip, v, opts = {}) {
     if (etki && !etki.kod) return { ok: false, hata: 'Depoya yazmak için stok kodu gerekli.' };
     const fgid = fasonId('fh');
     const n = { kaynak: 'MASAUSTU_TERBIYE', oid: fgid, fgid, tip, alan: 'TERBIYE', anahtar, is_id: 'ana', user: fasonKullanici(), ts: new Date().toISOString(), ...v };
+    /* M6 karşılaştırma: olay + depo ters kaydı kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
+    try {
+        if (typeof yapiFasonDeneBekle === 'function') {
+            await yapiFasonDeneBekle([fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip, ...v }), n)],
+                etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Terbiye · ${t.ad}`), olay: 0 }] : []);
+        }
+    } catch (e) {}
     let depoId = null;
     if (etki) {
         const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Terbiye · ${t.ad}`));
@@ -50235,7 +51686,7 @@ async function terbiyeHareketYaz(anahtar, tip, v, opts = {}) {
         depoId = r.id;
         n.depo = { dus: true, tablo: etki.tablo, id: depoId };
     }
-    const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip, ...v }), n, 'Terbiye hareketi');
+    const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip, ...v }), n, 'Terbiye hareketi', { yapiSoruldu: true });
     if (!res.ok && depoId != null) {
         const { error } = await sb.from(etki.tablo).delete().eq('id', depoId);
         if (!error && Array.isArray(dataCache[etki.tablo])) dataCache[etki.tablo] = dataCache[etki.tablo].filter(x => String(x.id) !== String(depoId));
@@ -50284,7 +51735,9 @@ try {
    üstte Bobin Boya / Kumaş Boya sekmesi + "＋ Yeni boya işi"; özet kutuları; süzgeç; boya işi listesi.
    Bir iş açılınca 3 düğme (Gönder · Boyalı geldi · Boyanmadan döndü) + Bitti; hareketler aşağıda.
    Hareket girişi / düzelt / sil 12-fason.js'in genel formuyla (depo, çift giriş, lot bakiyesi oradan).
-   Teknik veri yok: miktar, renk, firma, tarih, irsaliye, top / lot. */
+   Teknik veri yok: miktar, renk, firma, tarih, irsaliye, top / lot.
+   22.10.2026 (bobin boya uçtan uca, 42-terbiye-bobin.js): iki termin (istediğimiz + boyahanenin verdiği), bobin tipi / ağırlığı,
+   iş kartında iplik özellikleri + giden ↔ gelen defteri + termin geçmişi, bobin boya talimatı PDF, "📦 Boyahanede ne var". */
 
 let _terbiye = { tur: 'BOBIN', arama: '', durum: 'ACIK', firma: 'HEPSI', acik: new Set(), gen: 0 };
 
@@ -50320,14 +51773,9 @@ const TERBIYE_DURUM = {
     BEKLIYOR: ['Gönderilmedi', 'pill-amber'], BOYAHANEDE: ['Boyahanede', 'pill-blue'], GELDI: ['Hepsi geldi', 'pill-green'], TAMAM: ['Bitti', 'pill-green']
 };
 function terbiyeMiktar(v, A) { return `${fasonFmtM(v)} ${A.birim}`; }
-function terbiyeEkranYenile() {
-    if (appMode !== 'BOYAHANE_URETIM') return;
-    const list = document.getElementById('main-list');
-    if (!list) return;
-    const f = _terbiye;
+/** Terbiye listesi + özet kutuları (ekran yok; ana program + mobil aynı hesap). f = { tur, arama, durum, firma } */
+function terbiyeListeModeli(f) {
     const A = TERBIYE_ALANLAR[f.tur];
-    const yaz = fasonYazabilir('TERBIYE');
-    const fiyatGor = fasonFiyatGorur();
     const tumu = { BOBIN: terbiyeOzetleri('BOBIN'), KUMAS: terbiyeOzetleri('KUMAS') };
     const hepsi = tumu[f.tur];
     const firmalar = [...new Set(hepsi.map(o => o.firma).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
@@ -50336,15 +51784,10 @@ function terbiyeEkranYenile() {
         if (f.durum === 'ACIK' && o.kapali) return false;
         if (f.durum === 'BITEN' && !o.kapali) return false;
         if (f.firma !== 'HEPSI' && fasonFirmaKey(o.firma) !== fasonFirmaKey(f.firma)) return false;
-        if (q && ![o.siparis?.sno, o.siparis?.firma, o.tanim.kalem_ad, o.tanim.malzeme, o.tanim.renk, o.tanim.renk_kodu, o.firma].join(' ').toLocaleLowerCase('tr-TR').includes(q)) return false;
+        if (q && ![o.siparis?.sno, o.siparis?.firma, o.tanim.kalem_ad, o.tanim.malzeme, o.tanim.renk, o.tanim.renk_kodu, o.firma, o.tur === 'KUMAS' ? terbiyeIslemAd(o.islem) : ''].join(' ').toLocaleLowerCase('tr-TR').includes(q)) return false;
         return true;
     }).sort((a, b) => (b.gecikme - a.gecikme) || (a.kapali - b.kapali) || String(a.termin || '9999').localeCompare(String(b.termin || '9999')));
-    const acikSay = (tur) => tumu[tur].filter(o => !o.kapali).length;
-    const sekme = (tur) => {
-        const X = TERBIYE_ALANLAR[tur], sec = f.tur === tur;
-        return `<button type="button" onclick="terbiyeFiltre('tur','${tur}')" style="padding:10px 18px;border-radius:10px;border:1px solid ${sec ? 'var(--accent)' : 'var(--border)'};background:${sec ? 'rgba(109,113,255,0.12)' : 'var(--surface)'};color:var(--text);font-size:13px;font-weight:800;cursor:pointer">
-            ${X.ikon} ${X.ad} <span style="font-size:10px;font-weight:600;color:var(--text3)">${acikSay(tur)} açık iş</span></button>`;
-    };
+    const acikSay = { BOBIN: tumu.BOBIN.filter(o => !o.kapali).length, KUMAS: tumu.KUMAS.filter(o => !o.kapali).length };
     /* Özet: açık işlerde */
     const acik = hepsi.filter(o => !o.kapali);
     const boyahanede = acik.reduce((a, o) => a + Math.max(0, o.kalan), 0);
@@ -50354,7 +51797,23 @@ function terbiyeEkranYenile() {
     acik.forEach(o => { if (o.kalan > 0.004) firmaKalan.set(o.firma || 'Firma yok', (firmaKalan.get(o.firma || 'Firma yok') || 0) + o.kalan); });
     const hakedis = {};
     hepsi.forEach(o => Object.entries(o.hakedis).forEach(([p, t]) => { hakedis[p] = (hakedis[p] || 0) + t; }));
-    const kpi = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+    return { A, tumu, hepsi, firmalar, liste, acikSay, acik, boyahanede, gonderilecek, geciken, firmaKalan, hakedis };
+}
+function terbiyeEkranYenile() {
+    if (appMode !== 'BOYAHANE_URETIM') return;
+    const list = document.getElementById('main-list');
+    if (!list) return;
+    const f = _terbiye;
+    const yaz = fasonYazabilir('TERBIYE');
+    const fiyatGor = fasonFiyatGorur();
+    const { A, hepsi, firmalar, liste, acikSay: acikSayi, acik, boyahanede, gonderilecek, geciken, firmaKalan, hakedis } = terbiyeListeModeli(f);
+    const acikSay = (tur) => acikSayi[tur];
+    const sekme = (tur) => {
+        const X = TERBIYE_ALANLAR[tur], sec = f.tur === tur;
+        return `<button type="button" onclick="terbiyeFiltre('tur','${tur}')" style="padding:10px 18px;border-radius:10px;border:1px solid ${sec ? 'var(--accent)' : 'var(--border)'};background:${sec ? 'rgba(109,113,255,0.12)' : 'var(--surface)'};color:var(--text);font-size:13px;font-weight:800;cursor:pointer">
+            ${X.ikon} ${X.ad} <span style="font-size:10px;font-weight:600;color:var(--text3)">${acikSay(tur)} açık iş</span></button>`;
+    };
+    const kpi =`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
         ${fasonKpiKutu('Boyahanede', terbiyeMiktar(boyahanede, A), '#06b6d4', firmaKalan.size ? [...firmaKalan].map(([fi, v]) => `${pdfEsc(fi)}: ${terbiyeMiktar(v, A)}`).join(' · ') : 'gönderilen − gelen')}
         ${fasonKpiKutu('Daha gönderilecek', terbiyeMiktar(gonderilecek, A), 'var(--amber-c)', 'boyanacak − gönderilen')}
         ${fasonKpiKutu('Açık iş / geciken', `${fasonFmtI(acik.length)} / ${fasonFmtI(geciken)}`, geciken ? 'var(--rose-c)' : 'var(--text)', 'termini geçen ve malı gelmeyen')}
@@ -50375,9 +51834,26 @@ function terbiyeEkranYenile() {
             <div style="font-size:13px;font-weight:700;margin-top:6px">Henüz ${A.ad.toLocaleLowerCase('tr-TR')} işi yok</div>
             <div style="font-size:11px;color:var(--text3);margin-top:4px">"＋ Yeni boya işi" ile siparişi, rengi ve boyahaneyi seçin; sonra ${A.malzemeAd.toLocaleLowerCase('tr-TR')} gönderin.</div></div>`;
     const cari = f.gorunum === 'CARI';
-    const ust = `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${cari ? '' : sekme('BOBIN') + sekme('KUMAS')}<span style="flex:1"></span>
-            <button type="button" class="btn-pro btn-ghost-pro" style="padding:10px 14px;font-size:11px" onclick="terbiyeFiltre('gorunum','${cari ? 'IS' : 'CARI'}')">${cari ? '← Boya işleri' : '🏭 Boyahaneler (cari)'}</button>
-            ${yaz && !cari ? `<button type="button" class="btn-pro btn-primary-pro" style="padding:10px 18px;font-size:12px" onclick="terbiyeIsFormAc('')">＋ Yeni boya işi</button>` : ''}</div>`;
+    const stokGor = f.gorunum === 'STOK' && typeof terbiyeBoyahaneStokHtml === 'function';
+    const renkGor = f.gorunum === 'RENK' && typeof terbiyeMusteriRenkleriHtml === 'function';
+    const gorDugme = (g, ad) => f.gorunum === g
+        ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:10px 14px;font-size:11px" onclick="terbiyeFiltre('gorunum','IS')">← Boya işleri</button>`
+        : `<button type="button" class="btn-pro btn-ghost-pro" style="padding:10px 14px;font-size:11px" onclick="terbiyeFiltre('gorunum','${g}')">${ad}</button>`;
+    const ust = `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${cari || renkGor ? '' : sekme('BOBIN') + sekme('KUMAS')}<span style="flex:1"></span>
+            ${cari || renkGor ? '' : gorDugme('STOK', '📦 Boyahanede ne var')}
+            ${cari || stokGor ? '' : gorDugme('RENK', '🎨 Müşteri renkleri')}
+            ${renkGor || stokGor ? '' : gorDugme('CARI', '🏭 Boyahaneler (cari)')}
+            ${yaz && !cari && !stokGor && !renkGor ? `<button type="button" class="btn-pro btn-primary-pro" style="padding:10px 18px;font-size:12px" onclick="terbiyeIsFormAc('')">＋ Yeni boya işi</button>` : ''}</div>`;
+    /* Müşteri renkleri (42-terbiye-bobin.js): müşteri → renk kodu → işler; bobin + kumaş birlikte */
+    if (renkGor) {
+        list.innerHTML = `<div data-terbiye-ekran="1" style="display:flex;flex-direction:column;gap:14px">${ust}${terbiyeMusteriRenkleriHtml()}</div>`;
+        return;
+    }
+    /* Boyahanede ne var (42-terbiye-bobin.js): boyahane boyahane, açık işlerde kalan mal */
+    if (stokGor) {
+        list.innerHTML = `<div data-terbiye-ekran="1" style="display:flex;flex-direction:column;gap:14px">${ust}${terbiyeBoyahaneStokHtml(f.tur)}</div>`;
+        return;
+    }
     /* Boyahane carisi: fason carisinin terbiye süzgeci (hakediş, ödeme, kesinti, ekstre — tutarlar yalnız fiyat yetkisine) */
     if (cari) {
         list.innerHTML = `<div data-terbiye-ekran="1" style="display:flex;flex-direction:column;gap:14px">${ust}${fasonFirmaCariHtml('TERBIYE')}</div>`;
@@ -50390,18 +51866,24 @@ function terbiyeEkranYenile() {
         <div style="font-size:9px;color:var(--text3);line-height:1.5">${A.ikon} ${A.ad}: ${A.malzemeAd.toLocaleLowerCase('tr-TR')} boyahaneye gönderilince depodan düşer; boyalı gelen ve boyanmadan dönen depoya girer. Boyahanede kalan = gönderilen − gelen − boyanmadan dönen; iş "bitti" denince kalan fire sayılır.</div>
     </div>`;
 }
+/** İş kartının ilerleme yüzdesi (boyanacağa, yoksa gönderilene göre gelen) */
+function terbiyeIlerleme(o) {
+    const A = o.A;
+    return o.hedef > 0 ? Math.min(100, Math.round(o.gelen[A.ana] / o.hedef * 100)) : (o.net > 0 ? Math.min(100, Math.round(o.gelen[A.ana] / o.net * 100)) : 0);
+}
 function terbiyeIsKartHtml(o, yaz) {
     const A = o.A, a = fasonArg(o.b.anahtar);
     const ac = _terbiye.acik.has(o.b.anahtar);
     const [dAd, dPill] = TERBIYE_DURUM[o.durum] || ['—', 'pill-amber'];
     const sip = o.siparis ? `${o.siparis.sno || ''} · ${o.siparis.firma || ''}` : (o.tanim.siparis_id ? `#${o.tanim.siparis_id}` : 'Stok için');
-    const ilerleme = o.hedef > 0 ? Math.min(100, Math.round(o.gelen[A.ana] / o.hedef * 100)) : (o.net > 0 ? Math.min(100, Math.round(o.gelen[A.ana] / o.net * 100)) : 0);
-    const termin = o.termin ? `<span style="color:${o.gecikme ? 'var(--rose-c);font-weight:700' : 'var(--text3)'}">termin ${fasonTarihYaz(o.termin)}${o.gecikme ? ` · ${o.gecikme} gün geçti` : ''}</span>` : '';
+    const ilerleme = terbiyeIlerleme(o);
+    const yakin = o.terminKalan != null && o.terminKalan >= 0 && o.terminKalan <= ERP_UYARI_ESIK.boyahaneTerminGun;
+    const termin = o.termin ? `<span style="color:${o.gecikme ? 'var(--rose-c);font-weight:700' : yakin ? 'var(--amber-c);font-weight:700' : 'var(--text3)'}">${o.boyahaneTermin ? 'boyahane termini' : 'istenen termin'} ${fasonTarihYaz(o.termin)}${o.gecikme ? ` · ${o.gecikme} gün geçti` : yakin ? ` · ${o.terminKalan ? o.terminKalan + ' gün kaldı' : 'bugün'}` : ''}</span>` : '';
     const sayi = (ad, v, renk) => `<div style="text-align:right;min-width:78px"><div style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">${ad}</div><div style="font-size:12px;font-weight:800;font-family:'DM Mono',monospace;color:${renk || 'var(--text)'}">${v}</div></div>`;
     const ust = `<div role="button" tabindex="0" onclick="terbiyeAcKapa(${a})" onkeydown="if(event.key==='Enter'){terbiyeAcKapa(${a})}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 14px;cursor:pointer">
         <span style="font-size:13px;color:var(--accent);width:14px">${ac ? '▼' : '▶'}</span>
         <div style="flex:1;min-width:200px">
-            <div style="font-size:13px;font-weight:800">${pdfEsc(o.tanim.renk || 'Renk yok')}${o.tanim.renk_kodu ? ` <span style="font-size:10px;color:var(--text3);font-weight:600">${pdfEsc(o.tanim.renk_kodu)}</span>` : ''}
+            <div style="font-size:13px;font-weight:800">${o.tur === 'KUMAS' ? `<span class="pill ${o.islem === 'YIKAMA' ? 'pill-blue' : o.islem === 'BASKI' ? 'pill-amber' : 'pill-green'}" style="font-size:9px;margin-right:4px">${terbiyeIslemAd(o.islem)}</span>` : ''}${pdfEsc(terbiyeRenkGoster(o.tanim) || (o.islem === 'YIKAMA' ? '' : 'Renk yok'))}${o.tanim.renk_kodu ? ` <span style="font-size:10px;color:var(--text3);font-weight:600">${pdfEsc(o.tanim.renk_kodu)}</span>` : ''}
                 <span style="font-size:11px;font-weight:600;color:var(--text2)"> · ${pdfEsc(o.tanim.malzeme || A.malzemeAd)}</span></div>
             <div style="font-size:10px;color:var(--text3);margin-top:2px">${pdfEsc(sip)}${o.tanim.kalem_ad ? ' · ' + pdfEsc(o.tanim.kalem_ad) : ''} · <b style="color:var(--amber-c)">🏭 ${pdfEsc(o.firma || 'boyahane yok')}</b> ${termin}</div>
         </div>
@@ -50418,7 +51900,14 @@ function terbiyeIsDetayHtml(o, yaz) {
     const A = o.A, a = fasonArg(o.b.anahtar);
     const adim = (no, ikon, ad, alt, onclick, kapali) => `<button type="button" class="btn-pro ${kapali ? 'btn-ghost-pro' : 'btn-primary-pro'}" ${kapali ? 'disabled' : ''} style="padding:8px 14px;font-size:11px;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:160px" onclick="${onclick}">
         <span><b style="opacity:.7">${no}</b> ${ikon} ${ad}</span><span style="font-size:9px;font-weight:500;opacity:.85">${alt}</span></button>`;
-    const bilgi = [
+    const bilgi = terbiyeIsBilgiParcalari(o).join(' · ');
+    const kucuk = (ad, onclick, renk) => `<button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px;${renk ? 'color:' + renk : ''}" onclick="${onclick}">${ad}</button>`;
+    return terbiyeIsDetayGovde(o, yaz, a, A, adim, bilgi, kucuk);
+}
+/** İş kartı açılınca üstteki bilgi cümleleri (HTML parçaları; ana program + mobil). */
+function terbiyeIsBilgiParcalari(o) {
+    const A = o.A;
+    return [
         o.hedef ? (o.gonderilecek ? `daha <b>${terbiyeMiktar(o.gonderilecek, A)}</b> gönderilecek` : 'boyanacak miktarın hepsi gönderildi') : '',
         o.iade.say ? `boyanmadan dönen ${terbiyeMiktar(o.iade[A.ana], A)}` : '',
         /* İş sürerken fark "yolda"dır, fire değil: gelen oranı gösterilir; bitince fire / çekme */
@@ -50429,8 +51918,9 @@ function terbiyeIsDetayHtml(o, yaz) {
         o.giden.top ? `${fasonFmtI(o.giden.top)} ${A.ana === 'kg' ? 'bobin/çuval' : 'top'} gitti` : '',
         o.kapali ? `bitti ${fasonTarihYaz(o.tanim.kapanis)}` : '',
         fasonFiyatGorur() && Object.keys(o.hakedis).length ? `hakediş ${fasonParaMetin(o.hakedis)}` : ''
-    ].filter(Boolean).join(' · ');
-    const kucuk = (ad, onclick, renk) => `<button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px;${renk ? 'color:' + renk : ''}" onclick="${onclick}">${ad}</button>`;
+    ].filter(Boolean);
+}
+function terbiyeIsDetayGovde(o, yaz, a, A, adim, bilgi, kucuk) {
     return `<div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px">
         ${yaz ? `<div style="display:flex;flex-wrap:wrap;gap:8px">
             ${adim('1', '📦', `${A.malzemeAd} gönder`, `gönderilen ${terbiyeMiktar(o.net, A)}`, `fasonHareketFormAc(${a},'${A.gonder}')`, o.kapali)}
@@ -50439,10 +51929,14 @@ function terbiyeIsDetayHtml(o, yaz) {
         </div>` : ''}
         ${bilgi ? `<div style="font-size:11px;color:var(--text2);line-height:1.6">${bilgi}</div>` : ''}
         ${o.tanim.not ? `<div style="font-size:10px;color:var(--text2)">📝 ${pdfEsc(o.tanim.not)}</div>` : ''}
-        <div>${fasonHareketTabloHtml(o.hareketler.concat(fasonAnahtarHareketleri(o.b.anahtar).filter(h => h.silindi)), { anahtar: o.b.anahtar })}</div>
+        ${typeof terbiyeIsBilgiHtml === 'function' ? terbiyeIsBilgiHtml(o, yaz) : ''}
+        ${typeof terbiyeDefterHtml === 'function' ? terbiyeDefterHtml(o) : ''}
+        <div>${fasonHareketTabloHtml(o.hareketler.concat(fasonAnahtarHareketleri(o.b.anahtar).filter(h => h.silindi)), { anahtar: o.b.anahtar,
+            ekIslem: typeof terbiyeTalimatDugme === 'function' ? terbiyeTalimatDugme : null })}</div>
         ${yaz ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
             ${o.kapali ? kucuk('↺ Yeniden aç', `terbiyeKapatSor(${a},false)`) : kucuk('✔ Bitti (kalan fire sayılır)', `terbiyeKapatSor(${a},true)`, 'var(--emerald-c)')}
-            ${kucuk('✎ İşi düzelt (renk, miktar, boyahane, fiyat)', `terbiyeIsFormAc(${fasonArg(o.b.tid)})`)}
+            ${o.kapali ? '' : kucuk('📅 Boyahane termini', `terbiyeTerminFormAc(${a})`)}
+            ${kucuk('✎ İşi düzelt (renk, miktar, boyahane, termin, fiyat)', `terbiyeIsFormAc(${fasonArg(o.b.tid)})`)}
             ${o.hareketler.length ? '' : kucuk('🗑 İşi sil', `terbiyeIsSilSor(${a})`, 'var(--rose-c)')}
         </div>` : ''}
     </div>`;
@@ -50581,13 +52075,28 @@ async function terbiyeIsFormAc(tid) {
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
                 <div style="grid-column:span 2"><label class="pro-label">Sipariş</label><select id="ti-siparis" class="pro-input" style="padding:6px 9px" onchange="terbiyeIsSiparisDegisti()">${terbiyeSiparisSecenekleri(t.siparis_id)}</select></div>
                 <div style="grid-column:span 2"><label class="pro-label">Sipariş kalemi</label><select id="ti-kalem" class="pro-input" style="padding:6px 9px" onchange="terbiyeIsKalemDegisti()">${terbiyeKalemSecenekleri(t.siparis_id, t.kalem_idx)}</select></div>
-                ${g('renk', 'Renk', t.renk, { zorunlu: true, ph: 'ör. BEJ' })}
+                ${tur === 'KUMAS' ? g('islem', 'İşlem türü', tid ? terbiyeIslem(t) : 'BOYAMA', { tip: 'sec', secenek: TERBIYE_ISLEMLER.map(x => [x[0], x[1]]) }) : ''}
+                ${g('renk', tur === 'KUMAS' ? 'Renk (boyamada zorunlu)' : 'Renk', t.renk, { zorunlu: tur !== 'KUMAS', ph: 'ör. BEJ' })}
                 ${g('renk_kodu', 'Renk kodu', t.renk_kodu, { ph: 'isteğe bağlı' })}
                 ${g('malzeme', `Boyanacak ${A.malzemeAd.toLocaleLowerCase('tr-TR')}`, t.malzeme, { ph: tur === 'BOBIN' ? 'ör. 30/1 penye ham' : 'ör. ham müslin 225 cm' })}
                 ${g('hedef', `Boyanacak miktar (${A.birim})`, t.hedef, { tip: 'num', step: '0.01' })}
                 ${g('firma', 'Boyahane', is.firma, { tip: 'firma', zorunlu: true })}
-                ${g('termin', 'Termin', is.termin || String(fasonSiparisBul(t.siparis_id)?.ttarih || '').slice(0, 10), { tip: 'date' })}
+                ${g('istenen_termin', 'İstediğimiz termin', t.istenen_termin || (tid ? '' : String(fasonSiparisBul(t.siparis_id)?.ttarih || '').slice(0, 10)), { tip: 'date' })}
+                ${g('termin', 'Boyahanenin verdiği termin', is.termin, { tip: 'date' })}
+                ${tur === 'BOBIN' ? g('bobin_tipi', 'Bobin tipi', t.bobin_tipi || '', { tip: 'sec', secenek: TERBIYE_BOBIN_TIPLERI }) : ''}
+                ${tur === 'BOBIN' ? g('bobin_kg', 'Bobin ağırlığı (kg / bobin)', t.bobin_kg, { tip: 'num', step: '0.01', ph: 'ör. 1,25' }) : ''}
             </div>
+            ${tur === 'KUMAS' ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:10px;border:1px dashed var(--border);border-radius:8px">
+                <div style="grid-column:1/-1;font-size:10px;font-weight:700;color:var(--text2)">📄 Talimat bilgileri <span style="font-weight:500;color:var(--text3)">· boyahaneye giden talimata yazılır (isteğe bağlı)</span></div>
+                ${g('ham_en', 'Ham en (cm)', t.ham_en, { tip: 'num', step: '0.1' })}
+                ${g('istenen_en', 'İstenen mamul en (cm)', t.istenen_en, { tip: 'num', step: '0.1' })}
+                ${g('gramaj', 'İstenen gramaj (g/m²)', t.gramaj, { tip: 'num', step: '1' })}
+                ${g('boy_cekme_tol', 'Boy çekmesi toleransı %', t.boy_cekme_tol, { tip: 'num', step: '0.1' })}
+                ${g('en_cekme_tol', 'En çekmesi toleransı %', t.en_cekme_tol, { tip: 'num', step: '0.1' })}
+                ${g('tuse', 'Tuşe / apre isteği', t.tuse, { tip: 'ta', ph: 'ör. yumuşak tuşe, silikonlu apre' })}
+            </div>` : ''}
+            ${tur === 'BOBIN' ? '<div id="ti-renk-stok"></div>' : ''}
+            <div style="font-size:9px;color:var(--text3);margin-top:-6px">Uyarı boyahanenin verdiği termine bakar (girilmediyse istediğimiz termine): 2 gün kala bilgi, geçince uyarı. Boyahane termini değişince eski tarih geçmişte kalır.</div>
             <div id="ti-kumas-plani">${tur === 'KUMAS' && typeof terbiyeKumasPlaniKutuHtml === 'function' ? terbiyeKumasPlaniKutuHtml(t.siparis_id) : ''}</div>
             ${stokBolum}
             ${fiyatGor ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:10px;border:1px dashed var(--border);border-radius:8px">
@@ -50606,13 +52115,15 @@ async function terbiyeIsFormAc(tid) {
             </div>
         </div>`, 820);
     terbiyeStokListeYenile();
+    /* Aynı renk kodunun renk kartında boyalı iplik stoğu varsa söylenir (42) */
+    if (tur === 'BOBIN' && typeof terbiyeRenkStokBagla === 'function') terbiyeRenkStokBagla();
 }
 function terbiyeIsSiparisDegisti() {
     const sid = fasonDeger('ti-siparis');
     const k = document.getElementById('ti-kalem');
     if (k) k.innerHTML = terbiyeKalemSecenekleri(sid, '');
     const s = sid ? fasonSiparisBul(sid) : null;
-    const ter = document.getElementById('ti-termin');
+    const ter = document.getElementById('ti-istenen_termin');
     if (ter && !ter.value && s?.ttarih) ter.value = String(s.ttarih).slice(0, 10);
     terbiyeKumasPlaniKutuYenile(true);
 }
@@ -50640,6 +52151,7 @@ function terbiyeIsKalemDegisti() {
     doldur('ti-renk_kodu', String(k.rkod || k.rkod1 || '').split('|')[0].trim());
     const birim = String(siparisKalemBirim(k) || '').toUpperCase();
     if ((ctx.isTur === 'BOBIN' && birim === 'KG') || (ctx.isTur === 'KUMAS' && ['MT', 'METRE'].includes(birim))) doldur('ti-hedef', String(k.miktar || ''));
+    if (typeof terbiyeRenkStokYenile === 'function') terbiyeRenkStokYenile();
 }
 async function terbiyeIsKaydet() {
     const ctx = _fasonForm;
@@ -50648,16 +52160,21 @@ async function terbiyeIsKaydet() {
     const ki = fasonDeger('ti-kalem');
     const s = sid ? fasonSiparisBul(sid) : null;
     const k = s && ki !== '' ? (uaSiparisKalemleriGetir(s) || [])[parseInt(ki, 10)] : null;
-    const tanim = { tur: ctx.isTur, siparis_id: sid, kalem_idx: ki, kalem_ad: k ? fasonKalemAd(k, parseInt(ki, 10)) : '',
+    /* musteri: Müşteri renkleri görünümü sipariş listeden düşse de (yıllar sonra) müşteriyi bilsin (42, 22.10.2026) */
+    const tanim = { tur: ctx.isTur, siparis_id: sid, kalem_idx: ki, kalem_ad: k ? fasonKalemAd(k, parseInt(ki, 10)) : '', musteri: s ? String(s.firma || '').trim() : '',
         renk: fasonDeger('ti-renk').toLocaleUpperCase('tr-TR'), renk_kodu: fasonDeger('ti-renk_kodu'), malzeme: fasonDeger('ti-malzeme'),
-        hedef: fasonDeger('ti-hedef'), not: fasonDeger('ti-not'),
+        hedef: fasonDeger('ti-hedef'), not: fasonDeger('ti-not'), istenen_termin: fasonDeger('ti-istenen_termin'),
+        ...(ctx.isTur === 'BOBIN' ? { bobin_tipi: fasonDeger('ti-bobin_tipi'), bobin_kg: fasonDeger('ti-bobin_kg') }
+            : Object.fromEntries(['islem', 'ham_en', 'istenen_en', 'gramaj', 'boy_cekme_tol', 'en_cekme_tol', 'tuse'].map(a => [a, fasonDeger('ti-' + a)]))),
         /* Kumaş planına bağ (29): renk başına boyahane takibi; kalem seçiliyse bağ yok */
         kumas_id: ctx.isTur === 'KUMAS' && ki === '' && ctx.kumas ? ctx.kumas.id : '' };
     const isDeger = { turler: ctx.isTur === 'BOBIN' ? 'BOBIN_BOYA' : 'KUMAS_BOYA', girdi: ctx.isTur === 'BOBIN' ? 'IPLIK' : 'KUMAS', firma: fasonDeger('ti-firma'), termin: fasonDeger('ti-termin') };
     if (fasonFiyatGorur()) ['birim_fiyat', 'fiyat_birim', 'para_birimi', 'kdv_pct', 'tevkifat'].forEach(a => { isDeger[a] = fasonDeger('ti-' + a); });
-    if (!tanim.renk) { erpToast('Rengi yazın.', 'error'); return; }
+    if (!tanim.renk && (ctx.isTur === 'BOBIN' || tanim.islem === 'BOYAMA')) { erpToast('Rengi yazın.', 'error'); return; }
+    if (['ham_en', 'istenen_en', 'gramaj', 'boy_cekme_tol', 'en_cekme_tol'].some(a => tanim[a] && !(fasonTakipNum(tanim[a], 2) >= 0))) { erpToast('En / gramaj / tolerans sayı olmalı.', 'error'); return; }
     if (!isDeger.firma) { erpToast('Boyahaneyi yazın.', 'error'); return; }
     if (tanim.hedef !== '' && !(fasonTakipNum(tanim.hedef) > 0)) { erpToast('Boyanacak miktar sıfırdan büyük olmalı.', 'error'); return; }
+    if (tanim.bobin_kg && !(fasonTakipNum(tanim.bobin_kg, 3) > 0)) { erpToast('Bobin ağırlığı sıfırdan büyük olmalı.', 'error'); return; }
     /* Stoktan gönder: miktar zorunlu, bakiyeyi aşarsa sorulur */
     const A = TERBIYE_ALANLAR[ctx.isTur];
     let gonderim = null;
@@ -50692,6 +52209,7 @@ async function terbiyeIsKaydet() {
         terbiyeEkranYenile();
         erpToast(ctx.tid ? 'Boya işi düzeltildi.' : `Boya işi açıldı.${gonMesaj}`, 'success', 4500);
         if (sonra) fasonHareketFormAc(res.anahtar, TERBIYE_ALANLAR[ctx.isTur].gonder);
+        else if (gonderim && gonMesaj && typeof terbiyeGonderimSonrasi === 'function') terbiyeGonderimSonrasi({ tip: A.gonder, anahtar: res.anahtar });
     } catch (e) {
         erpToast('Kaydedilemedi: ' + (e.message || e), 'error', 8000);
     } finally {
@@ -51176,6 +52694,11 @@ async function erpSevkIkizAra(gruplar) {
 function erpVeriBekciYetkiliMi() {
     return typeof depoDuzeltYetkiliMi === 'function' && depoDuzeltYetkiliMi();
 }
+/* GÖRME düzeltmeden ayrı (22.10.2026, kullanıcı: "ana programda ne veri varsa mobilde birebir aynı, sayısal fark
+   olmamalı"): uyarı ve sayılar aynı yetkili kişiye mobilde de görünür; düzeltme (erpVeriBekciAc) mobilde yine kapalı. */
+function erpVeriBekciGorurMu() {
+    return typeof erpUserCan === 'function' && typeof DEPO_DUZELT_YETKI !== 'undefined' && erpUserCan(DEPO_DUZELT_YETKI);
+}
 /** Açık siparişlerin mamül kalemlerindeki tutarsızlıklar. Veri değişmediyse 10 dk önbellek. */
 function erpVeriBekciHesapla(zorla) {
     /* ~140 ms (84 açık sipariş, 06.10): zil dakikada bir sorar — veri değişse de en çok 2 dakikada bir */
@@ -51200,7 +52723,7 @@ function erpVeriBekciHesapla(zorla) {
 }
 /** Zil kuralı (16-uyarilar erpUyarilariHesapla çağırır). */
 function erpUyariVeri(ekle) {
-    if (!erpVeriBekciYetkiliMi()) return;
+    if (!erpVeriBekciGorurMu()) return;
     const liste = erpVeriBekciHesapla();
     const ad = (x) => `${x.sno} · ${x.k?.ad || x.k?.kod || 'kalem ' + (x.ki + 1)} ${[x.k?.renk, x.k?.ebat].filter(Boolean).join(' ')}`.trim();
     const tur = (t) => liste.filter(x => x.sorun.some(s => s.tur === t));
@@ -51225,7 +52748,7 @@ function erpUyariVeri(ekle) {
 }
 /** Zil verisi tazelemesi: açık siparişlerin sevk sayaçları (KD) — 16 en çok 10 dk'da bir çağırır. */
 async function erpVeriBekciVeriTazele() {
-    if (!erpVeriBekciYetkiliMi() || typeof sbKdGetMany !== 'function') return;
+    if (!erpVeriBekciGorurMu() || typeof sbKdGetMany !== 'function') return;
     await sbKdGetMany((dataCache.siparisler || []).filter(s => !siparisKapaliMi(s)).map(s => s.id), 'KD_KONFEKSIYON');
 }
 
@@ -55365,19 +56888,19 @@ var _yapi = { ortam: null, ayar: null, ayarZaman: 0, ayarYok: false, ayarYokZama
 
 /** Bu okuyucunun sürümü. Bir modülün okuma / yazma kodu değişince artar; eşitleme kapatılmadan önce cihaz listesinde
     bütün cihazların bu sayıya ulaştığına bakılır. */
-function yapiOkuyucuSurum() { return 8; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) */
+function yapiOkuyucuSurum() { return 10; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) + M1 ekran geçişi (YENI'de ekran yeni sevki gösterir, 21.10) + M6 fason okuma kıyası / yazma denemesi (21.10) · 9: M7a ürün ağacı okuma kıyası (22.10 gece) · 10: M7b ürün ağacı yazma denemesi (22.10 gece) */
 
 /** Geçiş modülleri (plan sırası). hazir: bu sürümde modülün karşılaştırma / yeni okuma kodu var mı.
     yeni: ekranın yeni sayıya geçiş kodu var mı — yoksa anahtar YENI'ye çevrilse de modül KARSILASTIR çalışır. */
 function yapiModulleri() {
     return [
-        { k: 'sevk', m: 'M1', ad: 'Sevk okuma', hazir: true, yeni: false },
+        { k: 'sevk', m: 'M1', ad: 'Sevk okuma', hazir: true, yeni: true },   /* ekran geçişi: yapiSevkGoster (21.10) */
         { k: 'uretim', m: 'M2', ad: 'Üretim sayıları okuma', hazir: true, yeni: false },
         { k: 'stok_sayim', m: 'M3', ad: 'Stok sayımı (pilot yazma)', hazir: true, yeni: true },   /* assets/stok-sayim.js */
         { k: 'uretim_yazma', m: 'M4', ad: 'Üretim yazma (dokuma)', hazir: true, yeni: false },   /* yapiUretimDene */
         { k: 'depo', m: 'M5', ad: 'Depo ve sevk yazma (ekleme)', hazir: true, yeni: false },   /* yapiDepoDene */
-        { k: 'fason', m: 'M6', ad: 'Fason ve terbiye', hazir: false },
-        { k: 'recete', m: 'M7', ad: 'Ürün ağacı ve kumaş planı', hazir: false },
+        { k: 'fason', m: 'M6', ad: 'Fason ve terbiye', hazir: true, yeni: false },   /* yapiFasonOkuKiyas + yapiFasonDene (21.10) */
+        { k: 'recete', m: 'M7', ad: 'Ürün ağacı ve kumaş planı', hazir: true, yeni: false },   /* yapiReceteKiyasEkle (M7a, 22.10 gece) */
         { k: 'iplik', m: 'M8', ad: 'İplik', hazir: false },
         { k: 'stok_kart', m: 'M9', ad: 'Stok kartları', hazir: false },
         { k: 'islem_izi', m: 'M10', ad: 'İşlem izi ve günlük', hazir: false }
@@ -55763,6 +57286,354 @@ function yapiDepoDuzeltDeneSonuc(g, r, durum) {
     });
 }
 
+/* ═══ M6 FASON / TERBİYE · OKUMA KIYASI + YAZMA DENEMESİ (karşılaştırma aşaması, 21.10.2026) ════════════════════════════
+   SQL: supabase/yapi-adim/14-fason-yaz (v_fason_akis, erp_fason_yaz; deneme: yaz + denetle + geri al). Anahtar 'fason' KARSILASTIR'dayken:
+   - OKUMA: 12 fasonAkisYukle bugünkü gibi siparis_akis'ten okur; en çok 10 dk'da bir v_fason_akis de okunur, olay olay kıyaslanır
+     (id; zaman / işlem / sipariş / kalem_ad / miktar / notlar — JSON anahtarları sıralanarak; iki okuma arasında yazılan olmasın diye son
+     60 sn'nin olayları atlanır). Fark: 'oku|eksik|<id>' (yeni yerde yok), 'oku|fazla|<id>' (eski yerde yok), 'oku|icerik|<id>'.
+     Görünüm kurulu değilse oturumda bir daha okunmaz.
+   - YAZMA: olay yazan yerler yazmadan önce aynı olayları (+ varsa depo ters kayıtlarını) erp_fason_yaz'a DENEME olarak sorar (≤1,5 sn):
+     olay + depo birlikte yazan yollar (12 fasonHareketKaydet / Duzelt / Sil, 20 fasonAgacTopluHareketYaz, 23 terbiyeHareketYaz) TEK
+     denemede; diğerleri (föy, iş, kapama, Dokuma Depo yan etkisi) 12 fasonOlayYaz içinde. Boyalı kumaşın Konfeksiyon'a dönüşü (42) Kesim
+     önü satırını da aynı denemede gönderir: ek.kesim_onu = [{ olay, siparis_id, kalem_ad, miktar, notlar }] (yazılacak KUMAS_GELIS) ya da
+     silmede [{ olay, tur: 'sil', id, iz }] (22.10.2026). Ret → fark 'yaz|<neden>|<anahtar>|<ayrıntı>'
+     (eski 1 / yeni 0); geç gelen cevap fark sayılmaz (program yazmış olur: kapı kimliği "tekrar" görür); kapı kurulu değilse oturumda
+     bir daha sorulmaz. Programın yazımı DEĞİŞMEZ. Ölçüm _yapiFason.sayac. */
+var _yapiFason = { kiyasZaman: 0, kiyasMs: 10 * 60000, tazeMs: 60000, gorunumYok: false, kapiYok: false,
+    sayac: { kiyas: 0, istek: 0, fark: 0, hata: 0, gec: 0 } };
+
+function yapiFasonKiyasAcikMi() { return yapiKarsilastirMi('fason') && !_yapiFason.gorunumYok; }
+function yapiFasonDeneAcikMi() { return yapiKarsilastirMi('fason') && !_yapiFason.kapiYok; }
+
+/** JSON değerinin anahtarları sıralı metni (jsonb anahtar sırasını değiştirir; kıyas sıradan bağımsız). */
+function yapiFasonKanon(v) {
+    return JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x))
+        ? Object.keys(x).sort().reduce((o, z) => { o[z] = x[z]; return o; }, {}) : x);
+}
+function yapiFasonNot(x) {
+    if (x && typeof x === 'object') return x;
+    try { return JSON.parse(x || '{}'); } catch (e) { return String(x || ''); }
+}
+/** İki olay satırı aynı mı (eski: siparis_akis satırı, n = çözülmüş notlar varsa o; yeni: v_fason_akis satırı). */
+function yapiFasonAyni(a, b) {
+    return String(a.islem || '') === String(b.islem || '') && String(a.siparis_id ?? '') === String(b.siparis_id ?? '')
+        && String(a.kalem_ad ?? '') === String(b.kalem_ad ?? '') && yapiSayi(a.miktar) === yapiSayi(b.miktar)
+        && Date.parse(a.created_at || '') === Date.parse(b.created_at || '')
+        && yapiFasonKanon(a.n && typeof a.n === 'object' ? a.n : yapiFasonNot(a.notlar)) === yapiFasonKanon(yapiFasonNot(b.notlar));
+}
+
+/** M6a okuma kıyası: eskiSatirlar = fasonAkisYukle'nin siparis_akis'ten okuduğu satırlar. En çok 10 dk'da bir; hiç fırlatmaz.
+    Döner: { eski, yeni, fark } ya da null (kapalı / zamanı gelmedi / okunamadı). */
+async function yapiFasonOkuKiyas(eskiSatirlar) {
+    if (!yapiFasonKiyasAcikMi() || !Array.isArray(eskiSatirlar)) return null;
+    if (Date.now() - _yapiFason.kiyasZaman < _yapiFason.kiyasMs) return null;
+    const c = yapiSb();
+    if (!c || typeof c.from !== 'function') return null;
+    _yapiFason.kiyasZaman = Date.now();
+    const bas = Date.now();
+    let yeni = [];
+    try {
+        for (let off = 0; ; off += 1000) {
+            const { data, error } = await c.from('v_fason_akis').select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
+                .order('id').range(off, off + 999);
+            if (error) { if (yapiRpcYokMu(error)) _yapiFason.gorunumYok = true; else _yapiFason.sayac.hata++; return null; }
+            (data || []).forEach((r) => yeni.push(r));
+            if (!data || data.length < 1000) break;
+        }
+    } catch (e) {
+        _yapiFason.sayac.hata++;
+        return null;
+    }
+    _yapiFason.sayac.kiyas++;
+    const sinir = bas - _yapiFason.tazeMs;
+    const taze = (r) => !(Date.parse(r.created_at || '') <= sinir);
+    const em = new Map(eskiSatirlar.filter((r) => r && r.id != null && !r._yerel).map((r) => [String(r.id), r]));
+    const ym = new Map(yeni.map((r) => [String(r.id), r]));
+    const farklar = [];
+    em.forEach((r, id) => {
+        if (taze(r)) return;
+        const y = ym.get(id);
+        if (!y) farklar.push(['eksik', id, r]);
+        else if (!yapiFasonAyni(r, y)) farklar.push(['icerik', id, r]);
+    });
+    ym.forEach((y, id) => { if (!taze(y) && !em.has(id)) farklar.push(['fazla', id, y]); });
+    farklar.forEach(([tur, id, x]) => {
+        _yapiFason.sayac.fark++;
+        const n = x.n && typeof x.n === 'object' ? x.n : yapiFasonNot(x.notlar);
+        yapiFarkBildir('fason', ['oku', tur, id].join('|'), tur === 'fazla' ? 0 : 1, tur === 'eksik' ? 0 : (tur === 'fazla' ? 1 : 2), {
+            siparis_id: x.siparis_id != null && x.siparis_id !== '' ? String(x.siparis_id) : null, kalem_idx: null,
+            ayrinti: { islem: 'oku', tur, id, olay: x.islem || '', anahtar: (n && n.anahtar) || '', tip: (n && n.tip) || '', zaman: x.created_at || '' }
+        });
+    });
+    return { eski: em.size, yeni: ym.size, fark: farklar.length };
+}
+
+/** M6b yazma denemesi: olaylar = [{ islem, siparis_id, kalem_ad, miktar, notlar (nesne ya da metin) }], depo = [{ tablo, satir, olay? }],
+    ek (isteğe bağlı) = { kesim_onu: [...] } (Kesim önü satırı — yukarıda) — programın yazacağının aynısı. Hiç fırlatmaz; programın yazımını
+    değiştirmez. */
+function yapiFasonDene(olaylar, depo, ek) {
+    if (!yapiFasonDeneAcikMi() || !Array.isArray(olaylar) || !olaylar.length) return Promise.resolve(null);
+    let g;
+    try {
+        g = { gid: 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+            program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: true,
+            olaylar: JSON.parse(JSON.stringify(olaylar.map((o) => Object.assign({}, o, { notlar: yapiFasonNot(o.notlar) })))),
+            depo: JSON.parse(JSON.stringify(Array.isArray(depo) ? depo : [])) };
+        if (ek && Array.isArray(ek.kesim_onu) && ek.kesim_onu.length) {
+            g.kesim_onu = JSON.parse(JSON.stringify(ek.kesim_onu.map((x) => (x && x.notlar !== undefined ? Object.assign({}, x, { notlar: yapiFasonNot(x.notlar) }) : x))));
+        }
+    } catch (e) {
+        return Promise.resolve(null);
+    }
+    const durum = { gec: false };
+    _yapiFason.sayac.istek++;
+    const p = yapiRpc('erp_fason_yaz', { p_istek: g })
+        .then((r) => { try { yapiFasonDeneSonuc(g, r, durum); } catch (e) {} return r; }, () => null);
+    p.durum = durum;
+    return p;
+}
+
+/** Yazımdan hemen önce: kapıya sorar, en çok ms (varsayılan 1,5 sn) bekler. Kapalıysa beklemeden döner. */
+async function yapiFasonDeneBekle(olaylar, depo, ms, ek) {
+    const p = yapiFasonDene(olaylar, depo, ek);
+    if (!p.durum) return null;
+    const s = await Promise.race([p, new Promise((r) => setTimeout(() => r('__zaman'), ms != null ? ms : 1500))]);
+    if (s === '__zaman') { p.durum.gec = true; return null; }
+    return s;
+}
+
+function yapiFasonDeneSonuc(g, r, durum) {
+    if (!r) return;
+    if (r.err === 'kurulu_degil') { _yapiFason.kapiYok = true; return; }
+    if (['ag', 'baglanti', 'oturum', 'cevap'].includes(r.err)) { _yapiFason.sayac.hata++; return; }
+    if (r.ok) return;
+    if (durum && durum.gec) { _yapiFason.sayac.gec++; return; }
+    _yapiFason.sayac.fark++;
+    const neden = String(r.err || 'bilinmiyor');
+    const x = (Number.isInteger(r.olay) && g.olaylar[r.olay]) || g.olaylar[0] || {};
+    const n = x.notlar || {};
+    const anahtar = String(n.anahtar || (Array.isArray(n.coklu) && n.coklu[0] && n.coklu[0].anahtar) || '');
+    const ko = g.kesim_onu || [];
+    const ayr = String(r.neden || r.alan || r.tip || r.fgid || r.hedef || (r.depo != null ? 'depo ' + r.depo : '')
+        || (r.kesim_onu != null ? 'kesim_onu ' + r.kesim_onu : '') || n.tip || n.bolum || '').slice(0, 60);
+    yapiFarkBildir('fason', ['yaz', neden, anahtar, ayr].join('|'), 1, 0, {
+        siparis_id: x.siparis_id != null && x.siparis_id !== '' ? String(x.siparis_id) : null, kalem_idx: null,
+        ayrinti: { islem: 'yaz', neden, program: g.program, gid: g.gid, olay_sayisi: g.olaylar.length, depo_sayisi: g.depo.length,
+            kesim_onu_sayisi: ko.length, kesim_onu_no: Number.isInteger(r.kesim_onu) ? r.kesim_onu : null,
+            kesim_onu: ko.length ? ko.map((y) => (y.tur || 'ekle') + ':' + (y.id || y.siparis_id || '')) : undefined,
+            olay_no: Number.isInteger(r.olay) ? r.olay : null, depo_no: Number.isInteger(r.depo) ? r.depo : null,
+            olay: x.islem || '', tip: n.tip || '', anahtar, ayrinti: r.neden || '', alan: r.alan || '', detay: r.detay || '',
+            olaylar: g.olaylar.map((y) => (y.islem || '') + ':' + ((y.notlar && (y.notlar.tip || y.notlar.bolum)) || '')) }
+    });
+}
+
+/* ═══ M7 ÜRÜN AĞACI · OKUMA KIYASI (karşılaştırma aşaması, 22.10.2026 gece) ═══════════════════════════════════════════════
+   SQL: supabase/yapi-adim/16-urun-agaci-oku (v_urun_agaci_kap: kap + kalem_siralar + arsiv_siralar). Kararlar docs/M7-URUN-AGACI-TASLAK.md.
+   Anahtar 'recete' KARSILASTIR'dayken ürün ağacı kabı (KD_URUN_AGACI) AĞDAN okunduğu anda (ana program + mobil 08 sbKdGet / sbKdGetMany /
+   sbKdGetTipler; Dokuma Panel ve Konfeksiyon Panel getKd / getKdBatch) okunan hâlin kopyası yapiReceteKiyasEkle(sid, kap) ile kuyruğa
+   girer (aynı sipariş en çok 10 dk'da bir; kopya okunduğu an alınır — ekranın kaydedilmemiş değişikliği karışmaz). Kuyruk 3 sn sonra en
+   çok 150 siparişlik parçalarla görünümden okunur, kap kap kıyaslanır (yapiReceteKiyasla; programın kabı görünümün kuralıyla süzülür —
+   yapiReceteKapKanon: u_<sıra> yalnız nesne değerliyse ve sırası canlı kalemdeyse, üst düzey nesnelerden ekranın iç sayacı _ua_edit_seq
+   atılır). Tutmazsa sipariş TAZE okunur (kap satırları + görünüm) ve yeniden kıyaslanır; yine tutmazsa fark 'oku|<tür>|<sipariş>|<anahtar>':
+   eksik (programda var, yeni yerde yok — eski 1 / yeni 0), devralma (eksik + o sıra arşivde: kalemi olmayan eski reçeteyi program yeni
+   kaleme gösteriyor — K1), fazla (0 / 1), icerik (1 / 2). Görünüm kurulu değilse oturumda bir daha okunmaz. Programın okuması DEĞİŞMEZ.
+   Yük: yalnız KARSILASTIR'da, ağdan okunan kap kadar (sipariş başına en çok 10 dk'da bir). Ölçüm _yapiRecete.sayac. */
+var _yapiRecete = { kuyruk: new Map(), son: new Map(), zamanlayici: null, aralikMs: 10 * 60000, bekleMs: 3000, parca: 150, gorunumYok: false,
+    sayac: { kuyruk: 0, okuma: 0, kiyas: 0, taze: 0, fark: 0, hata: 0 } };
+
+function yapiReceteKiyasAcikMi() { return yapiKarsilastirMi('recete') && !_yapiRecete.gorunumYok; }
+
+/** Nesneden ekranın iç sayacı (_ua_edit_seq) atılmış kopya; nesne değilse kendisi. */
+function yapiReceteSeqsiz(v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+    const o = Object.assign({}, v);
+    delete o._ua_edit_seq;
+    return o;
+}
+
+/** Programın kabı görünümün kuralıyla (SQL 16 v_urun_agaci_kap): u_<sıra> yalnız nesne değerliyse, en çok 6 hane ve sırası canlı
+    kalemdeyse (kalemSiralar = görünümün kalem_siralar'ı); anahtar u_<sayı>; üst düzey nesnelerden _ua_edit_seq atılır. */
+function yapiReceteKapKanon(kap, kalemSiralar) {
+    const out = {};
+    if (!kap || typeof kap !== 'object' || Array.isArray(kap)) return out;
+    const canli = new Set((kalemSiralar || []).map(Number));
+    Object.keys(kap).forEach((k) => {
+        const v = kap[k];
+        const m = /^u_(\d+)$/.exec(k);
+        if (m) {
+            if (m[1].length > 6 || !v || typeof v !== 'object' || Array.isArray(v) || !canli.has(Number(m[1]))) return;
+            out['u_' + Number(m[1])] = yapiReceteSeqsiz(v);
+            return;
+        }
+        out[k] = yapiReceteSeqsiz(v);
+    });
+    return out;
+}
+
+/** Programın kabı ↔ görünüm satırı ({ kap, kalem_siralar, arsiv_siralar } ya da yok). Döner: [{ anahtar, tur }]. */
+function yapiReceteKiyasla(eskiKap, yeniSatir) {
+    const y = yeniSatir && yeniSatir.kap && typeof yeniSatir.kap === 'object' && !Array.isArray(yeniSatir.kap) ? yeniSatir.kap : {};
+    const e = yapiReceteKapKanon(eskiKap, yeniSatir ? yeniSatir.kalem_siralar : []);
+    const arsiv = new Set(((yeniSatir && yeniSatir.arsiv_siralar) || []).map(Number));
+    const out = [];
+    Object.keys(e).forEach((k) => {
+        if (!Object.prototype.hasOwnProperty.call(y, k)) {
+            const m = /^u_(\d+)$/.exec(k);
+            out.push({ anahtar: k, tur: m && arsiv.has(Number(m[1])) ? 'devralma' : 'eksik' });
+        } else if (yapiFasonKanon(e[k]) !== yapiFasonKanon(y[k])) {
+            out.push({ anahtar: k, tur: 'icerik' });
+        }
+    });
+    Object.keys(y).forEach((k) => { if (!Object.prototype.hasOwnProperty.call(e, k)) out.push({ anahtar: k, tur: 'fazla' }); });
+    return out;
+}
+
+/** Kap satırları arasından programın okuduğu (08 sbKdSatirSecDetay): kalem_ad boş ya da 'KD_URUN_AGACI', ayrıştırılabilen, en yeni
+    (bu kapta içerik puanı hep 0 — puan yalnız kalem_ / üretim sayaçlarına bakar). */
+function yapiReceteKapSec(rows) {
+    const c = (rows || []).filter((r) => r && (!r.kalem_ad || String(r.kalem_ad) === 'KD_URUN_AGACI')).map((r) => {
+        try { return { r, j: JSON.parse(r.notlar || '{}') || {} }; } catch (e) { return null; }
+    }).filter(Boolean).sort((a, b) => {
+        const t = new Date(b.r.created_at || 0).getTime() - new Date(a.r.created_at || 0).getTime();
+        return t !== 0 ? t : String(b.r.id || '').localeCompare(String(a.r.id || ''), 'tr', { numeric: true, sensitivity: 'base' });
+    });
+    return c.length ? c[0].j : {};
+}
+
+/** Ürün ağacı kabı ağdan okundu (KD katmanı çağırır): okunan hâlin kopyası kıyas kuyruğuna. Hiç fırlatmaz. */
+function yapiReceteKiyasEkle(siparisId, kap) {
+    try {
+        if (!yapiReceteKiyasAcikMi()) return false;
+        const sid = String(siparisId == null ? '' : siparisId).trim();
+        if (!/^\d+$/.test(sid)) return false;
+        const t = _yapiRecete.son.get(sid);
+        if (t && Date.now() - t < _yapiRecete.aralikMs) return false;
+        _yapiRecete.son.set(sid, Date.now());
+        _yapiRecete.kuyruk.set(sid, JSON.parse(JSON.stringify(kap && typeof kap === 'object' ? kap : {})));
+        _yapiRecete.sayac.kuyruk++;
+        if (!_yapiRecete.zamanlayici) _yapiRecete.zamanlayici = setTimeout(yapiReceteKuyrukIsle, _yapiRecete.bekleMs);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+/** Görünümden siparişlerin satırları: Map(sid → satır) ya da null (kurulu değil / okunamadı). */
+async function yapiReceteGorunumOku(sids) {
+    const c = yapiSb();
+    if (!c || typeof c.from !== 'function') return null;
+    try {
+        const { data, error } = await c.from('v_urun_agaci_kap').select('siparis_id,kap,kalem_siralar,arsiv_siralar').in('siparis_id', sids);
+        if (error) { if (yapiRpcYokMu(error)) _yapiRecete.gorunumYok = true; else _yapiRecete.sayac.hata++; return null; }
+        _yapiRecete.sayac.okuma++;
+        return new Map((data || []).map((r) => [String(r.siparis_id), r]));
+    } catch (e) {
+        _yapiRecete.sayac.hata++;
+        return null;
+    }
+}
+
+async function yapiReceteKuyrukIsle() {
+    _yapiRecete.zamanlayici = null;
+    const hepsi = [..._yapiRecete.kuyruk.entries()];
+    _yapiRecete.kuyruk.clear();
+    if (!hepsi.length || !yapiReceteKiyasAcikMi()) return;
+    for (let i = 0; i < hepsi.length; i += _yapiRecete.parca) {
+        const parca = hepsi.slice(i, i + _yapiRecete.parca);
+        const yeni = await yapiReceteGorunumOku(parca.map(([sid]) => sid));
+        if (!yeni) return;
+        for (const [sid, kap] of parca) {
+            _yapiRecete.sayac.kiyas++;
+            if (yapiReceteKiyasla(kap, yeni.get(sid)).length) await yapiReceteTazeKiyas(sid);
+        }
+    }
+}
+
+/** Kap satırlarını ve görünümü yeniden okur (arada yazılmış / ekranda değişmiş olabilir); yine tutmazsa fark bildirir. */
+async function yapiReceteTazeKiyas(sid) {
+    const c = yapiSb();
+    if (!c || typeof c.from !== 'function') return;
+    _yapiRecete.sayac.taze++;
+    try {
+        const [kr, g] = await Promise.all([
+            c.from('siparis_akis').select('id,kalem_ad,notlar,created_at').eq('siparis_id', sid).eq('islem', 'KD_URUN_AGACI')
+                .order('created_at', { ascending: false }).limit(20),
+            yapiReceteGorunumOku([sid])
+        ]);
+        if (!kr || kr.error || !g) { _yapiRecete.sayac.hata++; return; }
+        yapiReceteKiyasla(yapiReceteKapSec(kr.data || []), g.get(sid)).slice(0, 20).forEach((f) => {
+            _yapiRecete.sayac.fark++;
+            const m = /^u_(\d+)$/.exec(f.anahtar);
+            const ey = f.tur === 'fazla' ? [0, 1] : (f.tur === 'icerik' ? [1, 2] : [1, 0]);
+            yapiFarkBildir('recete', ['oku', f.tur, sid, f.anahtar].join('|'), ey[0], ey[1], {
+                siparis_id: sid, kalem_idx: m ? Number(m[1]) : null, ayrinti: { islem: 'oku', tur: f.tur, anahtar: f.anahtar }
+            });
+        });
+    } catch (e) {
+        _yapiRecete.sayac.hata++;
+    }
+}
+
+/* ═══ M7b ÜRÜN AĞACI YAZMA · DENEME (karşılaştırma aşaması, 22.10.2026 gece) ════════════════════════════════════════════════
+   SQL: supabase/yapi-adim/17-recete-yaz (erp_recete_yaz; deneme: bütün denetimler, HİÇBİR ŞEY yazmaz / kilitlemez). Anahtar 'recete'
+   KARSILASTIR'dayken ürün ağacı kabı programda BUGÜNKÜ GİBİ yazılır (08 sbKdSet alan alan birleştirir, sbKdDel siler); yazmadan hemen
+   önce kapıya AYNI kap metni ve birleştirirken bakılan satır (gördüğü hâl: id + updated_at; satır yoksa null) ile "kabul eder miydin?"
+   diye sorulur (≤ 1,5 sn). Kapı reddederdi → fark 'yaz|<neden>|<sipariş>|<ayrıntı>' (eski 1 / yeni 0). 'cakisma' hemen fark değil:
+   arada başka cihaz yazdıysa program da yazamaz ve taze okuyup yeniden sorar — fark yalnız program AYNI gördüğü hâlle yazabildiyse
+   (yapiReceteDeneOnay; kapı satırı programdan farklı seçiyor demektir). Geç gelen cevap fark sayılmaz. Ağ / oturum fark değil; kapı
+   kurulu değilse oturumda bir daha sorulmaz; ESKI / YENI'de hiç istek yok. Bağlantı: 08 sbKdSet (tur 'yaz') · sbKdDel (tur 'sifirla')
+   — yalnız KD_URUN_AGACI. Ölçüm _yapiRecete.yaz. */
+_yapiRecete.kapiYok = false;
+_yapiRecete.yaz = { istek: 0, fark: 0, hata: 0, gec: 0 };
+
+function yapiReceteDeneAcikMi() { return yapiKarsilastirMi('recete') && !_yapiRecete.kapiYok; }
+
+/** istek = { siparis_id, tur: 'yaz' | 'sifirla', gordugu: { id, updated_at } | null, notlar: kap metni } — programın yazacağının aynısı.
+    En çok ms (varsayılan 1,5 sn) bekler. Döner: { r, durum } (sbKdSet yazdıktan sonra yapiReceteDeneOnay'a verir) ya da null. Hiç fırlatmaz. */
+async function yapiReceteDeneBekle(istek, ms) {
+    if (!istek || !yapiReceteDeneAcikMi()) return null;
+    let g;
+    try {
+        g = Object.assign({ gid: 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+            program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: true }, JSON.parse(JSON.stringify(istek)));
+    } catch (e) {
+        return null;
+    }
+    const durum = { gec: false, cakisma: null };
+    _yapiRecete.yaz.istek++;
+    const p = yapiRpc('erp_recete_yaz', { p_istek: g })
+        .then((r) => { try { yapiReceteDeneSonuc(g, r, durum); } catch (e) {} return r; }, () => null);
+    const s = await Promise.race([p, new Promise((r) => setTimeout(() => r('__zaman'), ms != null ? ms : 1500))]);
+    if (s === '__zaman') { durum.gec = true; return null; }
+    return { r: s, durum, g };
+}
+
+function yapiReceteDeneSonuc(g, r, durum) {
+    if (!r) return;
+    if (r.err === 'kurulu_degil') { _yapiRecete.kapiYok = true; return; }
+    if (['ag', 'baglanti', 'oturum', 'cevap'].includes(r.err)) { _yapiRecete.yaz.hata++; return; }
+    if (r.ok) return;
+    if (durum && durum.gec) { _yapiRecete.yaz.gec++; return; }
+    if (r.err === 'cakisma') { durum.cakisma = r; return; }   /* yapiReceteDeneOnay karar verir */
+    yapiReceteFarkYaz(g, r);
+}
+
+/** Program kabı kapıya gösterdiği gördüğü hâlle YAZABİLDİ: kapının 'cakisma' demesi gerçek ayrılıktır. */
+function yapiReceteDeneOnay(d) {
+    try { if (d && d.durum && d.durum.cakisma && !d.durum.gec) yapiReceteFarkYaz(d.g, d.durum.cakisma); } catch (e) {}
+}
+
+function yapiReceteFarkYaz(g, r) {
+    _yapiRecete.yaz.fark++;
+    const neden = String(r.err || 'bilinmiyor');
+    const ayr = String(r.neden || (r.sira != null ? 'u_' + r.sira : '') || '').slice(0, 40);
+    yapiFarkBildir('recete', ['yaz', neden, g.siparis_id, ayr].join('|'), 1, 0, {
+        siparis_id: g.siparis_id != null ? String(g.siparis_id) : null, kalem_idx: Number.isInteger(r.sira) ? r.sira : null,
+        ayrinti: { islem: 'yaz', tur: g.tur || 'yaz', neden, ayrinti: r.neden || '', sira: r.sira ?? null, program: g.program, gid: g.gid,
+            gordugu: g.gordugu || null, kapi_satiri: r.akis_id ?? null, boyut: g.notlar ? String(g.notlar).length : 0 }
+    });
+}
+
 /* ═══ KARŞILAŞTIRMA OKUYUCUSU — M1 sevk · M2 üretim (16–17.10.2026) ════════════════════════════════════════════════
    Ekranın gösterdiği (eski) sayıyı yeni yapıdaki sayıyla kıyaslar; ekrana dokunmaz. Modüller (yapiOkuTanimi):
      sevk   M1 · v_kalem_sevk: kaleme açıkça bağlı depo hareketi + DEVIR satırı (4-depo-sevk/5-sevk-devir.sql). Alan: sevk.
@@ -55785,9 +57656,11 @@ function yapiDepoDuzeltDeneSonuc(g, r, durum) {
      yeniden istenir (ortam.<modül>Eski); ikisi de aynı farkı veriyorsa yapiFarkBildir(modül, anahtar, eski, yeni,
      { siparis_id, kalem_idx, ayrinti }) — anahtar 'sevk|<sipariş>|<kalem>' / 'uretim|<sipariş>|<kalem>|<alan>'.
      Bildirilen fark aynı kaldıkça yeniden okunmaz.
-   - YENI: ekranın yeni sayıya geçiş kodu bu sürümde yok (yapiModulleri yeni: false) → KARSILASTIR gibi çalışır.
+   - YENI: M1 sevkte ekran yeni sayıyı gösterir (aşağıda "M1 · EKRAN GEÇİŞİ"); M2'de geçiş kodu yok (yeni: false) →
+     KARSILASTIR gibi çalışır.
    Ortam (yapiKur): <modül>Eski(sid, ki) → gösterilen şu an (sevk: sayı · uretim: { alan: sayı }; bilinemiyorsa null),
-   <modül>Ayrinti(sid, ki) → eski sayının kaynakları (yalnız bildirilen farkta), siparisBilgi(sid) → { kapali, kapanis (ms) }.
+   <modül>Ayrinti(sid, ki) → eski sayının kaynakları (yalnız bildirilen farkta), siparisBilgi(sid) → { kapali, kapanis (ms) },
+   yeniGeldi(modül, sipariş id'leri) → YENI'de yeni sayılar okununca / değişince ekranı yeniden çiz.
    Ölçüm sayaçları _yapiOku.m.<modül>.olcum (istek / satır). */
 var _yapiOku = { gecerliMs: 10 * 60000, onayMs: 2 * 60000, parca: 150, bekleme: 2000, arsivGun: 90, hal: new Map(), hesapta: false, m: {} };
 
@@ -55909,8 +57782,17 @@ async function yapiOkuSiraOku(modul) {
     const sids = [...d.sira];
     d.sira.clear();
     if (!sids.length) return;
-    if (!yapiKarsilastirMi(modul)) { d.bek.clear(); return; }
+    const yeniMod = yapiYeniMi(modul);
+    if (!yeniMod && !yapiKarsilastirMi(modul)) { d.bek.clear(); return; }
+    const once = yeniMod ? new Map(sids.map((x) => [x, yapiYeniImza(modul, d.sip.get(x))])) : null;
     const okunan = await yapiOkuSiparisler(modul, sids, false);
+    if (yeniMod) {
+        /* YENI: kıyas yok; ilk kez okunan ya da sayısı değişen siparişler için ekran yeniden çizilir */
+        d.bek.clear();
+        const degisen = sids.filter((x) => okunan.has(x) && yapiYeniImza(modul, d.sip.get(x)) !== once.get(x));
+        if (degisen.length) yapiYeniHaber(modul, degisen);
+        return;
+    }
     const bu = new Set(sids);
     d.bek.forEach((e, key) => {
         const [sid, kis, alan] = key.split('|');
@@ -55963,6 +57845,91 @@ async function yapiOkuSiparisler(modul, sids, ayrintili) {
         }
     }
     return okunan;
+}
+
+/* ═══ M1 · EKRAN GEÇİŞİ (anahtar YENI, 21.10.2026) ═══════════════════════════════════════════════════════════════════
+   Anahtar 'sevk' YENI'yken (ve bu sürümde yeni: true) ekran kalemin sevkini yeni yapıdan (v_kalem_sevk) gösterir; kıyas ve
+   fark bildirimi durur. Sayılar okuyucunun önbelleğinden gelir (yukarıdaki okuma: 150 sipariş tek istek; açık 10 dk, kapalı /
+   arşiv oturumda bir kez). Hiç okunmamış siparişte yapiYeniSayi null döner → platform o an eski hesabı gösterir, sipariş
+   150 ms içinde okunur ve ortam.yeniGeldi ekranı yeniden çizer. Depo değişince (bu programın ya da başkasının yazması)
+   platform yapiYeniTazele der: sipariş bayatlar, son okunan gösterilmeye devam eder, arka planda yeniden okunur. Sayı YAZAN
+   yollar (Yüklenen + / düzelt) yazmadan önce yapiYeniTazeOku ile taze okur. Geri dönüş: anahtar KARSILASTIR / ESKI. */
+var _yapiYeni = { bekleme: 150 };
+
+/** YENI'de ekranda gösterilecek yeni sayı: okunmuşsa sayı (bayat / süresi dolmuşsa arka planda tazelenir), hiç okunmamışsa
+    ya da kalem yeni yapıda yoksa null (çağıran eski hesabı gösterir). YENI değilse null. */
+function yapiYeniSayi(modul, siparisId, kalemIdx, alan) {
+    if (!yapiYeniMi(modul)) return null;
+    try {
+        const sid = String(siparisId == null ? '' : siparisId).trim();
+        const ki = parseInt(kalemIdx, 10);
+        if (!/^[0-9]{1,18}$/.test(sid) || !(ki >= 0)) return null;
+        const d = yapiOkuDurum(modul);
+        const s = d.sip.get(sid);
+        if (!s || s.bayat || !yapiOkuTazeMi(sid, s)) yapiYeniSiraya(modul, [sid], false);
+        if (!s) return null;
+        const k = s.kalem.get(ki);
+        return k && typeof k[alan] === 'number' ? k[alan] : null;
+    } catch (e) {
+        return null;
+    }
+}
+/** Ekranda gösterilecek sevk (M1): anahtar YENI'yken yeni sayı, değilse / okunmamışsa null. */
+function yapiSevkGoster(siparisId, kalemIdx) { return yapiYeniSayi('sevk', siparisId, kalemIdx, 'sevk'); }
+
+/** Siparişleri okuma sırasına al (YENI'de kısa bekleme). uctaDa: okunmakta olsa bile yeniden oku (okuma sürerken gelen değişiklik). */
+function yapiYeniSiraya(modul, sids, uctaDa) {
+    const d = yapiOkuDurum(modul);
+    let eklendi = false;
+    sids.forEach((x) => { if (uctaDa || !d.ucus.has(x)) { d.sira.add(x); eklendi = true; } });
+    if (eklendi && !d.siraZ) d.siraZ = setTimeout(() => yapiOkuSiraOku(modul), _yapiYeni.bekleme);
+}
+
+/** Depo değişti (YENI'de): verilen siparişler (null = önbellekteki açık siparişler) bayatlar ve yeniden okunur; okunmamış
+    sipariş için bir şey yapılmaz (gösterilince okunur). */
+function yapiYeniTazele(modul, sids) {
+    if (!yapiYeniMi(modul)) return;
+    const d = yapiOkuDurum(modul);
+    const liste = (sids == null ? [...d.sip.keys()].filter((x) => yapiSiparisHaliOku(x) === 'ACIK')
+        : sids.map((x) => String(x))).filter((x) => d.sip.has(x));
+    liste.forEach((x) => { d.sip.get(x).bayat = true; });
+    if (liste.length) yapiYeniSiraya(modul, liste, true);
+}
+
+/** Verilen siparişleri önceden okut (YENI'de; önbellekte olmayanlar) — ekran açılırken eski sayının bir an görünmemesi için. */
+function yapiYeniOnYukle(modul, sids) {
+    if (!yapiYeniMi(modul) || !Array.isArray(sids)) return;
+    const d = yapiOkuDurum(modul);
+    const liste = sids.map((x) => String(x)).filter((x) => /^[0-9]{1,18}$/.test(x) && !d.sip.has(x));
+    if (liste.length) yapiYeniSiraya(modul, liste, false);
+}
+
+/** Yazmadan önce taze okuma (YENI'de): sipariş hemen okunur, kalemin sayısı döner; okunamazsa / kalem yoksa / YENI değilse null. */
+async function yapiYeniTazeOku(modul, siparisId, kalemIdx, alan) {
+    if (!yapiYeniMi(modul)) return null;
+    const sid = String(siparisId == null ? '' : siparisId).trim();
+    const ki = parseInt(kalemIdx, 10);
+    if (!/^[0-9]{1,18}$/.test(sid) || !(ki >= 0)) return null;
+    const d = yapiOkuDurum(modul);
+    const once = yapiYeniImza(modul, d.sip.get(sid));
+    const okunan = await yapiOkuSiparisler(modul, [sid], false);
+    if (!okunan.has(sid)) return null;
+    const s = d.sip.get(sid);
+    if (yapiYeniImza(modul, s) !== once) yapiYeniHaber(modul, [sid]);
+    const k = s && s.kalem.get(ki);
+    return k && typeof k[alan] === 'number' ? k[alan] : null;
+}
+
+/** Siparişin okunmuş sayılarının imzası (değişti mi). */
+function yapiYeniImza(modul, s) {
+    if (!s) return '';
+    const t = yapiOkuTanimi(modul);
+    return [...s.kalem.entries()].map(([i, k]) => i + ':' + t.alanlar.map((a) => k[a]).join(',')).join(';');
+}
+
+function yapiYeniHaber(modul, sids) {
+    const f = _yapi.ortam && _yapi.ortam.yeniGeldi;
+    if (typeof f === 'function') { try { f(modul, sids); } catch (e) {} }
 }
 
 /** Bir alanda gösterilen sayı (e) ile okunmuş yeni sayıyı kıyaslar. Tutmazsa aday; aday ayrı ve en az onayMs sonraki
@@ -56082,7 +58049,9 @@ function erpYapiKur() {
         token: () => (typeof erpGetToken === 'function' ? erpGetToken() : ''),
         ekran: () => String(typeof appMode === 'string' ? appMode : ''),
         yayinla: (t) => { if (typeof erpAnlikYayinla === 'function') erpAnlikYayinla(t); },
-        ayarDegisti: () => { if (_yapiPanel.acik) yapiGecisCiz(); },
+        ayarDegisti: () => { if (_yapiPanel.acik) yapiGecisCiz(); erpYapiSevkAnahtarDegisti(); },
+        /* M1 YENI: yeni sevk sayıları okununca / değişince açık ekran yeniden çizilir */
+        yeniGeldi: (modul) => { if (modul === 'sevk') erpYapiSevkEkranYenile(); },
         /* M1 sevk: aday fark doğrulanırken ekrandaki sayı yeniden hesaplanır (KD satırını kendisi _kdCache'ten okur);
            sayaç kaynağı okunmamışsa null = "söyleyemiyor", fark bildirilmez */
         sevkEski: (sid, ki) => (typeof planlamaIhtiyacSevkAdet === 'function' && erpYapiSevkSayacYukluMu(sid, null)
@@ -56108,10 +58077,13 @@ function erpYapiUretimKiyas(sid, ix, k, u, out) {
 
 /** Gösterilen sayılar → kalem_durum alanları, YALNIZ kaynakları yüklüyse (yüklenmemiş kaynak eksik sayı verir → sahte fark):
     dokuma (ham: ortakDokumaToplam) siparişin KD_DOKUMA'sı okunmuşsa; konfeksiyon yalnız ADET kalemde (kalem_durum'da diğerinde
-    boş) ve KD_KONFEKSIYON + kesim tablosu + kumaş geliş satırları okunmuşsa. */
+    boş) ve KD_KONFEKSIYON + kesim tablosu + kumaş geliş satırları okunmuşsa. Okunmuş = damga VE önbellekte duruyor: başka cihaz
+    yazınca 04 erpLiveApplyPayloadYap kabı düşürür, damga kalır — boş kaptan 0 hesaplanıp sahte fark çıkıyordu (22.10.2026, fark
+    defteri #244–246: tablet yazdı, masaüstü Raporlar'dan dokuma 0 / kalite 0 kıyasladı). */
 function erpYapiUretimEskiler(sid, k, u, out) {
     const e = {};
-    const yuklu = (anahtar) => typeof _kdCacheAt !== 'undefined' && !!_kdCacheAt[anahtar];
+    const yuklu = (anahtar) => typeof _kdCacheAt !== 'undefined' && !!_kdCacheAt[anahtar]
+        && typeof _kdCache !== 'undefined' && _kdCache[anahtar] !== undefined;
     if (yuklu(`KD_DOKUMA_${sid}`)) {
         const d = ortakDokumaToplam(u || {}, k || {});
         e.dokuma_metre = d.metre;
@@ -56137,11 +58109,50 @@ function erpYapiUretimEskiYeniden(sid, ki) {
     return Object.keys(e).length ? e : null;
 }
 
+/* ═══ M1 · EKRAN GEÇİŞİ — ana program + mobil (21.10.2026) ═══════════════════════════════════════════════════════════
+   Anahtar 'sevk' YENI'yken gösterilen sevk 04 planlamaIhtiyacSevkGoster → 38 yapiSevkGoster. Buradakiler platform işleri:
+   yeni sayı gelince ekranı yeniden çiz, depo değişince ilgili siparişi tazele, anahtar YENI'ye geçince açık siparişleri önceden oku. */
+let _erpYapiSevkYeni = false;
+
+/** Yeni sevk sayıları geldi: Sevkiyat satır önbelleği boşalır, açık ekran (yazıyorsa bekleyerek) yeniden çizilir. */
+function erpYapiSevkEkranYenile() {
+    try { if (typeof planlamaIhtiyacSatirCacheInvalidate === 'function') planlamaIhtiyacSatirCacheInvalidate(); } catch (e) {}
+    if (typeof erpLiveScheduleUi === 'function') erpLiveScheduleUi('yapi-sevk');
+}
+
+/** Anahtar okundu: sevk YENI'ye geçtiyse / YENI'den çıktıysa ekran yeniden çizilir; YENI'de açık siparişler önceden okunur. */
+function erpYapiSevkAnahtarDegisti() {
+    const y = typeof yapiYeniMi === 'function' && yapiYeniMi('sevk');
+    if (y === _erpYapiSevkYeni) return;
+    _erpYapiSevkYeni = y;
+    if (y) erpYapiSevkOnYukle();
+    erpYapiSevkEkranYenile();
+}
+
+/** YENI'de açık siparişlerin yeni sevki önceden okunur (84 sipariş ~1 istek, ~19 KB) — ekran açılırken eski sayı görünmesin. */
+function erpYapiSevkOnYukle() {
+    if (typeof yapiYeniOnYukle !== 'function') return;
+    const liste = ((typeof dataCache !== 'undefined' && dataCache.siparisler) || [])
+        .filter((s) => typeof siparisKapaliMi !== 'function' || !siparisKapaliMi(s)).map((s) => s.id);
+    yapiYeniOnYukle('sevk', liste);
+}
+
+/** Depo hareketi değişti (04: bu programın yazması → satir null; canlı olay → satır). Siparişi bulunabilirse yalnız o,
+    bulunamazsa önbellekteki açık siparişler yeniden okunur. Stoktan sevk satırında sipariş notlardaki "sip=" etiketinde. */
+function erpYapiSevkDepoDegisti(satir) {
+    if (typeof yapiYeniTazele !== 'function' || typeof yapiYeniMi !== 'function' || !yapiYeniMi('sevk')) return;
+    let sid = satir && satir.siparis_id != null && satir.siparis_id !== '' ? String(satir.siparis_id) : '';
+    if (!sid && satir && satir.notlar) sid = (String(satir.notlar).match(/sip=(\d+)/) || [])[1] || '';
+    yapiYeniTazele('sevk', sid ? [sid] : null);
+}
+
 /** M1 · gösterilen sevk kıyaslanabilir mi: sayaç kaynağı (siparişin KD_KONFEKSIYON'u) okunmuş ya da çağıran KD satırını vermişse.
     Okunmamışsa 04 planlamaIhtiyacSevkAdet yalnız depo / elle kaynağıyla EKSİK sayı verir → sahte fark (21.10 canlı gözlem: 22 kayıt,
-    hepsi böyle). M2'deki "yalnız kaynaklar yüklüyse" kuralının aynısı; ekranda gösterilen sayı değişmez. */
+    hepsi böyle). M2'deki "yalnız kaynaklar yüklüyse" kuralının aynısı; ekranda gösterilen sayı değişmez.
+    Okunmuş = damga VE önbellekte duruyor: başka cihaz yazınca 04 erpLiveApplyPayloadYap kabı düşürür, damga kalır (22.10.2026). */
 function erpYapiSevkSayacYukluMu(sid, rowK) {
-    if (typeof _kdCacheAt !== 'undefined' && _kdCacheAt[`KD_KONFEKSIYON_${sid}`]) return true;
+    const kdAnahtar = `KD_KONFEKSIYON_${sid}`;
+    if (typeof _kdCacheAt !== 'undefined' && _kdCacheAt[kdAnahtar] && typeof _kdCache !== 'undefined' && _kdCache[kdAnahtar] !== undefined) return true;
     return !!rowK && (rowK.sevk_edilen != null || rowK.sevk_adet != null);
 }
 
@@ -56362,3 +58373,1625 @@ async function yapiGecisFarkAcikla() {
     erpToast(`${r.sayi} fark açıklandı.`, 'success');
     await yapiGecisTazele();
 }
+/* ═══ M6c · FASON FİYATI KAPALI TABLODA (21.10.2026) ═══════════════════════════════════════════════════════════════════════
+   Kararlar docs/M6-FASON-TERBIYE-TASLAK.md bölüm 11, SQL supabase/yapi-adim/15-fason-fiyat (satış fiyatının deseni: 34-satis-fiyat.js).
+   SQL kurulu değilse (erp_fason_fiyat_durum yok) HİÇBİR ŞEY değişmez — fiyat bugünkü gibi föy olayında. Kuruluysa:
+   - görme: yalnız sunucunun cevabı (admin + adminin listesi; yönetici rolü ve FASON_FIYAT kodu YETMEZ) — 12 fasonFiyatGorur buraya sorar;
+   - okuma: işin fiyatı kapalı tablodan (fasonFiyatIsOku → 12 fasonIsler), ödeme / kesinti / ek ücret kapalı defterden (12 fasonAkisYukle
+     akışa katar, fasonDurum aynı sırayla uygular); yetkisize veri GELMEZ;
+   - yazma: 12 fasonOlayYaz → fasonFiyatYolu: föydeki fiyat alanları önce erp_fason_fiyat_yaz (gördüğü hâl ile), sonra fiyatsız olay;
+     ödeme olayları (+ düzeltme / silmeleri) erp_fason_hesap_yaz — açık akışa ve M6 kapı denemesine GİTMEZ;
+   - fason ağacı kurulumu: kalem işinin fiyatı sunucuda kopyalanır (erp_fason_fiyat_kopyala; kuran kişi değeri görmez).
+   Koruma veritabanında: kurulumdan sonra açık akışa dolu fiyat / ödeme yazılamaz ("programı güncelleyin"). Kapalı tablolar Realtime /
+   anlık habere girmez: başka kullanıcının fiyat değişikliği fason olayıyla birlikte ya da ekran açılırken (2 dk'dan eski önbellek) gelir. */
+
+const FASON_FIYAT_DURUM_MS = 300000;   /* yetki 5 dk'da bir yeniden sorulur (alınan yetki en geç o kadar sonra kapanır) */
+const FASON_FIYAT_TAZE_MS = 120000;    /* fiyat / ödeme önbelleği bu kadar eskiyse fason ekranı açılırken tazelenir */
+
+let _fasonFiyat = {
+    kullanici: '', token: '', kurulu: null, yetkili: false, hesap: false, admin: false, zaman: 0, bekleyen: null,
+    fiyat: new Map(), hesapSatir: [], okundu: 0, okuBekleyen: null, imza: ''
+};
+
+/* ── Yetki ───────────────────────────────────────────────────────────── */
+
+function fasonFiyatOturum() {
+    if (typeof erpCurrentUser === 'undefined' || !erpCurrentUser || typeof erpGetToken !== 'function') return null;
+    const ad = String(erpCurrentUser.username || '').toLowerCase();
+    const token = erpGetToken();
+    return ad && token ? { ad, token } : null;
+}
+/** SQL kurulu mu (true / false; henüz sorulmadıysa null). */
+function fasonFiyatKuruluMu() {
+    return _fasonFiyat.kurulu;
+}
+/** Bu oturum fason fiyatını görebilir mi — cevabı SUNUCU verir; burada yalnız son cevap okunur. */
+function fasonFiyatYetkiliMi() {
+    const o = fasonFiyatOturum();
+    return !!o && _fasonFiyat.kurulu === true && _fasonFiyat.yetkili === true && _fasonFiyat.kullanici === o.ad && _fasonFiyat.token === o.token;
+}
+/** Ödeme / kesinti / ek ücret görür ve girer mi (liste + fason ekranlarından biri — sunucunun cevabı). */
+function fasonFiyatHesapMi() {
+    return fasonFiyatYetkiliMi() && _fasonFiyat.hesap === true;
+}
+function fasonFiyatAdminMi() {
+    return fasonFiyatYetkiliMi() && _fasonFiyat.admin === true;
+}
+/** Fiyat alanları: 12 FASON_FOY_ALAN.is'te fiyat sütunu (5.) true olanlar + fason ağacı işinin fiyat tipi / ebat fiyatları.
+    SQL erp_fason_fiyat_alanlari ile birebir (bekçi "M6c FASON FİYATI"). */
+function fasonFiyatAlanlari() {
+    const is = (typeof FASON_FOY_ALAN !== 'undefined' && FASON_FOY_ALAN.is) || [];
+    return is.filter((x) => x[4]).map((x) => x[0]).concat(['fiyat_tipi', 'ebat_fiyat']);
+}
+function fasonFiyatAlanMi(a) {
+    return fasonFiyatAlanlari().includes(a);
+}
+/** Yetki yok / oturum değişti: bellekteki fiyatlar ve ödeme olayları silinir. */
+function fasonFiyatKapat() {
+    _fasonFiyat.yetkili = false;
+    _fasonFiyat.hesap = false;
+    _fasonFiyat.admin = false;
+    _fasonFiyat.fiyat = new Map();
+    _fasonFiyat.hesapSatir = [];
+    _fasonFiyat.okundu = 0;
+    _fasonFiyat.imza = '';
+    _fasonFiyatYetkililer = { liste: null, bekleyen: false, hata: '' };
+}
+/** Fason fiyatı fonksiyonları — oturum anahtarı eklenir; kurulu değilse err 'kurulu_degil', bağlantı yoksa 'ag'. */
+async function fasonFiyatRpc(ad, govde) {
+    if (typeof sb === 'undefined' || !sb || typeof sb.rpc !== 'function' || typeof erpGetToken !== 'function') return { ok: false, err: 'baglanti' };
+    const token = erpGetToken();
+    if (!token) return { ok: false, err: 'oturum' };
+    try {
+        const { data, error } = await sb.rpc(ad, Object.assign({ p_token: token }, govde || {}));
+        if (error) {
+            const yok = /could not find|schema cache|PGRST202|does not exist/i.test(String(error.message || '') + ' ' + String(error.code || ''));
+            return { ok: false, err: yok ? 'kurulu_degil' : 'ag', mesaj: String(error.message || error) };
+        }
+        return data && typeof data === 'object' ? data : { ok: false, err: 'cevap' };
+    } catch (e) {
+        return { ok: false, err: 'ag', mesaj: String((e && e.message) || e) };
+    }
+}
+
+async function fasonFiyatDurumYukle(zorla) {
+    const o = fasonFiyatOturum();
+    if (!o || typeof sb === 'undefined' || !sb) return _fasonFiyat;
+    const ayni = _fasonFiyat.kullanici === o.ad && _fasonFiyat.token === o.token;
+    if (!ayni) {
+        fasonFiyatKapat();
+        _fasonFiyat.kullanici = o.ad;
+        _fasonFiyat.token = o.token;
+        _fasonFiyat.kurulu = null;
+        _fasonFiyat.zaman = 0;
+    }
+    /* SQL kurulu değilse oturum başına bir kez sorulur; kuruluysa cevap 5 dk geçerli */
+    if (!zorla && ayni && (_fasonFiyat.kurulu === false || Date.now() - _fasonFiyat.zaman < FASON_FIYAT_DURUM_MS)) return _fasonFiyat;
+    if (_fasonFiyat.bekleyen) return _fasonFiyat.bekleyen;
+    const soz = (async () => {
+        const d = await fasonFiyatRpc('erp_fason_fiyat_durum', {});
+        const hala = fasonFiyatOturum();
+        if (!hala || hala.ad !== o.ad || hala.token !== o.token) return _fasonFiyat;   /* oturum bu arada değişti */
+        if (d.err === 'kurulu_degil') {
+            const onceki = _fasonFiyat.kurulu;
+            _fasonFiyat.kurulu = false;
+            _fasonFiyat.zaman = Date.now();
+            if (_fasonFiyat.yetkili || onceki === true) { fasonFiyatKapat(); fasonFiyatYetkiDegisti(); }
+            return _fasonFiyat;
+        }
+        if (d.ok !== true) {
+            /* ağ / oturum: eldeki cevap kalır, en erken 1 dk sonra yeniden sorulur */
+            _fasonFiyat.zaman = Date.now() - FASON_FIYAT_DURUM_MS + 60000;
+            return _fasonFiyat;
+        }
+        const onceki = [_fasonFiyat.kurulu, _fasonFiyat.yetkili, _fasonFiyat.hesap].join();
+        _fasonFiyat.kurulu = true;
+        _fasonFiyat.zaman = Date.now();
+        const yetkili = d.yetkili === true;
+        if (!yetkili) fasonFiyatKapat();
+        _fasonFiyat.yetkili = yetkili;
+        _fasonFiyat.hesap = yetkili && d.hesap === true;
+        _fasonFiyat.admin = yetkili && d.admin === true;
+        if ([true, yetkili, _fasonFiyat.hesap].join() !== onceki) fasonFiyatYetkiDegisti();
+        return _fasonFiyat;
+    })();
+    _fasonFiyat.bekleyen = soz;
+    soz.then(() => { if (_fasonFiyat.bekleyen === soz) _fasonFiyat.bekleyen = null; }, () => { if (_fasonFiyat.bekleyen === soz) _fasonFiyat.bekleyen = null; });
+    return soz;
+}
+
+/** Kurulum / yetki oturum sırasında değişti: önbellek baştan okunur, açık ekran (form açık değilse) yeniden çizilir. */
+function fasonFiyatYetkiDegisti() {
+    _fasonFiyat.okundu = 0;
+    try {
+        if (typeof appMode !== 'undefined' && appMode === 'KULLANICI_YONETIMI') { fasonFiyatAdminAlanTazele(); return; }
+        if (typeof _fasonAkis === 'undefined' || !_fasonAkis.yuklendi) return;
+        fasonFiyatYukle(true).then(() => {
+            fasonFiyatAkisaUygula();
+            if (typeof _fasonForm !== 'undefined' && _fasonForm) return;   /* açık form bozulmasın */
+            if (typeof fasonEkranYenile === 'function') fasonEkranYenile();
+        }).catch(() => {});
+    } catch (e) {}
+}
+
+/* ── Okuma ───────────────────────────────────────────────────────────── */
+
+/** Kapalı fiyat + ödeme defterini okur (yalnız yetkiliye veri gelir). Döner: içerik değişti mi. */
+async function fasonFiyatYukle(zorla) {
+    await fasonFiyatDurumYukle();
+    if (!fasonFiyatYetkiliMi()) {
+        const vardi = _fasonFiyat.fiyat.size > 0 || _fasonFiyat.hesapSatir.length > 0;
+        if (vardi) { _fasonFiyat.fiyat = new Map(); _fasonFiyat.hesapSatir = []; _fasonFiyat.imza = ''; }
+        return vardi;
+    }
+    if (!zorla && _fasonFiyat.okundu && Date.now() - _fasonFiyat.okundu < FASON_FIYAT_TAZE_MS) return false;
+    if (_fasonFiyat.okuBekleyen) return _fasonFiyat.okuBekleyen;
+    const soz = (async () => {
+        const [f, h] = await Promise.all([fasonFiyatRpc('erp_fason_fiyat_oku', {}),
+            fasonFiyatHesapMi() ? fasonFiyatRpc('erp_fason_hesap_oku', {}) : Promise.resolve({ ok: true, satirlar: [] })]);
+        if (f.ok !== true || h.ok !== true) return false;   /* okunamadı: eldeki kalır */
+        const harita = new Map();
+        (f.satirlar || []).forEach((r) => harita.set(`${r.anahtar}#${r.is_id}`, { fiyat: r.fiyat || {}, updated_at: r.updated_at || null, updated_by: r.updated_by || '' }));
+        const sunucu = (h.satirlar || []).map((r) => {
+            const n = typeof fasonNotOku === 'function' ? fasonNotOku(r.notlar) : (() => { try { return JSON.parse(r.notlar || '{}'); } catch (e) { return {}; } })();
+            return { id: 'h' + r.id, created_at: r.created_at, siparis_id: r.siparis_id, islem: r.islem, kalem_ad: r.kalem_ad, miktar: r.miktar, notlar: r.notlar, n, _kapali: true };
+        });
+        /* bu oturumda yazılıp sunucu listesinde henüz görünmeyenler kalır */
+        const oidler = new Set(sunucu.map((r) => r.n.oid).filter(Boolean));
+        const bekleyen = _fasonFiyat.hesapSatir.filter((r) => r._yeniYazildi && !oidler.has(r.n.oid));
+        const imza = JSON.stringify([...harita]) + '|' + sunucu.map((r) => r.id + ':' + r.notlar).join(',');
+        _fasonFiyat.fiyat = harita;
+        _fasonFiyat.hesapSatir = [...sunucu, ...bekleyen];
+        _fasonFiyat.okundu = Date.now();
+        const degisti = imza !== _fasonFiyat.imza;
+        _fasonFiyat.imza = imza;
+        return degisti;
+    })();
+    _fasonFiyat.okuBekleyen = soz;
+    soz.then(() => { if (_fasonFiyat.okuBekleyen === soz) _fasonFiyat.okuBekleyen = null; }, () => { if (_fasonFiyat.okuBekleyen === soz) _fasonFiyat.okuBekleyen = null; });
+    return soz;
+}
+/** 12 fasonAkisYukle (yüklüyken): önbellek eskidiyse tazelenir; ödeme defteri değiştiyse akışa uygulanır. */
+async function fasonFiyatTazele() {
+    if (_fasonFiyat.kurulu === false) return;
+    const degisti = await fasonFiyatYukle(false);
+    if (degisti) fasonFiyatAkisaUygula();
+}
+/** Kapalı ödeme olayları (12 fasonAkisYukle akışa katar). Yetkisize boş. */
+function fasonFiyatHesapSatirlari() {
+    return fasonFiyatHesapMi() ? _fasonFiyat.hesapSatir.slice() : [];
+}
+/** Yüklü akıştaki kapalı satırları günceller (12 fasonDurum yeniden hesaplanır). */
+function fasonFiyatAkisaUygula() {
+    if (typeof _fasonAkis === 'undefined' || !_fasonAkis.yuklendi) return;
+    _fasonAkis.satirlar = [..._fasonAkis.satirlar.filter((r) => !r._kapali), ...fasonFiyatHesapSatirlari()];
+    _fasonAkis.surum++;
+}
+/** 12 fasonIsler: işin fiyat alanları. SQL kurulu değilse {} (olaydaki fiyat kalır); kuruluysa yetkisize varsayılanlar (boş fiyat),
+    yetkiliye kapalı tablodaki değer + okunduğu an (_fiyatZaman — yazarken "gördüğü hâl"). */
+function fasonFiyatIsOku(anahtar, isId, varsayilan) {
+    if (_fasonFiyat.kurulu !== true) return {};
+    const out = {};
+    fasonFiyatAlanlari().forEach((a) => { out[a] = varsayilan && a in varsayilan ? varsayilan[a] : ''; });
+    if (!fasonFiyatYetkiliMi()) return out;
+    const r = _fasonFiyat.fiyat.get(`${anahtar}#${isId}`);
+    if (r) Object.assign(out, r.fiyat);
+    out._fiyatZaman = r ? r.updated_at : null;
+    return out;
+}
+
+/* ── Yazma ───────────────────────────────────────────────────────────── */
+
+/** Föy olayından fiyat alanlarını ayırır: { n: fiyatsız olay, fiyatlar: [{anahtar, is_id, fiyat}], bos: yalnız fiyat değişmişti }.
+    İş bölümünün yeni'sindeki fiyat alanları yazılacak fiyattır; fiyat alanları (+ tutar) olayın her yerinden (üst düzey, eski, yeni,
+    coklu parçaları) silinir. Yalnız fiyatı değişen coklu parçası düşer. */
+function fasonFiyatAyir(n) {
+    const alanlar = fasonFiyatAlanlari();
+    const hepsi = alanlar.concat(['tutar']);
+    const at = (o) => { if (!o || typeof o !== 'object' || Array.isArray(o)) return o; const r = { ...o }; hepsi.forEach((k) => { delete r[k]; }); return r; };
+    const fiyatlar = [];
+    const parca = (p, anaAnahtar) => {
+        if (!p || typeof p !== 'object') return { p, dus: false };
+        const yeniVar = p.yeni && typeof p.yeni === 'object' && Object.keys(p.yeni).length > 0;
+        if (p.bolum === 'is' && yeniVar) {
+            const f = {};
+            alanlar.forEach((a) => { if (a in p.yeni) f[a] = p.yeni[a]; });
+            if (Object.keys(f).length) fiyatlar.push({ anahtar: p.anahtar || anaAnahtar, is_id: p.is_id || '', fiyat: f });
+        }
+        const x = at(p);
+        ['eski', 'yeni'].forEach((k) => { if (x[k] && typeof x[k] === 'object') x[k] = at(x[k]); });
+        return { p: x, dus: yeniVar && !Object.keys(x.yeni || {}).length };
+    };
+    if (!n || typeof n !== 'object') return { n, fiyatlar, bos: false };
+    if (Array.isArray(n.coklu)) {
+        const r = at(n);
+        r.coklu = n.coklu.map((p) => parca(p, n.anahtar)).filter((x) => !x.dus).map((x) => x.p);
+        return { n: r, fiyatlar, bos: n.coklu.length > 0 && r.coklu.length === 0 };
+    }
+    const t = parca(n, n.anahtar);
+    return { n: t.p, fiyatlar, bos: t.dus };
+}
+/** Ödeme / kesinti / ek ücret olayı mı (kendisi ya da onun düzeltmesi / silmesi). */
+function fasonFiyatHesapOlayMi(islem, n) {
+    if (islem === 'FASON_HESAP') return true;
+    if (islem !== 'FASON_DUZENLE' && islem !== 'FASON_SIL') return false;
+    const t = n && typeof FASON_TIPLER !== 'undefined' ? FASON_TIPLER[n.tip] : null;
+    return !!n && (n.alan === 'HESAP' || (t && t.alan === 'HESAP'));
+}
+/** M6 kapı denemesine gidecek açık olay (12'deki deneme blokları): SQL kuruluysa ödeme olayı hiç sorulmaz (null), diğerleri fiyatsız;
+    yalnız fiyatı değişen föy de sorulmaz (null). Kurulu değilse olay aynen. */
+function fasonFiyatAcikOlay(islem, n) {
+    if (_fasonFiyat.kurulu !== true) return n;
+    if (fasonFiyatHesapOlayMi(islem, n)) return null;
+    const a = fasonFiyatAyir(n);
+    return a.bos ? null : a.n;
+}
+function fasonFiyatHataMetni(r, isAd) {
+    const e = r && r.err;
+    if (e === 'cakisma') return `${isAd ? isAd + ': ' : ''}fiyatı bu arada ${r.updated_by || 'başka biri'} değiştirdi — pencereyi kapatıp yeniden açın, sonra tekrar deneyin.`;
+    if (e === 'yetki') return 'fason fiyatı yetkiniz yok ya da bu işin ekranı size kapalı (yetkiyi admin verir).';
+    if (e === 'farkli_fiyat') return 'fiyatları farklı fason işleri tek ağaç işinde birleşemez — işlerin fiyatını eşitleyin ya da kurulumu fiyat yetkilisi yapsın.';
+    if (e === 'bicim') return `fiyat okunamadı${r.alan ? ' (' + r.alan + ')' : ''}.`;
+    if (e === 'tekrar') return 'bu kayıt zaten yazılmış.';
+    if (e === 'silinmis') return 'kayıt bu arada silinmiş.';
+    if (e === 'yok') return 'kayıt bulunamadı.';
+    if (e === 'ag' || e === 'baglanti') return 'bağlantı yok — internet gelince yeniden deneyin.';
+    if (e === 'oturum') return 'oturum kapanmış — yeniden giriş yapın.';
+    return String(e || 'bilinmeyen hata');
+}
+/** 12 fasonOlayYaz'ın ilk adımı. Döner { bitti: true, res } (yazım burada bitti / durdu) ya da { bitti: false, n } (açık akışa yazılacak olay).
+    opts.fiyatGordugu: { 'anahtar#iş': formun okuduğu updated_at } — yoksa önbellekteki. */
+async function fasonFiyatYolu(baglam, islem, kalemAd, miktar, n, opts = {}) {
+    if (_fasonFiyat.kurulu === null) { try { await fasonFiyatDurumYukle(); } catch (e) {} }
+    if (_fasonFiyat.kurulu !== true) return { bitti: false, n };
+    if (fasonFiyatHesapOlayMi(islem, n)) {
+        if (!fasonFiyatHesapMi()) {
+            erpToast('Ödeme / kesinti / ek ücret için fason fiyatı yetkisi gerekir (yetkiyi admin verir).', 'error', 7000);
+            return { bitti: true, res: { ok: false, error: 'yetki' } };
+        }
+        const satir = fasonOlaySatir(baglam, islem, kalemAd, miktar, n);
+        const g = await fasonFiyatRpc('erp_fason_hesap_yaz', { p_istek: { gid: String(n.oid || fasonId('hs')), olaylar: [{ ...satir, notlar: n }] } });
+        if (g.ok !== true) {
+            erpToast('Ödeme kaydı yazılamadı: ' + fasonFiyatHataMetni(g), 'error', 8000);
+            return { bitti: true, res: { ok: false, error: g } };
+        }
+        const yazilan = { ...n, user: typeof fasonKullanici === 'function' ? fasonKullanici() : n.user };
+        _fasonFiyat.hesapSatir.push({ id: 'h' + ((g.ids && g.ids[0]) || n.oid), created_at: new Date().toISOString(), siparis_id: satir.siparis_id, islem,
+            kalem_ad: satir.kalem_ad, miktar: satir.miktar, notlar: JSON.stringify(yazilan), n: yazilan, _kapali: true, _yeniYazildi: true });
+        fasonFiyatAkisaUygula();
+        return { bitti: true, res: { ok: true } };
+    }
+    const a = fasonFiyatAyir(n);
+    for (const f of a.fiyatlar) {
+        /* yetkisizin formunda fiyat alanı yok; buraya düşen (varsayılan) fiyat yazılmaz, olaydan da çıkar */
+        if (!fasonFiyatYetkiliMi()) continue;
+        const key = `${f.anahtar}#${f.is_id}`;
+        const gordugu = opts.fiyatGordugu && key in opts.fiyatGordugu ? opts.fiyatGordugu[key] : ((_fasonFiyat.fiyat.get(key) || {}).updated_at || null);
+        const y = await fasonFiyatRpc('erp_fason_fiyat_yaz', { p_istek: { anahtar: f.anahtar, is_id: f.is_id, fiyat: f.fiyat, gordugu } });
+        if (y.ok !== true) {
+            erpToast('Fiyat yazılamadı, kayıt yapılmadı: ' + fasonFiyatHataMetni(y), 'error', 9000);
+            if (y.err === 'cakisma') { try { await fasonFiyatYukle(true); } catch (e) {} }
+            return { bitti: true, res: { ok: false, error: y } };
+        }
+        const eski = _fasonFiyat.fiyat.get(key);
+        _fasonFiyat.fiyat.set(key, { fiyat: { ...((eski && eski.fiyat) || {}), ...f.fiyat }, updated_at: y.updated_at || (eski && eski.updated_at) || null,
+            updated_by: typeof fasonKullanici === 'function' ? fasonKullanici() : '' });
+    }
+    if (a.bos) {
+        if (typeof _fasonAkis !== 'undefined') _fasonAkis.surum++;
+        return { bitti: true, res: { ok: true, yalnizFiyat: true } };
+    }
+    return { bitti: false, n: a.n };
+}
+/** Fason ağacı kurulumu (21): kalem işlerinin fiyatı ağaç işine sunucuda kopyalanır — değer görülmez; farklı fiyatlı işler birleşmez. */
+async function fasonFiyatKopyala(ciftler) {
+    if (!Array.isArray(ciftler) || !ciftler.length || _fasonFiyat.kurulu !== true) return { ok: true, kopyalanan: 0 };
+    const r = await fasonFiyatRpc('erp_fason_fiyat_kopyala', { p_istek: { ciftler, tek: true } });
+    if (r.ok !== true) { erpToast('Ağaç kurulmadı: ' + fasonFiyatHataMetni(r), 'error', 9000); return r; }
+    if (r.kopyalanan > 0 && fasonFiyatYetkiliMi()) { try { await fasonFiyatYukle(true); } catch (e) {} }
+    return r;
+}
+
+/* ── İş formu: fiyat geçmişi (yalnız yetkiliye; 12 fasonFoyFormAc yerini koyar) ── */
+
+function fasonFiyatGecmisYeri() {
+    return fasonFiyatYetkiliMi() ? '<div id="ff-fiyat-gecmis" style="font-size:10px;color:var(--text3)"></div>' : '';
+}
+async function fasonFiyatGecmisDoldur(anahtar, isId) {
+    if (!fasonFiyatYetkiliMi()) return;
+    const r = await fasonFiyatRpc('erp_fason_fiyat_gecmis', { p_anahtar: anahtar, p_is_id: isId });
+    const el = document.getElementById('ff-fiyat-gecmis');
+    if (!el || r.ok !== true || !(r.satirlar || []).length) return;
+    const kaynak = { PROGRAM: '', TASIMA: ' (eski kayıttan taşındı)', KOPYA: ' (kalem işinden kopyalandı)' };
+    const metin = (o) => Object.entries(o || {}).map(([k, v]) => `${pdfEsc(k)}: ${pdfEsc(String(v ?? '—'))}`).join(', ');
+    el.innerHTML = `<details><summary style="cursor:pointer;color:var(--text2)">🔒 Fiyat geçmişi (${r.satirlar.length})</summary>
+        ${r.satirlar.map((s) => `<div style="margin:4px 0"><b>${pdfEsc(s.kullanici || '—')}</b> · ${typeof fasonZamanYaz === 'function' ? fasonZamanYaz(s.zaman) : pdfEsc(String(s.zaman))}${kaynak[s.kaynak] || ''} — ${s.eski ? metin(s.eski) + ' → ' : ''}${metin(s.yeni)}</div>`).join('')}</details>`;
+}
+
+/* ── Kullanıcı Yönetimi: fason fiyatı yetkisi (YALNIZ admin görür ve değiştirir; satış fiyatından ayrı liste) ── */
+
+let _fasonFiyatYetkililer = { liste: null, bekleyen: false, hata: '' };
+
+async function fasonFiyatYetkilileriYukle() {
+    if (!fasonFiyatAdminMi() || _fasonFiyatYetkililer.bekleyen) return;
+    _fasonFiyatYetkililer.bekleyen = true;
+    const r = await fasonFiyatRpc('erp_fason_fiyat_yetkililer', {});
+    _fasonFiyatYetkililer.liste = new Set((r.ok === true ? (r.satirlar || []) : []).map((x) => String(x.username || '').toLowerCase()));
+    _fasonFiyatYetkililer.hata = r.ok === true ? '' : fasonFiyatHataMetni(r);
+    _fasonFiyatYetkililer.bekleyen = false;
+    fasonFiyatAdminAlanTazele();
+}
+/** 03 erpAdminDetayCiz çağırır: seçili kullanıcının fason fiyatı yetkisi. Admin değilse (ya da SQL kurulu değilse) boş. */
+function fasonFiyatAdminHtml(u) {
+    if (!fasonFiyatAdminMi() || !u) return '';
+    const un = String(u.username || '');
+    const kurucu = u.kurucu === true;
+    const y = _fasonFiyatYetkililer;
+    if (y.liste == null) fasonFiyatYetkilileriYukle();
+    const var_ = kurucu || (y.liste != null && y.liste.has(un.toLowerCase()));
+    const durum = y.liste == null
+        ? '<span style="font-size:11px;color:var(--text3)">okunuyor…</span>'
+        : `<span class="kya-chip ${var_ ? 'kya-chip--on' : ''}" style="cursor:default"><span>${var_ ? '✓ Fason fiyatlarını görür ve girer' : 'Fason fiyatlarını göremez'}</span></span>
+           ${kurucu ? '<span style="font-size:10px;color:var(--text3)">Admin her zaman yetkilidir</span>'
+            : `<button type="button" class="kya-mini" onclick="fasonFiyatYetkiDegistir('${erpJsStr(un)}', ${var_ ? 'false' : 'true'})">${var_ ? 'Yetkiyi kaldır' : 'Yetki ver'}</button>`}
+           <span style="font-size:10px;color:var(--rose-c)">${pdfEsc(y.hata ? 'Liste okunamadı: ' + y.hata : '')}</span>`;
+    return `<div class="kya-alan" id="kya-fason-fiyat-alan" data-kya-fiyat-user="${erpAttr(un)}" style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="kya-alan__baslik"><span>🔒 Fason fiyatı yetkisi <span style="font-weight:400;color:var(--text3)">— yalnız admin verir; yönetici rolü ve "Fason fiyat / hakediş" ekran yetkisi tek başına yetmez</span></span></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${durum}</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:6px">Fason / terbiye işlerinin fiyatı, hakediş, cari, ekstre ve ödeme / kesinti kayıtları yalnız bu yetkiyle görünür; girmek için ayrıca işin ekranı açık olmalı. Satış fiyatı yetkisinden ayrıdır. Hemen geçerli olur.</div>
+    </div>`;
+}
+function fasonFiyatAdminAlanTazele() {
+    const el = document.getElementById('kya-fason-fiyat-alan');
+    if (!el) return;
+    const u = typeof erpAdminKullaniciBul === 'function' ? erpAdminKullaniciBul(el.getAttribute('data-kya-fiyat-user')) : null;
+    const html = u ? fasonFiyatAdminHtml(u) : '';
+    if (html) el.outerHTML = html;
+    else el.remove();
+}
+async function fasonFiyatYetkiDegistir(un, ver) {
+    if (!fasonFiyatAdminMi()) { erpToast('Fason fiyatı yetkisini yalnız admin verebilir.', 'error'); return; }
+    const kisi = typeof erpAdminKullaniciBul === 'function' ? erpAdminKullaniciBul(un) : null;
+    const ad = (kisi && kisi.display_name) || un;
+    const soru = ver
+        ? `“${ad}” fason fiyatlarını görebilsin ve girebilsin mi?\n\nFason / terbiye işlerinin fiyatı, hakediş, cari, ekstre ve ödeme / kesinti kayıtları bu kişiye açılır (girmek için işin ekranı da açık olmalı).`
+        : `“${ad}” kullanıcısının fason fiyatı yetkisi kaldırılsın mı?\n\nFason fiyatları bu kişiye bir daha gösterilmez.`;
+    if (typeof erpAskConfirm === 'function' && !(await erpAskConfirm(soru))) return;
+    const r = await fasonFiyatRpc('erp_fason_fiyat_yetki_ver', { p_username: un, p_ver: !!ver });
+    if (r.ok !== true) { erpToast('Fason fiyatı yetkisi değiştirilemedi: ' + fasonFiyatHataMetni(r), 'error', 6000); return; }
+    if (!_fasonFiyatYetkililer.liste) _fasonFiyatYetkililer.liste = new Set();
+    if (ver) _fasonFiyatYetkililer.liste.add(String(un).toLowerCase());
+    else _fasonFiyatYetkililer.liste.delete(String(un).toLowerCase());
+    _fasonFiyatYetkililer.hata = '';
+    fasonFiyatAdminAlanTazele();
+    erpToast(ver ? `${ad}: fason fiyatı yetkisi verildi.` : `${ad}: fason fiyatı yetkisi kaldırıldı.`, 'success', 3500);
+    /* Kişinin açık oturumu hemen öğrensin (02 erpYetkiBumpGeldi fason fiyatı yetkisini de yeniden sorar) */
+    try { if (typeof erpYetkiBumpYayinla === 'function') erpYetkiBumpYayinla(un); } catch (e) {}
+}
+/* ════ FASON ÇÖZGÜ & BÜKÜM — kendi dokumamızın çözgücü / bükümcü iplik hesabı (22.10.2026) ════════════════
+   Kullanıcı: "çözgü işlemi her zaman fasona çıkıyor — çözgücüye ne kadar iplik gönderildi, kaç metre levent çözüldü,
+   çözülen leventten hesaplayıp ne kadar iplik kaldı çözgücüde; fason çözgücüleri tek tek takip edebileceğimiz bir alan.
+   Aynı şekilde bazı iplikler büküme gidiyor, orada da aynı yapı." Kararlar hafızada (project_fason_cozgu_bukum).
+   GÖNDERİM: Depo Hareketleri'nden iplik ÇIKIŞ, notta [SEVK_YER:HAŞIL] (çözgü) / [SEVK_YER:BÜKÜM]; firma `araci_firma` (formda
+             zorunlu) — burada YALNIZ OKUNUR (çift giriş yok). Firma anahtarı yazım farkını yutar (`fasonCbFirmaKey`).
+   DÖNÜŞ:    fason motoru (12) olayları, anahtar C|<firma> / B|<firma>: COZGU_RAPOR (iplik kodu + tel + metre), BUKUM_GELEN (bükülü
+             iplik → iplik deposuna GİRİŞ; kaynak_kod = hangi ham iplik), IPLIK_IADE (depoya GİRİŞ), SAYIM (firmada kalan).
+   HESAP (iplik kodu başına, `fasonCbHesap`): gönderilen − iade − kullanılan (çözgü: rapor kg'ı × (1 − haşıl %), yoksa tel × metre ÷ m/kg;
+             büküm: o hamdan gelen bükülü kg) = firmada kalması gereken; son sayım (sonraki iade düşülür) + telef → fark.
+   İplik numarası BİRİMİNE göre m/kg (`fasonCbIplikMpk`): denye 9.000.000 ÷ den, dtex 10.000.000 ÷ dtex, Nm × 1000, Ne × 1666,67
+             (katlıda numara ÷ kat). Yalnız hesap; yazma 12 fasonHareketKaydet (olay + depo) üzerinden. */
+
+const FASON_CB_TUR = {
+    C: { ad: 'Çözgü', firmaAd: 'Çözgücü', cogul: 'Çözgücüler', sevkYer: 'HAŞIL', ikon: '🧵', dugmeler: ['COZGU_RAPOR', 'IPLIK_IADE', 'SAYIM'] },
+    B: { ad: 'Büküm', firmaAd: 'Bükümcü', cogul: 'Bükümcüler', sevkYer: 'BÜKÜM', ikon: '🌀', dugmeler: ['BUKUM_GELEN', 'IPLIK_IADE', 'SAYIM'] },
+};
+const FASON_CB_FIRMASIZ = 'FIRMA YAZILMAMIS';
+let _fasonCbAcik = new Set();
+
+/** Firma anahtarı: büyük harf, Türkçe harfler sadeleşir, noktalama atılır ("ASLAN TEKSTİL" = "Aslan Tekstil" = "ASLAN TEKSTIL") */
+function fasonCbFirmaKey(ad) {
+    return String(ad || '').toLocaleUpperCase('tr-TR').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+        .replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+/** İplik numarası metninden m/kg (birimine göre). Bulunamazsa 0. */
+function fasonCbIplikMpk(metin) {
+    const s = String(metin || '').toLocaleUpperCase('tr-TR').replace(/,/g, '.');
+    const n = parseFloat((s.match(/(\d+(?:\.\d+)?)/) || [])[1]) || 0;
+    if (!(n > 0)) return 0;
+    if (/DENYE|\bDEN\b|\bD\b/.test(s)) return 9000000 / n;          /* 150/48 denye: 150 den (48 = lif sayısı) */
+    if (/DTEX/.test(s)) return 10000000 / n;
+    const kat = parseInt((s.match(/\d\s*\/\s*(\d+)/) || [])[1], 10) || 1;
+    if (/\bNM\b/.test(s)) return (n / kat) * 1000;
+    return (n / kat) * (100000 / 60);                                   /* Ne — fabrika sabiti (06 dokumaFasonIplikMetrePerKg ile aynı) */
+}
+function fasonCbIplikBilgi(kod, ad, kartlar) {
+    const k = String(kod || '').trim().toUpperCase();
+    const kart = k ? (kartlar || new Map(dokumaFasonIplikKartlari().map(x => [x.kod, x]))).get(k) : null;
+    const metin = kart?.iplik_no || String(ad || '');
+    return { kod: k, ad: kart?.ad || String(ad || '').trim(), metin, mpk: fasonCbIplikMpk(metin) };
+}
+
+/** Depodaki gönderimler (iplik ÇIKIŞ + [SEVK_YER:HAŞIL|BÜKÜM]) — yalnız okur. hamKey = yazımın anahtarı, key = birleştirmeden sonraki kök */
+function fasonCbGonderimlerHam(tur) {
+    const etiket = '[SEVK_YER:' + FASON_CB_TUR[tur].sevkYer + ']';
+    return (dataCache.iplik_stok || []).filter(r => String(r.notlar || '').includes(etiket) && String(r.islem_turu || '') === 'ÇIKIŞ')
+        .map(r => {
+            const firma = String(r.araci_firma || r.gidecegi_firma || '').trim();
+            return { id: r.id, tarih: String(r.tarih || r.created_at || '').slice(0, 10), ts: String(r.created_at || ''), kod: String(r.stok_kodu || '').trim().toUpperCase(),
+                ad: [r.iplik_no, r.cins && r.cins !== r.iplik_no ? r.cins : ''].filter(Boolean).join(' ').trim(), lot: r.lot_no || '', marka: r.marka || '',
+                kg: Math.abs(Number(r.miktar_kg) || 0), top: Math.abs(Number(r.cuval_sayisi) || 0), firma: firma || FASON_CB_FIRMASIZ,
+                hamKey: fasonCbFirmaKey(firma) || FASON_CB_FIRMASIZ, user: r.updated_by || '', fis: r.irsaliye_no || '' };
+        });
+}
+function fasonCbGonderimler(tur) {
+    return fasonCbGonderimlerHam(tur).map(g => ({ ...g, key: fasonCbKok(tur, g.hamKey) }));
+}
+/* Firma birleştirme (kullanıcı 22.10.2026: "ekrandan birleştir"): bir yazımın anahtarı (C|<yazım>) föy bölümü `cbad` {hedef}
+   ile öbür firmaya bağlanır; depo kayıtlarına dokunulmaz, kim / ne zaman fason defterinde. Zincir en çok 5 adım, döngü kesilir. */
+function fasonCbKok(tur, key) {
+    let k = key;
+    const gorulen = new Set([k]);
+    for (let i = 0; i < 5; i++) {
+        const h = String(fasonFoyOku(tur + '|' + k, 'cbad').hedef || '').trim();
+        if (!h || gorulen.has(h)) break;
+        gorulen.add(h); k = h;
+    }
+    return k;
+}
+/** Bu firmaya bağlanan bütün yazımların anahtarları (kökün kendisi dahil) */
+function fasonCbTakmaAdlar(tur, kok) {
+    const set = new Set([kok]);
+    fasonDurum().foy.forEach((v, k) => {
+        const [an, bolum] = k.split('#');
+        if (bolum === 'cbad' && an.startsWith(tur + '|') && fasonCbKok(tur, an.slice(2)) === kok) set.add(an.slice(2));
+    });
+    fasonCbGonderimlerHam(tur).forEach(g => { if (g.hamKey !== kok && fasonCbKok(tur, g.hamKey) === kok) set.add(g.hamKey); });
+    fasonDurum().anahtarMap.forEach((liste, an) => { if (an.startsWith(tur + '|') && fasonCbKok(tur, an.slice(2)) === kok) set.add(an.slice(2)); });
+    return set;
+}
+/* Hesaptan çıkarılan depo gönderimleri (kullanıcı 22.10.2026: ARAN'a "Haşıl" giden ipliğin bir kısmı fason dokuma ipliği): föy bölümü
+   `cbdisla` {ids: "id,id,…"} — depo satırına dokunulmaz; gönderim listede üstü çizili kalır, geri alınabilir */
+function fasonCbDislananlar(tur, kok) {
+    const set = new Set();
+    fasonCbTakmaAdlar(tur, kok).forEach(k => String(fasonFoyOku(tur + '|' + k, 'cbdisla').ids || '').split(',').map(x => x.trim()).filter(Boolean).forEach(x => set.add(x)));
+    return set;
+}
+/** Firmalar: depodaki gönderimler + bu ekranda olayı olanlar (birleştirilmişler kökte); görünen ad = kökün en çok kullanılan yazımı */
+function fasonCbFirmalar(tur) {
+    const m = new Map();
+    const ekle = (key, ad, kendi) => {
+        if (!key) return;
+        let f = m.get(key);
+        if (!f) { f = { key, anahtar: tur + '|' + key, adlar: new Map(), kendiAdlar: new Map() }; m.set(key, f); }
+        if (ad) { f.adlar.set(ad, (f.adlar.get(ad) || 0) + 1); if (kendi) f.kendiAdlar.set(ad, (f.kendiAdlar.get(ad) || 0) + 1); }
+    };
+    fasonCbGonderimler(tur).forEach(g => ekle(g.key, g.firma, g.hamKey === g.key));
+    fasonDurum().anahtarMap.forEach((liste, an) => {
+        if (!an.startsWith(tur + '|') || !liste.some(h => !h.silindi)) return;
+        const kok = fasonCbKok(tur, an.slice(2));
+        ekle(kok, liste.find(h => h.firma)?.firma || '', an.slice(2) === kok);
+    });
+    const enCok = (mp) => [...mp.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    m.forEach(f => { f.ad = enCok(f.kendiAdlar) || enCok(f.adlar) || f.key; });
+    return [...m.values()];
+}
+/* Firma görünen adı: yalnız depo gönderimlerinden, önbellekli (fasonBaglam her olayda çağrılır; olay özetine dokunmaz) */
+let _fasonCbAdOnbellek = { imza: '', m: new Map() };
+function fasonCbFirmaAdi(tur, key) {
+    const liste = dataCache.iplik_stok || [];
+    const imza = `${liste.length}|${liste[0]?.id ?? ''}|${liste[liste.length - 1]?.id ?? ''}`;
+    if (_fasonCbAdOnbellek.imza !== imza) {
+        const m = new Map();
+        ['C', 'B'].forEach(t => fasonCbGonderimlerHam(t).forEach(g => {
+            const k = t + '|' + g.hamKey;
+            const say = m.get(k) || new Map();
+            say.set(g.firma, (say.get(g.firma) || 0) + 1);
+            m.set(k, say);
+        }));
+        _fasonCbAdOnbellek = { imza, m: new Map([...m.entries()].map(([k, say]) => [k, [...say.entries()].sort((a, b) => b[1] - a[1])[0][0]])) };
+    }
+    return _fasonCbAdOnbellek.m.get(tur + '|' + key) || key;
+}
+function fasonCbBaglam(anahtar, tur, key) {
+    const T = FASON_CB_TUR[tur] || FASON_CB_TUR.C;
+    const kok = fasonCbKok(tur, key);
+    const firma = fasonCbFirmaAdi(tur, kok);
+    const yazim = kok !== key ? fasonCbFirmaAdi(tur, key) : '';
+    return { alan: 'DOKUMA', cb: tur, anahtar, firmaKey: key, firma, siparisId: null, baslik: `${T.firmaAd} · ${firma}${yazim && yazim !== firma ? ` (yazım: ${yazim})` : ''}` };
+}
+
+/** Çözgü raporundan levente sarılan iplik (kg): çözgücü levent kg'ı bildirdiyse kg × (1 − haşıl %) (kullanıcı 22.10.2026: "100 kg
+    levent, %3 haşıl → 97 kg iplik"), yoksa tel × metre ÷ m/kg (haşılsız iplik). Hesaplanamazsa null. */
+function fasonCbRaporIplikKg(h, mpk) {
+    const pct = Math.min(Math.max(Number(h.hasil_pct) || 0, 0), 99);
+    if (h.kg > 0) return h.kg * (1 - pct / 100);
+    return mpk > 0 && h.tel > 0 && h.mt > 0 ? h.tel * h.mt / mpk : null;
+}
+/** Firma hesabı — iplik kodu başına satırlar + toplam (yalnız hesap). key birleştirilmiş bir yazım olabilir → köke çözülür */
+function fasonCbHesap(tur, keyGelen) {
+    const key = fasonCbKok(tur, keyGelen);
+    const anahtar = tur + '|' + key;
+    const takma = fasonCbTakmaAdlar(tur, key);
+    const dislanan = fasonCbDislananlar(tur, key);
+    const tumGonderim = fasonCbGonderimler(tur).filter(g => g.key === key).map(g => ({ ...g, disla: dislanan.has(String(g.id)) }));
+    const gonderimler = tumGonderim.filter(g => !g.disla);
+    const hareketler = [...takma].flatMap(k => fasonAnahtarHareketleri(tur + '|' + k)).filter(h => !h.silindi);
+    const kartlar = new Map(dokumaFasonIplikKartlari().map(x => [x.kod, x]));
+    const m = new Map();
+    const S = (kod, ad) => {
+        const k = String(kod || '').trim().toUpperCase() || '—';
+        let s = m.get(k);
+        if (!s) {
+            const bilgi = fasonCbIplikBilgi(k === '—' ? '' : k, ad, kartlar);
+            s = { kod: k, ad: bilgi.ad, metin: bilgi.metin, mpk: bilgi.mpk, gon: 0, gonSay: 0, iade: 0, iadeler: [], kullanilan: 0, kullanilanEksik: false,
+                levent: 0, leventMt: 0, bukuluKodlar: new Set(), sayim: null, sayimZaman: '', sayimTarih: '', telef: 0 };
+            m.set(k, s);
+        }
+        if (!s.ad && ad) s.ad = ad;
+        return s;
+    };
+    const zaman = (h) => `${h.tarih || ''}|${h.ts || ''}`;
+    gonderimler.forEach(g => { const s = S(g.kod, g.ad); s.gon += g.kg; s.gonSay++; });
+    hareketler.forEach(h => {
+        if (h.tip === 'COZGU_RAPOR') {
+            const s = S(h.iplik_kodu, h.iplik_ad);
+            s.levent++; s.leventMt += h.mt;
+            const kg = fasonCbRaporIplikKg(h, s.mpk);
+            if (kg == null) s.kullanilanEksik = true; else s.kullanilan += kg;
+        } else if (h.tip === 'BUKUM_GELEN') {
+            const s = S(h.kaynak_kod);
+            s.kullanilan += h.kg;
+            if (h.iplik_kodu) s.bukuluKodlar.add(String(h.iplik_kodu).toUpperCase());
+        } else if (h.tip === 'IPLIK_IADE') {
+            const s = S(h.iplik_kodu, h.iplik_ad);
+            s.iade += h.kg; s.iadeler.push({ z: zaman(h), kg: h.kg });
+        } else if (h.tip === 'SAYIM') {
+            const s = S(h.iplik_kodu, h.iplik_ad);
+            if (!s.sayimZaman || zaman(h) > s.sayimZaman) { s.sayim = h.kg; s.telef = h.telef_kg; s.sayimZaman = zaman(h); s.sayimTarih = h.tarih; }
+        }
+    });
+    const satirlar = [...m.values()].map(s => {
+        s.net = s.gon - s.iade;
+        s.kalmali = s.kullanilanEksik ? null : s.net - s.kullanilan;
+        s.iadeSonra = s.sayim == null ? 0 : s.iadeler.filter(x => x.z > s.sayimZaman).reduce((a, x) => a + x.kg, 0);
+        s.firmadaSimdi = s.sayim == null ? null : s.sayim - s.iadeSonra;
+        s.fark = s.kalmali == null || s.sayim == null ? null : s.kalmali - s.firmadaSimdi - s.telef;
+        s.farkPct = s.fark != null && s.kullanilan > 0 ? (s.fark / s.kullanilan) * 100 : null;
+        s.fazla = s.fark != null && s.fark < -0.5;
+        return s;
+    }).sort((a, b) => b.gon - a.gon || a.kod.localeCompare(b.kod, 'tr'));
+    const top = (f) => satirlar.reduce((a, s) => a + (Number(s[f]) || 0), 0);
+    const toplam = { gon: top('gon'), iade: top('iade'), net: top('net'), kullanilan: top('kullanilan'), levent: top('levent'), leventMt: top('leventMt'),
+        kalmali: satirlar.some(s => s.kalmali == null) ? null : top('kalmali'), sayimVar: satirlar.some(s => s.sayim != null),
+        fark: satirlar.some(s => s.fark != null) ? satirlar.reduce((a, s) => a + (s.fark || 0), 0) : null };
+    const sonGonderim = [...gonderimler].sort((a, b) => b.ts.localeCompare(a.ts))[0] || null;
+    return { tur, key, anahtar, gonderimler, tumGonderim, dislanan, takmaAdlar: [...takma].filter(k => k !== key), hareketler, satirlar, toplam, sonGonderim };
+}
+
+/* ── 12 fasonHareketFormAc / fasonHareketIpucu kancaları ───────────────── */
+/* Formda iplik seçimi (kullanıcı 22.10.2026: "2 farklı iplik göndermişim Aslan Tekstil'e, çözgü raporuna basınca sadece bir tanesi
+   çıkıyor"): kod kutusu son gönderimin koduyla dolu açılıyor, tarayıcı açılır listeyi o koda süzüyordu. Firmaya giden iplikler
+   düğme olarak çıkar; tek iplik gittiyse kutu onunla, birden çoksa BOŞ açılır. Hangi form hangi kutuyu doldurur: */
+const FASON_CB_IPLIK_ALANI = { COZGU_RAPOR: 'iplik_kodu', IPLIK_IADE: 'iplik_kodu', SAYIM: 'iplik_kodu', BUKUM_GELEN: 'kaynak_kod' };
+/** Bu firmaya depodan giden iplikler (hesap dışı bırakılanlar hariç), en çok gidenden */
+function fasonCbFormIplikleri(h) {
+    return h.satirlar.filter(s => s.kod !== '—' && s.gon > 0);
+}
+/** Bu firmaya bu iplikten giden son gönderim (iade formunda lot / marka önerisi) */
+function fasonCbSonGonderim(h, kod) {
+    return [...h.gonderimler].filter(g => g.kod === kod).sort((a, b) => b.ts.localeCompare(a.ts))[0] || null;
+}
+function fasonCbHareketVarsayilan(b, tip) {
+    const h = fasonCbHesap(b.cb, b.firmaKey);
+    const iplikler = fasonCbFormIplikleri(h);
+    const tek = iplikler.length === 1 ? iplikler[0] : null;
+    const g = tek ? fasonCbSonGonderim(h, tek.kod) : null;
+    const v = { firma: b.firma };
+    if (tip === 'COZGU_RAPOR') {
+        /* Haşıl payı: bu firmanın son raporundaki oran önerilir */
+        const sonHasil = h.hareketler.filter(x => x.tip === 'COZGU_RAPOR' && x.hasil_pct > 0).sort((a, b2) => `${a.tarih}|${a.ts}`.localeCompare(`${b2.tarih}|${b2.ts}`)).pop();
+        Object.assign(v, { iplik_kodu: tek?.kod || '', iplik_ad: tek?.ad || '', tel: '', hasil_pct: sonHasil ? sonHasil.hasil_pct : '' });
+    }
+    if (tip === 'IPLIK_IADE' || tip === 'SAYIM') Object.assign(v, { iplik_yer: 'COZGU', iplik_kodu: tek?.kod || '', iplik_ad: tek?.ad || '', lot_no: tip === 'IPLIK_IADE' ? (g?.lot || '') : '', marka: tip === 'IPLIK_IADE' ? (g?.marka || '') : '' });
+    if (tip === 'BUKUM_GELEN') Object.assign(v, { kaynak_kod: tek?.kod || '', iplik_kodu: '', iplik_ad: '' });
+    return v;
+}
+/** Form açılınca (12 fasonHareketFormAc): kod kutusunun altına firmaya giden ipliklerin düğmeleri. Yalnız görünüm, yazmaz. */
+function fasonCbFormHazirla(b, tip, duzeltme) {
+    const alan = FASON_CB_IPLIK_ALANI[tip];
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kodEl || !b?.cb) return;
+    if (tip === 'COZGU_RAPOR') fasonCbRaporSonucBagla();
+    const h = fasonCbHesap(b.cb, b.firmaKey);
+    const iplikler = fasonCbFormIplikleri(h);
+    if (!iplikler.length) return;
+    const kg = (x) => `${fasonFmtM(Math.round((x || 0) * 10) / 10)} kg`;
+    const div = document.createElement('div');
+    div.id = 'fh-cb-iplikler';
+    div.style.gridColumn = '1/-1';
+    div.innerHTML = `<div style="font-size:10px;color:var(--text2);margin-bottom:4px">Bu firmaya giden ${iplikler.length > 1 ? 'iplikler' : 'iplik'}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${iplikler.map(s => `<button type="button" class="btn-pro btn-ghost-pro" data-cb-kod="${pdfEsc(s.kod)}" onclick="fasonCbIplikSec(this.getAttribute('data-cb-kod'))" style="padding:5px 10px;font-size:10px;text-align:left;line-height:1.35;display:inline-flex;flex-direction:column;align-items:flex-start">
+            <span><b>${pdfEsc(s.kod)}</b> ${pdfEsc(s.ad || '')}</span><div style="font-size:9px;color:var(--text3)">giden ${kg(s.gon)}${s.kalmali != null ? ' · firmada kalmalı ' + kg(s.kalmali) : ''}</div></button>`).join('')}</div>`;
+    (kodEl.parentElement || kodEl).after(div);
+    if (alan === 'kaynak_kod' && !document.getElementById('fh-kaynak_kod-bilgi')) {
+        const bilgi = document.createElement('div');
+        bilgi.id = 'fh-kaynak_kod-bilgi';
+        bilgi.style.cssText = 'font-size:9px;color:var(--text3);margin-top:2px';
+        kodEl.after(bilgi);
+        kodEl.addEventListener('input', () => fasonCbFormKodDegisti('fh'));
+    }
+    /* Yeni kayıtta önerilen ad kendiliğinden yazılmış sayılır: iplik değişince adı da değişsin (elle yazılan ada dokunulmaz) */
+    const adEl = document.getElementById('fh-iplik_ad');
+    if (!duzeltme && alan === 'iplik_kodu' && adEl && adEl.dataset.oto !== '0') adEl.dataset.oto = '1';
+    fasonCbFormKodDegisti('fh');
+}
+/** Çözgü raporu formunda anlık sonuç: levente sarılan iplik (haşıl düşülmüş ya da tel × metreden) — yalnız gösterir */
+function fasonCbRaporSonucBagla() {
+    const pctEl = document.getElementById('fh-hasil_pct');
+    if (!pctEl || document.getElementById('fh-cb-iplik-sonuc')) return;
+    const sonuc = document.createElement('div');
+    sonuc.id = 'fh-cb-iplik-sonuc';
+    sonuc.style.cssText = 'font-size:10px;color:var(--emerald-c);margin-top:3px;font-family:\'DM Mono\',monospace';
+    pctEl.after(sonuc);
+    const oku = (a) => fasonTakipNum(document.getElementById('fh-' + a)?.value, 2);
+    const ciz = () => {
+        const kod = String(document.getElementById('fh-iplik_kodu')?.value || '').trim().toUpperCase();
+        const mpk = fasonCbIplikBilgi(kod, document.getElementById('fh-iplik_ad')?.value || '').mpk;
+        const h = { kg: oku('kg'), hasil_pct: oku('hasil_pct'), tel: oku('tel'), mt: oku('mt') };
+        const kg = fasonCbRaporIplikKg(h, mpk);
+        sonuc.textContent = kg == null ? '' : `İplik: ${fasonFmtM(Math.round(kg * 10) / 10)} kg${h.kg > 0 ? '' : ' (tel × metre)'}`;
+    };
+    ['kg', 'hasil_pct', 'tel', 'mt', 'iplik_kodu'].forEach(a => document.getElementById('fh-' + a)?.addEventListener('input', ciz));
+    sonuc._ciz = ciz;
+    ciz();
+}
+/** Düğmeyle iplik seçimi: kod (+ iadede boşsa lot / marka) dolar */
+function fasonCbIplikSec(kod) {
+    const ctx = _fasonForm;
+    const alan = ctx && FASON_CB_IPLIK_ALANI[ctx.tip];
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kodEl) return;
+    kodEl.value = kod;
+    if (ctx.tip === 'IPLIK_IADE') {
+        const b = fasonBaglam(ctx.anahtar);
+        const g = b?.cb ? fasonCbSonGonderim(fasonCbHesap(b.cb, b.firmaKey), kod) : null;
+        [['lot_no', g?.lot], ['marka', g?.marka]].forEach(([a, d]) => {
+            const el = document.getElementById('fh-' + a);
+            if (el && d && (!el.value || el.dataset.cbOto === '1')) { el.value = d; el.dataset.cbOto = '1'; }
+        });
+    }
+    if (alan === 'iplik_kodu') fasonIplikKodDegisti('fh'); else fasonCbFormKodDegisti('fh');
+}
+/** Kod değişince (12 fasonIplikKodDegisti sonu + düğme): bilgi satırı firmanın hesabından, seçili düğme işaretli, ad karttan */
+function fasonCbFormKodDegisti(on) {
+    if (on === 'fh') document.getElementById('fh-cb-iplik-sonuc')?._ciz?.();
+    const ctx = _fasonForm;
+    const alan = ctx && on === 'fh' && FASON_CB_IPLIK_ALANI[ctx.tip];
+    const kutu = document.getElementById('fh-cb-iplikler');
+    const kodEl = alan && document.getElementById('fh-' + alan);
+    if (!kutu || !kodEl) return;
+    const b = fasonBaglam(ctx.anahtar);
+    if (!b?.cb) return;
+    const h = fasonCbHesap(b.cb, b.firmaKey);
+    const kod = String(kodEl.value || '').trim().toUpperCase();
+    const s = kod ? fasonCbFormIplikleri(h).find(x => x.kod === kod) : null;
+    kutu.querySelectorAll('[data-cb-kod]').forEach(d => {
+        const sec = d.getAttribute('data-cb-kod') === kod;
+        d.style.borderColor = sec ? 'var(--accent)' : '';
+        d.style.background = sec ? 'rgba(99,102,241,0.14)' : '';
+    });
+    const adEl = alan === 'iplik_kodu' ? document.getElementById('fh-iplik_ad') : null;
+    if (adEl && s?.ad && adEl.dataset.oto === '1') adEl.value = s.ad;
+    const bilgi = document.getElementById('fh-' + alan + '-bilgi');
+    if (!bilgi) return;
+    const kg = (x) => `${fasonFmtM(Math.round((x || 0) * 10) / 10)} kg`;
+    bilgi.textContent = s ? `${b.firma}: giden ${kg(s.gon)}${s.kalmali != null ? ' · firmada kalmalı ' + kg(s.kalmali) : ''}`
+        : kod ? '⚠ Bu iplik bu firmaya depodan gönderilmemiş' : '';
+    bilgi.style.color = s ? 'var(--text3)' : 'var(--amber-c)';
+}
+/* ── Birleştirme / hesaptan çıkarma (föy olayı, yalnız siparis_akis'e FASON_FOY; depo satırına dokunmaz) ── */
+function fasonCbYazKapisi() {
+    if (!fasonYazabilir('DOKUMA')) { erpToast('Yetkiniz yok.', 'error'); return false; }
+    if (_fasonMesgul) return false;
+    return true;
+}
+function fasonCbIdListe(an) {
+    return String(fasonFoyOku(an, 'cbdisla').ids || '').split(',').map(x => x.trim()).filter(Boolean);
+}
+function fasonCbBirlestirAc(tur, kok) {
+    if (!fasonCbYazKapisi()) return;
+    const T = FASON_CB_TUR[tur];
+    const ad = fasonCbFirmaAdi(tur, kok);
+    const digerleri = fasonCbFirmalar(tur).filter(f => f.key !== kok && f.key !== FASON_CB_FIRMASIZ).sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+    if (!digerleri.length) { erpToast('Birleştirilecek başka firma yok.', 'info'); return; }
+    fasonPencereAc(`${fasonPencereBaslik('⇄', 'Firmayı birleştir', `${pdfEsc(T.firmaAd)} · ${pdfEsc(ad)}`)}
+        <label style="font-size:10px;color:var(--text3)">Hangi firmaya katılsın?</label>
+        <select id="cb-birlestir-hedef" class="pro-input" style="width:100%;margin:4px 0 12px">${digerleri.map(f => `<option value="${pdfEsc(f.key)}">${pdfEsc(f.ad)}</option>`).join('')}</select>
+        <div style="display:flex;justify-content:flex-end;gap:8px"><button type="button" class="btn-pro btn-ghost-pro" onclick="fasonPencereKapat()">Vazgeç</button>
+            <button type="button" id="ff-kaydet" class="btn-pro btn-primary-pro" onclick="fasonCbBirlestirKaydet(${fasonArg(tur)},${fasonArg(kok)})">Birleştir</button></div>`, 520);
+}
+async function fasonCbBirlestirKaydet(tur, kok) {
+    if (!fasonCbYazKapisi()) return false;
+    const hedef = String(document.getElementById('cb-birlestir-hedef')?.value || '').trim();
+    if (!hedef || hedef === kok || hedef === FASON_CB_FIRMASIZ) return false;
+    if (fasonCbKok(tur, hedef) === kok) { erpToast('Seçilen firma zaten bu firmaya bağlı.', 'error'); return false; }
+    const an = tur + '|' + kok;
+    const eski = fasonFoyOku(an, 'cbad');
+    const ok = await fasonFoyOlayYaz(an, 'cbad', '', { hedef: eski.hedef || '' }, { hedef });
+    if (ok && _fasonCbAcik.has(an)) { _fasonCbAcik.delete(an); _fasonCbAcik.add(tur + '|' + fasonCbKok(tur, hedef)); fasonCbEkranYenile(); }
+    return ok;
+}
+async function fasonCbAyir(tur, takmaKey) {
+    if (!fasonCbYazKapisi()) return false;
+    const an = tur + '|' + takmaKey;
+    const eski = fasonFoyOku(an, 'cbad');
+    if (!eski.hedef) return false;
+    if (!(await erpAskConfirm(`"${fasonCbFirmaAdi(tur, takmaKey)}" yazımı yeniden ayrı firma olsun mu?`))) return false;
+    return fasonFoyOlayYaz(an, 'cbad', '', { hedef: eski.hedef }, { hedef: '' });
+}
+/** Gönderimi hesaptan çıkar / geri al — işaret gönderimin KENDİ yazımının anahtarına yazılır (birleştirme / ayırmada gönderimle birlikte gider) */
+async function fasonCbDislaDegistir(tur, depoId, disla) {
+    if (!fasonCbYazKapisi()) return false;
+    const id = String(depoId);
+    const g = fasonCbGonderimlerHam(tur).find(x => String(x.id) === id);
+    if (!g) { erpToast('Gönderim bulunamadı.', 'error'); return false; }
+    const an = tur + '|' + g.hamKey;
+    const eskiIds = fasonCbIdListe(an);
+    if (disla === eskiIds.includes(id)) return false;
+    const yeniIds = disla ? [...eskiIds, id] : eskiIds.filter(x => x !== id);
+    const metin = `${fasonTarihYaz(g.tarih)} · ${g.kod} ${g.ad} · ${fasonFmtM(g.kg)} kg · ${g.firma}`;
+    const soru = disla
+        ? `Bu gönderim ${FASON_CB_TUR[tur].firmaAd.toLocaleLowerCase('tr-TR')} hesabından çıkarılsın mı?\n\n${metin}`
+        : `Bu gönderim yeniden hesaba katılsın mı?\n\n${metin}`;
+    if (!(await erpAskConfirm(soru))) return false;
+    return fasonFoyOlayYaz(an, 'cbdisla', '', { ids: eskiIds.join(',') }, { ids: yeniIds.join(',') });
+}
+function fasonCbEkranYenile() {
+    if (typeof dokumaFasonListeYenile === 'function') dokumaFasonListeYenile();
+}
+
+/* ── Ekran (Dokuma Fason → "🧵 Çözgücüler" / "🌀 Bükümcüler" sekmesi) ───── */
+function fasonCbAcKapa(anahtar) {
+    if (_fasonCbAcik.has(anahtar)) _fasonCbAcik.delete(anahtar); else _fasonCbAcik.add(anahtar);
+    fasonCbEkranYenile();
+}
+/** Firmalar (firmada kalması gerekenden büyüğe) + genel toplam — ekrana dokunmaz; masaüstü ve yeni mobil (mobil-yeni/) AYNI modeli kullanır (22.10.2026) */
+function fasonCbListeModeli(tur) {
+    const firmalar = fasonCbFirmalar(tur).map(f => ({ f, h: fasonCbHesap(tur, f.key) }))
+        .sort((a, b) => (b.h.toplam.kalmali || 0) - (a.h.toplam.kalmali || 0) || b.h.toplam.gon - a.h.toplam.gon);
+    const genel = firmalar.reduce((a, x) => ({ gon: a.gon + x.h.toplam.gon, kul: a.kul + x.h.toplam.kullanilan, kal: a.kal + (x.h.toplam.kalmali || 0), mt: a.mt + x.h.toplam.leventMt }), { gon: 0, kul: 0, kal: 0, mt: 0 });
+    return { firmalar, genel };
+}
+function fasonCbHtml(tur) {
+    const T = FASON_CB_TUR[tur];
+    if (!(dataCache.iplik_stok || []).length) return `<div class="panel-box" style="padding:30px;text-align:center;color:var(--text3)">⏳ İplik hareketleri yükleniyor…</div>`;
+    const yaz = fasonYazabilir('DOKUMA');
+    const kg = (x) => (x == null ? '<span style="color:var(--text3)">—</span>' : `${fasonFmtM(Math.round(x * 10) / 10)} kg`);
+    const { firmalar, genel } = fasonCbListeModeli(tur);
+    const td = 'padding:5px 8px;text-align:right;font-family:\'DM Mono\',monospace;white-space:nowrap';
+    const th = 'padding:5px 8px;text-align:right;font-size:9px;color:var(--text3);text-transform:uppercase;font-family:\'DM Mono\',monospace';
+    const kart = ({ f, h }) => {
+        const acik = _fasonCbAcik.has(f.anahtar);
+        const t = h.toplam;
+        const farkRenk = t.fark == null ? 'var(--text3)' : t.fark < -0.5 ? 'var(--amber-c)' : (h.satirlar.some(s => s.farkPct != null && s.farkPct > 3) ? 'var(--rose-c)' : 'var(--emerald-c)');
+        const ozet = `<div role="button" tabindex="0" data-cb-anahtar="${pdfEsc(f.anahtar)}" onclick="fasonCbAcKapa(this.getAttribute('data-cb-anahtar'))" style="display:grid;grid-template-columns:minmax(160px,1.6fr) repeat(4,minmax(90px,1fr));gap:8px;align-items:center;padding:10px 14px;cursor:pointer;background:${acik ? 'rgba(99,102,241,0.08)' : 'var(--surface)'}">
+            <div><span style="color:var(--accent);margin-right:6px">${acik ? '▼' : '▶'}</span><b>${pdfEsc(f.ad)}</b>${f.key === FASON_CB_FIRMASIZ ? ' <span class="pill pill-amber" style="font-size:8px">depoda firma yazılmamış</span>' : ''}<div style="font-size:9px;color:var(--text3)">${fasonFmtI(h.gonderimler.length)} gönderim${h.tumGonderim.length > h.gonderimler.length ? ` (+${fasonFmtI(h.tumGonderim.length - h.gonderimler.length)} hesap dışı)` : ''}${h.takmaAdlar.length ? ` · ${fasonFmtI(h.takmaAdlar.length + 1)} yazım birleşik` : ''}${tur === 'C' ? ` · ${fasonFmtI(t.levent)} levent · ${fasonFmtM(Math.round(t.leventMt))} m` : ''}</div></div>
+            <div style="${td}"><div style="font-size:8px;color:var(--text3)">GİDEN (NET)</div>${kg(t.net)}</div>
+            <div style="${td}"><div style="font-size:8px;color:var(--text3)">${tur === 'C' ? 'LEVENTE SARILAN' : 'BÜKÜLÜ GELEN'}</div>${kg(t.kullanilan)}</div>
+            <div style="${td}"><div style="font-size:8px;color:var(--text3)">FİRMADA KALMALI</div><b>${kg(t.kalmali)}</b></div>
+            <div style="${td}"><div style="font-size:8px;color:var(--text3)">SAYIM FARKI</div><span style="color:${farkRenk}">${t.fark == null ? (t.sayimVar ? '—' : '<span style="color:var(--text3)">sayım yok</span>') : (t.fark < -0.5 ? fasonFmtM(Math.round(-t.fark * 10) / 10) + ' kg fazla' : kg(t.fark))}</span></div>
+        </div>`;
+        if (!acik) return `<div class="panel-box" style="padding:0;overflow:hidden;border:1px solid var(--border)">${ozet}</div>`;
+        const satir = (s) => `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:5px 8px"><b>${pdfEsc(s.kod)}</b> <span style="font-size:9px;color:var(--text3)">${pdfEsc(s.ad || '')}${s.mpk > 0 ? ' · ' + fasonFmtI(s.mpk) + ' m/kg' : (tur === 'C' && s.levent ? ' · <span style="color:var(--rose-c)">iplik numarası okunamadı</span>' : '')}</span></td>
+            <td style="${td}">${kg(s.gon)}<div style="font-size:8px;color:var(--text3)">${fasonFmtI(s.gonSay)} gönderim</div></td>
+            <td style="${td}">${kg(s.iade)}</td>
+            <td style="${td}">${s.kullanilanEksik ? '<span style="color:var(--rose-c)">hesaplanamadı</span>' : kg(s.kullanilan)}${tur === 'C' && s.levent ? `<div style="font-size:8px;color:var(--text3)">${fasonFmtI(s.levent)} levent · ${fasonFmtM(Math.round(s.leventMt))} m</div>` : ''}${tur === 'B' && s.bukuluKodlar.size ? `<div style="font-size:8px;color:var(--text3)">→ ${pdfEsc([...s.bukuluKodlar].join(', '))}</div>` : ''}</td>
+            <td style="${td};font-weight:700">${kg(s.kalmali)}${s.kalmali != null && s.kalmali < -0.5 ? '<div style="font-size:8px;color:var(--rose-c)">gidenden fazla kullanılmış</div>' : ''}</td>
+            <td style="${td}">${s.sayim == null ? '<span style="color:var(--text3)">yok</span>' : kg(s.sayim)}${s.sayim != null ? `<div style="font-size:8px;color:var(--text3)">${fasonTarihYaz(s.sayimTarih)}${s.iadeSonra ? ' · sonra ' + fasonFmtM(s.iadeSonra) + ' kg iade' : ''}${s.telef ? ' · telef ' + fasonFmtM(s.telef) : ''}</div>` : ''}</td>
+            <td style="${td};font-weight:700">${s.fark == null ? '<span style="color:var(--text3)">—</span>' : s.fazla ? `<span style="color:var(--amber-c)">${fasonFmtM(Math.round(-s.fark * 10) / 10)} kg fazla</span>` : `<span style="color:${s.farkPct != null && s.farkPct > 3 ? 'var(--rose-c)' : 'var(--emerald-c)'}">${kg(s.fark)}</span>${s.farkPct != null ? `<div style="font-size:8px;color:var(--text3)">%${fasonFmtM(Math.round(s.farkPct * 10) / 10)}</div>` : ''}`}</td>
+        </tr>`;
+        const disSay = h.tumGonderim.length - h.gonderimler.length;
+        const gonTablo = h.tumGonderim.length ? `<details style="font-size:10px"${disSay ? ' open' : ''}><summary style="cursor:pointer;color:var(--text2)">📦 Depodan gönderimler (${fasonFmtI(h.tumGonderim.length)}${disSay ? ` · ${fasonFmtI(disSay)} hesap dışı` : ''})</summary>
+            <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:6px">${[...h.tumGonderim].sort((a, b) => b.ts.localeCompare(a.ts)).map(g => `<tr style="border-top:1px solid var(--border)${g.disla ? ';opacity:.55;text-decoration:line-through' : ''}">
+                <td style="padding:4px 8px">${fasonTarihYaz(g.tarih)}</td><td style="padding:4px 8px">${pdfEsc(g.kod)} ${pdfEsc(g.ad)}</td><td style="padding:4px 8px">lot ${pdfEsc(g.lot || '—')} · ${pdfEsc(g.marka || '')}</td>
+                <td style="${td}">${kg(g.kg)}</td><td style="${td}">${g.top ? fasonFmtI(g.top) + ' çuval' : ''}</td><td style="padding:4px 8px;color:var(--text3)">${pdfEsc(g.firma)} · ${pdfEsc(g.user)}</td>
+                <td style="padding:4px 8px;text-align:right">${yaz ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:2px 7px;font-size:9px;white-space:nowrap" onclick="fasonCbDislaDegistir(${fasonArg(tur)},${fasonArg(g.id)},${g.disla ? 'false' : 'true'})">${g.disla ? '↶ Hesaba geri al' : '↷ Hesap dışı'}</button>` : (g.disla ? 'hesap dışı' : '')}</td></tr>`).join('')}</table></details>` : '';
+        const birlesik = h.takmaAdlar.length ? `<div style="font-size:10px;color:var(--text2)">⇄ Birleştirilen yazımlar: ${h.takmaAdlar.map(k => `<span style="display:inline-flex;gap:4px;align-items:center;margin-right:10px"><b>${pdfEsc(fasonCbFirmaAdi(tur, k))}</b>${yaz && fasonFoyOku(tur + '|' + k, 'cbad').hedef ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:1px 6px;font-size:9px" title="Bu yazımı yeniden ayrı firma yap" onclick="fasonCbAyir(${fasonArg(tur)},${fasonArg(k)})">⤺ ayır</button>` : ''}</span>`).join('')}</div>` : '';
+        const tumHareket = [f.key, ...h.takmaAdlar].flatMap(k => fasonAnahtarHareketleri(tur + '|' + k));
+        return `<div class="panel-box" style="padding:0;overflow:hidden;border:1px solid rgba(99,102,241,0.45)">${ozet}
+            <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px" onclick="event.stopPropagation()">
+                ${yaz ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${T.dugmeler.map(tp => `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px" onclick="fasonHareketFormAc(${fasonArg(f.anahtar)},'${tp}')">${FASON_TIPLER[tp].ikon} ${pdfEsc(FASON_TIPLER[tp].dugme)}</button>`).join('')}${f.key !== FASON_CB_FIRMASIZ ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:5px 10px;font-size:10px;margin-left:auto" title="Aynı firmanın başka yazımıyla birleştir (bu yazım seçilen firmaya katılır)" onclick="fasonCbBirlestirAc(${fasonArg(tur)},${fasonArg(f.key)})">⇄ Başka firmayla birleştir</button>` : ''}</div>` : ''}
+                ${birlesik}
+                <div style="overflow:auto"><table style="width:100%;min-width:760px;border-collapse:collapse;font-size:10px">
+                    <thead><tr><th style="${th};text-align:left">İplik</th><th style="${th}">Gönderilen</th><th style="${th}">İade</th><th style="${th}">${tur === 'C' ? 'Levente sarılan' : 'Bükülü gelen'}</th><th style="${th}">Firmada kalmalı</th><th style="${th}">Sayım</th><th style="${th}">Fark</th></tr></thead>
+                    <tbody>${h.satirlar.map(satir).join('') || `<tr><td colspan="7" style="padding:10px;color:var(--text3)">Kayıt yok</td></tr>`}</tbody>
+                </table></div>
+                ${gonTablo}
+                ${tumHareket.length ? fasonHareketTabloHtml(tumHareket, { anahtar: f.anahtar }) : `<div style="font-size:10px;color:var(--text3)">Henüz ${tur === 'C' ? 'çözgü raporu' : 'bükülü iplik dönüşü'} / iade / sayım girilmedi.</div>`}
+            </div></div>`;
+    };
+    return `<div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+            ${fasonKpiKutu(T.cogul, fasonFmtI(firmalar.length), 'var(--accent)', 'firma')}
+            ${fasonKpiKutu('Giden iplik', fasonFmtM(Math.round(genel.gon)) + ' kg', '#06b6d4', 'depodan')}
+            ${fasonKpiKutu(tur === 'C' ? 'Levente sarılan' : 'Bükülü gelen', fasonFmtM(Math.round(genel.kul)) + ' kg', 'var(--emerald-c)', tur === 'C' ? fasonFmtM(Math.round(genel.mt)) + ' m levent' : 'depoya giren')}
+            ${fasonKpiKutu('Firmalarda kalmalı', fasonFmtM(Math.round(genel.kal)) + ' kg', 'var(--amber-c)', 'hesaba göre')}
+        </div>
+        ${firmalar.length ? firmalar.map(kart).join('') : `<div class="empty-pro" style="padding:30px"><div class="empty-pro-title">${pdfEsc(T.cogul)} yok</div></div>`}
+    </div>`;
+}
+
+try {
+    Object.assign(window, { fasonCbAcKapa, fasonCbHtml, fasonCbHesap, fasonCbFirmaKey, fasonCbIplikMpk, fasonCbKok, fasonCbBirlestirAc, fasonCbBirlestirKaydet, fasonCbAyir, fasonCbDislaDegistir,
+        fasonCbFormHazirla, fasonCbIplikSec, fasonCbFormKodDegisti });
+} catch (e) {}
+/* ════ TERBİYE — BOBİN BOYA UÇTAN UCA (22.10.2026) ═══════════════════════
+   Kullanıcı: "bobin gönderdiğimizde iplik özellikleri, ne kadar gönderildiği, hangi renge boyatılacağı …; bu bilgilerden otomatik
+   bobin boya talimatı; hangi sipariş için, gönderim tarihi; boyahanenin verdiği termin ve tarih gelince uyarı; gelen kg ile giden kg
+   karşılaştırılsın, boyahanede ne kadar ipimiz kaldı görelim — süreci uçtan uca takip".
+   Kararlar (22.10.2026): talimatta iplik + renk + kg + sipariş + bobin tipi / ağırlığı; iki termin (istediğimiz + boyahanenin
+   verdiği, değişince geçmiş kalır); uyarı 2 gün kala + geçince (16 `terbiye-yaklas` / `terbiye-gecik`); her gönderimin talimatı.
+   Yazma yerleri: termin penceresi → 23 `terbiyeIsYaz` (fason motorunun tek kapısı), renk kartı açma `terbiyeRenkKartiHazirla`
+   (iplik_stok kart satırı) ve boyalı kumaşın Konfeksiyon dönüşü `terbiyeKonfGelisYaz` / `terbiyeKonfGelisSil` (siparis_akis
+   KUMAS_GELIS, silmede önce depo_hareket_iz). Yeni kolon / tablo yok: bilgiler
+   boya işinin tanımında (FASON_FOY 'tis': istenen_termin, bobin_tipi, bobin_kg) ve 'is' termininde; iplik özellikleri iplik
+   kartından OKUNUR (iplik_stok: iplik_no, iplik_cinsi, kalite, marka, üretici) — talimatta o anki kart bilgisi. */
+
+/* ── İplik kartından özellikler (kod + lot) ─────────────────────────── */
+function terbiyeIplikOzellik(kod, lot) {
+    const K = String(kod || '').trim().toUpperCase();
+    if (!K) return null;
+    const satirlar = (dataCache.iplik_stok || []).filter(r => String(r.stok_kodu || '').trim().toUpperCase() === K);
+    if (!satirlar.length) return null;
+    const kart = satirlar.find(r => /IPLIK_KART_GIRIS/.test(`${r.islem || ''} ${r.islem_turu || ''}`)) || satirlar[0];
+    const L = String(lot || '').trim().toUpperCase();
+    const lotS = L ? satirlar.find(r => String(r.lot_no || '').trim().toUpperCase() === L) : null;
+    const al = (a) => String((lotS && lotS[a]) || kart[a] || (satirlar.find(r => r[a]) || {})[a] || '').trim();
+    return { iplik_no: al('iplik_no'), cins: al('iplik_cinsi') || al('cins'), kalite: al('kalite'), marka: al('marka'), uretici: al('uretici_firma') };
+}
+/* iplik_stok bu ekranda yüklenmemiş olabilir (yalnız okuma; yeni iş formu da aynısını yapar) */
+let _terbiyeIplikYukleniyor = null;
+async function terbiyeIplikHazir() {
+    if ((dataCache.iplik_stok || []).length || typeof erpSyncAllDataBekle !== 'function') return;
+    if (!_terbiyeIplikYukleniyor) _terbiyeIplikYukleniyor = erpSyncAllDataBekle({ silent: true, tables: ['iplik_stok'], light: true }).catch(() => {}).finally(() => { _terbiyeIplikYukleniyor = null; });
+    await _terbiyeIplikYukleniyor;
+}
+function terbiyeIplikMetin(h) {
+    const oz = terbiyeIplikOzellik(h.iplik_kodu, h.lot_no) || {};
+    return [h.iplik_kodu, h.iplik_ad, oz.iplik_no && !String(h.iplik_ad || '').includes(oz.iplik_no) ? 'Ne ' + oz.iplik_no : '', oz.cins, oz.kalite,
+        h.marka || oz.marka, h.lot_no ? 'lot ' + h.lot_no : ''].map(x => String(x || '').trim()).filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(' · ');
+}
+function terbiyeGonderimleri(o) {
+    return o.hareketler.filter(h => h.tip === o.A.gonder).sort((a, b) => String(a.tarih || '').localeCompare(String(b.tarih || '')) || String(a.ts).localeCompare(String(b.ts)));
+}
+function terbiyeBobinTipAd(k) { return ((TERBIYE_BOBIN_TIPLERI.find(x => x[0] === k) || [])[1]) || ''; }
+
+/* ── Termin geçmişi: boyahanenin verdiği termin her değiştiğinde fason olayında eski / yeni kalır ── */
+function terbiyeTerminGecmisi(anahtar) {
+    const tis = fasonFoyGecmis(anahtar, 'tis', '').filter(g => 'istenen_termin' in (g.yeni || {})).map(g => ({ ...g, tur: 'ISTENEN', eski: g.eski.istenen_termin, yeni: g.yeni.istenen_termin }));
+    const is = fasonFoyGecmis(anahtar, 'is', 'ana').filter(g => 'termin' in (g.yeni || {})).map(g => ({ ...g, tur: 'BOYAHANE', eski: g.eski.termin, yeni: g.yeni.termin }));
+    return [...tis, ...is].sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+}
+
+/** Bobin işine gönderilen iplikler, iplik + lot başına toplam [{ metin, kg, top }] (ana program + mobil). */
+function terbiyeGonderilenIplikler(o) {
+    const iplikler = new Map();
+    if (o.tur === 'BOBIN') terbiyeGonderimleri(o).forEach(h => {
+        const k = `${h.iplik_kodu || h.iplik_ad}|${h.lot_no || ''}`;
+        const v = iplikler.get(k) || { metin: terbiyeIplikMetin(h), kg: 0, top: 0 };
+        v.kg += h.kg || 0; v.top += h.top || 0;
+        iplikler.set(k, v);
+    });
+    return [...iplikler.values()];
+}
+
+/* ── İş kartı: termin, bobin, gönderilen iplikler, talimat düğmesi ── */
+function terbiyeIsBilgiHtml(o, yaz) {
+    const a = fasonArg(o.b.anahtar);
+    if (o.tur === 'BOBIN' && !(dataCache.iplik_stok || []).length && !_terbiyeIplikYukleniyor) terbiyeIplikHazir().then(() => { if ((dataCache.iplik_stok || []).length) terbiyeEkranYenile(); });
+    const satir = (etiket, icerik) => icerik ? `<div style="display:flex;gap:8px;font-size:10px;line-height:1.5"><span style="min-width:110px;color:var(--text3);font-weight:700">${etiket}</span><span style="flex:1;color:var(--text2)">${icerik}</span></div>` : '';
+    const gecmis = terbiyeTerminGecmisi(o.b.anahtar).filter(g => g.eski);
+    const termin = [
+        `istediğimiz <b>${o.istenenTermin ? fasonTarihYaz(o.istenenTermin) : '—'}</b>`,
+        `boyahanenin verdiği <b>${o.boyahaneTermin ? fasonTarihYaz(o.boyahaneTermin) : '— girilmedi'}</b>`
+    ].join(' · ') + (gecmis.length ? `<div style="font-size:9px;color:var(--text3)">${gecmis.map(g => `${g.tur === 'BOYAHANE' ? 'boyahane' : 'istenen'}: ${fasonTarihYaz(g.eski)} → <b>${g.yeni ? fasonTarihYaz(g.yeni) : 'silindi'}</b> · ${pdfEsc(g.user)} · ${fasonZamanYaz(g.ts)}`).join('<br>')}</div>` : '');
+    const bobin = o.tur === 'BOBIN' ? [terbiyeBobinTipAd(o.tanim.bobin_tipi), o.tanim.bobin_kg ? `${fasonFmtM(fasonTakipNum(o.tanim.bobin_kg, 3))} kg / bobin` : ''].filter(Boolean).join(' · ') : '';
+    const iplikHtml = terbiyeGonderilenIplikler(o).map(v => `${pdfEsc(v.metin || '—')} — <b>${fasonFmtM(v.kg)} kg</b>${v.top ? ` · ${fasonFmtI(v.top)} bobin` : ''}`).join('<br>');
+    return `<div style="display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)">
+        ${satir('📅 Termin', termin)}
+        ${satir('🧵 Bobin', bobin || (o.tur === 'BOBIN' ? '<span style="color:var(--text3)">tipi / ağırlığı girilmedi (✎ İşi düzelt)</span>' : ''))}
+        ${satir('🧶 Gönderilen iplik', iplikHtml)}
+        ${o.tur === 'KUMAS' ? satir('📄 Talimat', terbiyeKumasTeknikMetin(o.tanim) || '<span style="color:var(--text3)">en / gramaj / tolerans / tuşe girilmedi (✎ İşi düzelt)</span>') : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+            <button type="button" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px" onclick="terbiyeTalimatPdf(${a},'')">📄 ${o.tur === 'BOBIN' ? 'Bobin boya' : 'Kumaş'} talimatı (bütün gönderimler)</button>
+            <span style="font-size:9px;color:var(--text3);align-self:center">tek gönderimin talimatı: hareket satırındaki 📄</span></div>
+    </div>`;
+}
+
+function terbiyeKumasTeknikMetin(t) {
+    const n = (a) => fasonTakipNum(t[a], 2);
+    return [n('ham_en') || n('istenen_en') ? `en ${n('ham_en') ? fasonFmtM(n('ham_en')) : '?'} → ${n('istenen_en') ? fasonFmtM(n('istenen_en')) : '?'} cm` : '',
+        n('gramaj') ? `${fasonFmtM(n('gramaj'))} g/m²` : '',
+        n('boy_cekme_tol') ? `boy çekmesi ≤ %${fasonFmtM(n('boy_cekme_tol'))}` : '', n('en_cekme_tol') ? `en çekmesi ≤ %${fasonFmtM(n('en_cekme_tol'))}` : '',
+        t.tuse ? pdfEsc(t.tuse) : ''].filter(Boolean).join(' · ');
+}
+
+/* ── Giden ↔ gelen defteri: her hareketten sonra boyahanede kalan ── */
+/** Defter satırları: tarih sırası, her hareketten sonra boyahanede kalan + gelen / giden oranı (ana program + mobil). */
+function terbiyeDefterModeli(o) {
+    const A = o.A, ana = A.ana;
+    const hs = [...o.hareketler].sort((a, b) => String(a.tarih || '').localeCompare(String(b.tarih || '')) || String(a.ts).localeCompare(String(b.ts)));
+    let kalan = 0;
+    const satirlar = hs.map(h => {
+        const giden = h.tip === A.gonder;
+        const v = terbiyeY(h[ana] || 0);
+        kalan = terbiyeY(kalan + (giden ? v : -v));
+        return { h, giden, v, kalan };
+    });
+    const oran = o.net > 0 ? terbiyeY(o.gelen[ana] / o.net * 100, 1) : null;
+    return { satirlar, oran };
+}
+function terbiyeDefterHtml(o) {
+    const A = o.A, ana = A.ana;
+    const dm = terbiyeDefterModeli(o);
+    if (!dm.satirlar.length) return '';
+    const td = "padding:4px 8px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap";
+    const kgSutun = o.tur === 'KUMAS';
+    const satirlar = dm.satirlar.map(({ h, giden, v, kalan }) => {
+        const t = FASON_TIPLER[h.tip] || {};
+        return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:4px 8px;white-space:nowrap">${fasonTarihYaz(h.tarih)}</td>
+            <td style="padding:4px 8px;white-space:nowrap;color:${t.renk || 'inherit'};font-weight:700">${t.ikon || ''} ${pdfEsc(t.ad || h.tip)}</td>
+            <td style="padding:4px 8px;color:var(--text2)">${pdfEsc(o.tur === 'BOBIN' ? [h.iplik_kodu, h.iplik_ad, h.lot_no ? 'lot ' + h.lot_no : ''].filter(Boolean).join(' · ') : [h.kumas_kodu, h.kumas_ad].filter(Boolean).join(' · '))}${h.fis_no ? ` <span style="color:var(--text3)">· irs. ${pdfEsc(h.fis_no)}</span>` : ''}</td>
+            <td style="${td};color:${giden ? '#06b6d4' : 'var(--emerald-c)'}">${giden ? '+' : '−'}${terbiyeMiktar(v, A)}</td>
+            ${kgSutun ? `<td style="${td}">${h.kg ? fasonFmtM(h.kg) + ' kg' : ''}</td>` : ''}
+            <td style="${td}">${h.top ? fasonFmtI(h.top) : ''}</td>
+            <td style="${td};font-weight:800;color:${kalan > 0.004 ? 'var(--amber-c)' : 'var(--text3)'}">${terbiyeMiktar(kalan, A)}</td></tr>`;
+    }).join('');
+    const oran = dm.oran;
+    const ozet = [`gönderilen (net) <b>${terbiyeMiktar(o.net, A)}</b>`, `boyalı gelen <b>${terbiyeMiktar(o.gelen[ana], A)}</b>`,
+        o.kapali ? `fire <b>${terbiyeMiktar(o.fire, A)}</b>` : `boyahanede <b style="color:var(--amber-c)">${terbiyeMiktar(o.kalan, A)}</b>`,
+        oran != null ? `gelen / giden <b>%${fasonFmtM(oran)}</b>` : ''].filter(Boolean).join(' · ');
+    return `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div style="padding:6px 10px;font-size:11px;font-weight:800;background:var(--surface2)">⚖ Giden ↔ gelen <span style="font-size:10px;font-weight:500;color:var(--text2)">· ${ozet}</span></div>
+        <div style="overflow:auto"><table class="dt-table" style="width:100%;min-width:620px;font-size:10px">
+            <thead><tr style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">
+                <th style="text-align:left;padding:4px 8px">Tarih</th><th style="text-align:left;padding:4px 8px">İşlem</th><th style="text-align:left;padding:4px 8px">${o.tur === 'BOBIN' ? 'İplik' : 'Kumaş'}</th>
+                <th style="text-align:right;padding:4px 8px">${A.birim}</th>${kgSutun ? '<th style="text-align:right;padding:4px 8px">kg</th>' : ''}
+                <th style="text-align:right;padding:4px 8px">${o.tur === 'BOBIN' ? 'Bobin' : 'Top'}</th><th style="text-align:right;padding:4px 8px">Boyahanede (sonra)</th></tr></thead>
+            <tbody>${satirlar}</tbody></table></div></div>`;
+}
+
+/* ── Bobin boya talimatı (PDF) — fgid: tek gönderim, '' : bütün gönderimler, 'SON': en son gönderim ── */
+function terbiyeTalimatDugme(h) {
+    return ['BOYA_IPLIK', 'BOYA_KUMAS'].includes(h.tip) ? `<button type="button" title="Boyahane talimatı (PDF)" class="btn-pro btn-ghost-pro" style="padding:2px 7px;font-size:10px" onclick="terbiyeTalimatPdf(${fasonArg(h.anahtar)},${fasonArg(h.fgid)})">📄</button>` : '';
+}
+async function terbiyeTalimatPdf(anahtar, fgid) {
+    await terbiyeIplikHazir();
+    const o = terbiyeOzet(anahtar);
+    const hepsi = terbiyeGonderimleri(o);
+    const secilen = fgid === 'SON' ? hepsi.slice(-1) : fgid ? hepsi.filter(h => h.fgid === fgid) : hepsi;
+    const t = o.tanim, s = o.siparis;
+    const no = (h) => hepsi.indexOf(h) + 1;
+    const tekil = secilen.length === 1 ? secilen[0] : null;
+    const docNo = `${o.tur === 'KUMAS' ? 'KT' : 'BT'}-${tekil ? (tekil.fis_no || String(tekil.fgid).slice(-6).toUpperCase()) : String(o.b.tid).slice(-6).toUpperCase()}`;
+    if (o.tur === 'KUMAS') {
+        const baslik = { BOYAMA: 'KUMAŞ BOYA TALİMATI', BASKI: 'KUMAŞ BASKI TALİMATI', YIKAMA: 'KUMAŞ YIKAMA TALİMATI' }[o.islem] || 'KUMAŞ BOYA TALİMATI';
+        fasonPdfIndir(baslik, `${o.firma || ''} · ${o.islem === 'YIKAMA' ? 'Yıkama' : terbiyeRenkGoster(t)}`, docNo, terbiyeKumasTalimatGovde(o, hepsi, secilen, tekil), `kumas_talimati_${docNo}`);
+        return;
+    }
+    const td = 'border:1px solid #d9dee9;padding:5px 6px;font-size:9px;vertical-align:top';
+    const th = `${td};background:#f3f5fa;font-weight:700;text-align:left`;
+    const toplamKg = terbiyeY(secilen.reduce((x, h) => x + (h.kg || 0), 0));
+    const toplamBobin = secilen.reduce((x, h) => x + (h.top || 0), 0);
+    const bobinKg = fasonTakipNum(t.bobin_kg, 3) || (toplamBobin ? terbiyeY(toplamKg / toplamBobin, 3) : 0);
+    const iplikSatir = secilen.map(h => {
+        const oz = terbiyeIplikOzellik(h.iplik_kodu, h.lot_no) || {};
+        /* Kartı olmayan (kodsuz) gönderimde iplik no adından: "40/1 COMP PNY" → 40/1 */
+        if (!oz.iplik_no) oz.iplik_no = (String(h.iplik_ad || '').match(/\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b/) || [''])[0].replace(/\s+/g, '');
+        return `<tr><td style="${td}">${no(h)}. · ${pdfEsc(fasonTarihYaz(h.tarih))}${h.fis_no ? '<br>irs. ' + pdfEsc(h.fis_no) : ''}</td>
+            <td style="${td}"><b>${pdfEsc(h.iplik_kodu || '—')}</b><br>${pdfEsc(h.iplik_ad || '')}</td>
+            <td style="${td}">${pdfEsc(oz.iplik_no || '—')}</td><td style="${td}">${pdfEsc([oz.cins, oz.kalite].filter(Boolean).join(' · ') || '—')}</td>
+            <td style="${td}">${pdfEsc(h.marka || oz.marka || '—')}</td><td style="${td}">${pdfEsc(h.lot_no || '—')}</td>
+            <td style="${td};text-align:right"><b>${fasonFmtM(h.kg)}</b></td><td style="${td};text-align:right">${h.top ? fasonFmtI(h.top) : '—'}</td></tr>`;
+    }).join('');
+    const iplikTablo = secilen.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr>
+            <th style="${th}">Gönderim</th><th style="${th}">İplik</th><th style="${th}">İplik no</th><th style="${th}">Cins / kalite</th><th style="${th}">Marka</th><th style="${th}">Lot</th>
+            <th style="${th};text-align:right">Kg</th><th style="${th};text-align:right">Bobin</th></tr></thead>
+            <tbody>${iplikSatir}${secilen.length > 1 ? `<tr><td style="${td};font-weight:800" colspan="6">Toplam</td><td style="${td};text-align:right;font-weight:800">${fasonFmtM(toplamKg)}</td><td style="${td};text-align:right;font-weight:800">${toplamBobin ? fasonFmtI(toplamBobin) : '—'}</td></tr>` : ''}</tbody></table>`
+        : `<div style="font-size:10px;color:#64748b;margin-bottom:8px">Henüz gönderim yok — boyanacak miktar aşağıda.</div>`;
+    const renkKutu = `<div style="border:2px solid #1e293b;border-radius:6px;padding:10px 12px;margin:6px 0 10px;display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:9px;color:#64748b;font-weight:700">BOYANACAK RENK</div><div style="font-size:20px;font-weight:900">${pdfEsc(t.renk || '—')}</div></div>
+        <div style="text-align:right"><div style="font-size:9px;color:#64748b;font-weight:700">RENK KODU</div><div style="font-size:16px;font-weight:800">${pdfEsc(t.renk_kodu || '—')}</div></div></div>`;
+    const govde = fasonPdfTablo([
+        ['Boyahane', `<b>${pdfEsc(o.firma || '—')}</b>`],
+        ['Sipariş', pdfEsc(s ? `${s.sno || ''} · ${s.firma || ''}` : (t.siparis_id ? `#${t.siparis_id}` : 'Stok için (siparişsiz)'))],
+        t.kalem_ad ? ['Sipariş kalemi', pdfEsc(t.kalem_ad)] : null,
+        ['Gönderim tarihi', pdfEsc(tekil ? fasonTarihYaz(tekil.tarih) : secilen.length ? `${fasonTarihYaz(secilen[0].tarih)} – ${fasonTarihYaz(secilen[secilen.length - 1].tarih)}` : '—')],
+        ['Termin', pdfEsc([o.boyahaneTermin ? `boyahane: ${fasonTarihYaz(o.boyahaneTermin)}` : '', o.istenenTermin ? `istediğimiz: ${fasonTarihYaz(o.istenenTermin)}` : ''].filter(Boolean).join(' · ') || '—')]
+    ]) + renkKutu + fasonPdfBaslik('Gönderilen ham iplik') + iplikTablo + fasonPdfTablo([
+        ['Bobin tipi', pdfEsc(terbiyeBobinTipAd(t.bobin_tipi) || '—')],
+        ['Bobin ağırlığı', bobinKg ? `${fasonFmtM(bobinKg)} kg / bobin${fasonTakipNum(t.bobin_kg, 3) ? '' : ' (gönderilen kg ÷ bobin sayısı)'}` : '—'],
+        ['Bu talimatta', `<b>${fasonFmtM(toplamKg)} kg</b>${toplamBobin ? ` · ${fasonFmtI(toplamBobin)} bobin` : ''}`],
+        o.hedef ? ['İşin toplamı', pdfEsc(`boyanacak ${fasonFmtM(o.hedef)} kg · gönderilen ${fasonFmtM(o.net)} kg${o.gonderilecek ? ` · daha ${fasonFmtM(o.gonderilecek)} kg gönderilecek` : ''}`)] : null,
+        t.not ? ['Not', pdfEsc(t.not)] : null,
+        tekil && tekil.not ? ['Gönderim notu', pdfEsc(tekil.not)] : null
+    ]) + fasonImzaHtml(o.firma);
+    fasonPdfIndir('BOBİN BOYA TALİMATI', `${o.firma || ''} · ${t.renk || ''}`, docNo, govde, `bobin_boya_talimati_${docNo}`);
+}
+/* Kumaş talimatı gövdesi (22.10.2026 kararı: işlem, renk, metre, kg, sipariş + en ham / istenen, gramaj, çekme toleransı,
+   tuşe / apre, top listesi). Top listesi gönderimin `top_liste` alanından (çeki). */
+function terbiyeKumasTalimatGovde(o, hepsi, secilen, tekil) {
+    const t = o.tanim, s = o.siparis;
+    const td = 'border:1px solid #d9dee9;padding:5px 6px;font-size:9px;vertical-align:top';
+    const th = `${td};background:#f3f5fa;font-weight:700;text-align:left`;
+    const sayi = (v, b) => fasonTakipNum(v, 2) ? `${fasonFmtM(fasonTakipNum(v, 2))} ${b}` : '—';
+    const top = { mt: 0, kg: 0, top: 0 };
+    secilen.forEach(h => { top.mt += h.mt || 0; top.kg += h.kg || 0; top.top += h.top || 0; });
+    const islemKutu = `<div style="border:2px solid #1e293b;border-radius:6px;padding:10px 12px;margin:6px 0 10px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div><div style="font-size:9px;color:#64748b;font-weight:700">İŞLEM</div><div style="font-size:18px;font-weight:900">${pdfEsc(terbiyeIslemAd(o.islem).replace(/^\S+\s/, '').toLocaleUpperCase('tr-TR'))}</div></div>
+        ${o.islem === 'YIKAMA' && !terbiyeRenkGoster(t) ? '' : `<div><div style="font-size:9px;color:#64748b;font-weight:700">RENK</div><div style="font-size:18px;font-weight:900">${pdfEsc(terbiyeRenkGoster(t) || '—')}</div></div>
+        <div style="text-align:right"><div style="font-size:9px;color:#64748b;font-weight:700">RENK KODU</div><div style="font-size:15px;font-weight:800">${pdfEsc(t.renk_kodu || '—')}</div></div>`}</div>`;
+    const kumasSatir = secilen.map(h => `<tr><td style="${td}">${hepsi.indexOf(h) + 1}. · ${pdfEsc(fasonTarihYaz(h.tarih))}${h.fis_no ? '<br>irs. ' + pdfEsc(h.fis_no) : ''}</td>
+        <td style="${td}"><b>${pdfEsc(h.kumas_kodu || '—')}</b><br>${pdfEsc(h.kumas_ad || t.malzeme || '')}</td><td style="${td}">${pdfEsc(h.lot_no || '—')}</td>
+        <td style="${td};text-align:right"><b>${fasonFmtM(h.mt)}</b></td><td style="${td};text-align:right">${h.kg ? fasonFmtM(h.kg) : '—'}</td><td style="${td};text-align:right">${h.top ? fasonFmtI(h.top) : '—'}</td></tr>`).join('');
+    const kumasTablo = secilen.length ? `<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr>
+            <th style="${th}">Gönderim</th><th style="${th}">Kumaş</th><th style="${th}">Lot</th><th style="${th};text-align:right">Metre</th><th style="${th};text-align:right">Kg</th><th style="${th};text-align:right">Top</th></tr></thead>
+            <tbody>${kumasSatir}${secilen.length > 1 ? `<tr><td style="${td};font-weight:800" colspan="3">Toplam</td><td style="${td};text-align:right;font-weight:800">${fasonFmtM(top.mt)}</td><td style="${td};text-align:right;font-weight:800">${top.kg ? fasonFmtM(top.kg) : '—'}</td><td style="${td};text-align:right;font-weight:800">${top.top ? fasonFmtI(top.top) : '—'}</td></tr>` : ''}</tbody></table>`
+        : `<div style="font-size:10px;color:#64748b;margin-bottom:8px">Henüz gönderim yok — işlenecek miktar aşağıda.</div>`;
+    /* Çeki: gönderim gönderim top listesi (top no · metre · kg) */
+    const ceki = secilen.map(h => ({ h, satir: terbiyeTopListeOku(h.top_liste) })).filter(x => x.satir.length);
+    const cekiHtml = ceki.length ? fasonPdfBaslik('Top listesi (çeki)') + ceki.map(({ h, satir }) => `<div style="font-size:9px;font-weight:700;margin:4px 0 2px">${hepsi.indexOf(h) + 1}. gönderim · ${pdfEsc(fasonTarihYaz(h.tarih))}</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:6px"><thead><tr><th style="${th}">Top no</th><th style="${th};text-align:right">Metre</th><th style="${th};text-align:right">Kg</th>
+            <th style="${th}">Top no</th><th style="${th};text-align:right">Metre</th><th style="${th};text-align:right">Kg</th></tr></thead><tbody>
+        ${Array.from({ length: Math.ceil(satir.length / 2) }, (_, i) => [satir[i * 2], satir[i * 2 + 1]]).map(([a, b]) => `<tr>${[a, b].map(x => x
+            ? `<td style="${td}">${pdfEsc(x.no)}</td><td style="${td};text-align:right">${fasonFmtM(x.mt)}</td><td style="${td};text-align:right">${x.kg ? fasonFmtM(x.kg) : '—'}</td>`
+            : `<td style="${td}"></td><td style="${td}"></td><td style="${td}"></td>`).join('')}</tr>`).join('')}
+        <tr><td style="${td};font-weight:800">${satir.length} top</td><td style="${td};text-align:right;font-weight:800">${fasonFmtM(satir.reduce((x, y) => x + y.mt, 0))}</td><td style="${td};text-align:right;font-weight:800">${fasonFmtM(satir.reduce((x, y) => x + y.kg, 0))}</td><td style="${td}" colspan="3"></td></tr>
+        </tbody></table>`).join('') : '';
+    return fasonPdfTablo([
+        ['Boyahane', `<b>${pdfEsc(o.firma || '—')}</b>`],
+        ['Sipariş', pdfEsc(s ? `${s.sno || ''} · ${s.firma || ''}` : (t.siparis_id ? `#${t.siparis_id}` : 'Stok için (siparişsiz)'))],
+        t.kalem_ad ? ['Sipariş kalemi', pdfEsc(t.kalem_ad)] : null,
+        ['Gönderim tarihi', pdfEsc(tekil ? fasonTarihYaz(tekil.tarih) : secilen.length ? `${fasonTarihYaz(secilen[0].tarih)} – ${fasonTarihYaz(secilen[secilen.length - 1].tarih)}` : '—')],
+        ['Termin', pdfEsc([o.boyahaneTermin ? `boyahane: ${fasonTarihYaz(o.boyahaneTermin)}` : '', o.istenenTermin ? `istediğimiz: ${fasonTarihYaz(o.istenenTermin)}` : ''].filter(Boolean).join(' · ') || '—')]
+    ]) + islemKutu + fasonPdfBaslik('Gönderilen kumaş') + kumasTablo + fasonPdfTablo([
+        ['Ham en', sayi(t.ham_en, 'cm')], ['İstenen mamul en', sayi(t.istenen_en, 'cm')], ['İstenen gramaj', sayi(t.gramaj, 'g/m²')],
+        ['Çekme toleransı', [fasonTakipNum(t.boy_cekme_tol, 2) ? `boy en çok %${fasonFmtM(fasonTakipNum(t.boy_cekme_tol, 2))}` : '', fasonTakipNum(t.en_cekme_tol, 2) ? `en en çok %${fasonFmtM(fasonTakipNum(t.en_cekme_tol, 2))}` : ''].filter(Boolean).join(' · ') || '—'],
+        ['Tuşe / apre', pdfEsc(t.tuse || '—')],
+        ['Bu talimatta', `<b>${fasonFmtM(top.mt)} m</b>${top.kg ? ` · ${fasonFmtM(top.kg)} kg` : ''}${top.top ? ` · ${fasonFmtI(top.top)} top` : ''}`],
+        o.hedef ? ['İşin toplamı', pdfEsc(`işlenecek ${fasonFmtM(o.hedef)} m · gönderilen ${fasonFmtM(o.net)} m${o.gonderilecek ? ` · daha ${fasonFmtM(o.gonderilecek)} m gönderilecek` : ''}`)] : null,
+        t.not ? ['Not', pdfEsc(t.not)] : null,
+        tekil && tekil.not ? ['Gönderim notu', pdfEsc(tekil.not)] : null
+    ]) + cekiHtml + fasonImzaHtml(o.firma);
+}
+/* Top listesi / çeki: satır başına "top no · metre · kg" (boşluk, sekme, ; ya da | ile; ondalık virgül). Geçersiz satır atlanır. */
+function terbiyeSayiOku(x) {
+    let s = String(x || '').trim();
+    if (!s) return 0;
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : NaN;
+}
+function terbiyeTopListeOku(metin) {
+    return String(metin || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+        const p = l.split(/[\s;|\t]+/).filter(Boolean);
+        if (p.length < 2) return null;
+        const mt = terbiyeSayiOku(p[1]), kg = p.length > 2 ? terbiyeSayiOku(p[2]) : 0;
+        return Number.isFinite(mt) && mt > 0 && Number.isFinite(kg) ? { no: p[0], mt: terbiyeY(mt), kg: terbiyeY(kg) } : null;
+    }).filter(Boolean);
+}
+/* Hareket formunda (12): top listesi yazıldıkça metre / kg / top toplanır */
+function terbiyeTopListeBagla() {
+    const el = document.getElementById('fh-top_liste');
+    if (!el) return;
+    const bilgi = document.createElement('div');
+    bilgi.id = 'fh-top_liste-bilgi';
+    bilgi.style.cssText = 'font-size:10px;color:var(--text3);margin-top:3px';
+    el.after(bilgi);
+    const yenile = () => {
+        const satir = terbiyeTopListeOku(el.value);
+        const hatali = String(el.value || '').split(/\r?\n/).filter(l => l.trim()).length - satir.length;
+        if (!satir.length) { bilgi.textContent = hatali ? `${hatali} satır okunamadı (top no · metre · kg)` : ''; return; }
+        const mt = terbiyeY(satir.reduce((x, y) => x + y.mt, 0)), kg = terbiyeY(satir.reduce((x, y) => x + y.kg, 0));
+        const yaz = (id, v) => { const e = document.getElementById(id); if (e) e.value = v ? String(v) : ''; };
+        yaz('fh-mt', mt); if (kg) yaz('fh-kg', kg); yaz('fh-top', satir.length);
+        bilgi.innerHTML = `Çekiden: <b>${satir.length} top · ${fasonFmtM(mt)} m${kg ? ` · ${fasonFmtM(kg)} kg` : ''}</b> — metre / kg / top kutularına yazıldı${hatali ? ` · <span style="color:var(--rose-c)">${hatali} satır okunamadı</span>` : ''}`;
+    };
+    el.addEventListener('input', () => debounce('terbiyeTopListe', yenile, 250));
+    if (el.value) yenile();
+}
+/* ════ BOYALI KUMAŞIN DÖNÜŞ YOLU (22.10.2026, kullanıcı: "siparişe göre seçilsin"; tasarım onayı aynı gece) ═══
+   Hedef KONFEKSIYON: Kesim önüne düşer — Dokuma Depo → Konfeksiyon sevkiyle AYNI biçimde KUMAS_GELIS satırı (pipeline
+   ortakKesimOnuPipeline + kalem_idx; ortak kural 30 değişmez, üç program aynı satırı okur), `kaynak: 'BOYAHANE'` +
+   `terbiye_fgid`; kumaş deposuna YAZILMAZ (Dokuma Depo / depodan boyahaneye çıkarken düşmüştü). Hareket `konf_gelis` taşır.
+   Kesilmişse silinmez (`terbiyeKonfGelisEngeli`), silinince önce iz (depo_hareket_iz kaynak BOYAHANE_DONUS_GERI) sonra satır;
+   Kesim önündeki "↩ Sevki geri al" bu satırı reddeder (04 konfKesimOnuGeriAlEngeli).
+   Hedef DEPO: bugünkü gibi kumaş deposuna GİRİŞ, lot = sipariş no; müşteriye giderken Sevkiyat'ta 19 "→ Siparişe say". */
+function terbiyeKumasDonusAdaylari(b) {
+    const o = terbiyeOzet(b.anahtar);
+    const sid = String(o.tanim.siparis_id || '').trim();
+    const kalemler = sid && typeof konfGetSiparisKalemlerById === 'function' ? (konfGetSiparisKalemlerById(sid) || []) : [];
+    const kiSet = new Set();
+    const tki = parseInt(o.tanim.kalem_idx, 10);
+    if (Number.isFinite(tki)) kiSet.add(tki);
+    /* Dokuma Depo'dan giden gönderimin depo satırı kalemi bilir ([FASON:fgid]) */
+    const gonderimler = terbiyeGonderimleri(o);
+    gonderimler.forEach(h => (dataCache.kumas_stok || []).forEach(r => {
+        const ki = parseInt(r.kalem_idx, 10);
+        if (String(r.notlar || '').includes(`[FASON:${h.fgid}]`) && Number.isFinite(ki)) kiSet.add(ki);
+    }));
+    const konfMu = kalemler.some(k => String(siparisKalemBirim(k) || '').toUpperCase() === 'ADET');
+    return { o, sid, kalemler, adaylar: [...kiSet], hedef: sid && konfMu ? 'KONFEKSIYON' : 'DEPO', sonGonderim: gonderimler[gonderimler.length - 1] || null };
+}
+function terbiyeKumasDonusFormHazirla(b) {
+    const ctx = _fasonForm;
+    const kodEl = document.getElementById('fh-kumas_kodu');
+    if (!ctx || ctx.tur !== 'HAREKET' || !kodEl) return;
+    const p = terbiyeKumasDonusAdaylari(b);
+    ctx.kumasDonus = { hedef: p.hedef, sid: p.sid, ki: p.adaylar[0] ?? '' };
+    /* Kod / lot boşsa gönderimden ve siparişten (depo yolunda bunlarla girer) */
+    if (!kodEl.value && p.sonGonderim?.kumas_kodu) kodEl.value = p.sonGonderim.kumas_kodu;
+    const lotEl = document.getElementById('fh-lot_no');
+    if (lotEl && !lotEl.value && p.o.siparis?.sno) lotEl.value = p.o.siparis.sno;
+    const kutu = document.createElement('div');
+    kutu.id = 'fh-donus';
+    kutu.style.cssText = 'grid-column:1/-1;border:1px solid rgba(16,185,129,0.45);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;align-items:end';
+    kutu.innerHTML = `<div><label class="pro-label">Dönen kumaş nereye <span style="color:var(--rose-c)">*</span></label>
+            <select id="fh-donus-hedef" class="pro-input" style="padding:6px 9px" onchange="terbiyeKumasDonusDegisti()">
+                <option value="KONFEKSIYON" ${p.hedef === 'KONFEKSIYON' ? 'selected' : ''} ${p.sid ? '' : 'disabled'}>✂️ Konfeksiyon — Kesim önüne${p.sid ? '' : ' (siparişsiz işte olmaz)'}</option>
+                <option value="DEPO" ${p.hedef === 'DEPO' ? 'selected' : ''}>📦 Kumaş deposu — müşteriye / stok</option></select></div>
+        <div id="fh-donus-kalem-kutu"><label class="pro-label">Hangi kalemin kesimine <span style="color:var(--rose-c)">*</span></label>
+            <select id="fh-donus-kalem" class="pro-input" style="padding:6px 9px"><option value="">— kalem seçin —</option>
+            ${p.kalemler.map((k, i) => `<option value="${i}" ${i === ctx.kumasDonus.ki ? 'selected' : ''}>${pdfEsc(`${i + 1}. ${fasonKalemAd(k, i)}${k.renk ? ' · ' + k.renk : ''} · ${k.miktar || 0} ${siparisKalemBirim(k)}`)}</option>`).join('')}</select></div>
+        <div id="fh-donus-bilgi" style="grid-column:1/-1;font-size:10px;line-height:1.5;color:var(--text2)"></div>`;
+    let izgara = kodEl.parentElement;
+    while (izgara && getComputedStyle(izgara).display !== 'grid') izgara = izgara.parentElement;
+    if (izgara) izgara.prepend(kutu);
+    terbiyeKumasDonusDegisti();
+}
+function terbiyeKumasDonusDegisti() {
+    const ctx = _fasonForm;
+    if (!ctx?.kumasDonus) return;
+    const hedef = fasonDeger('fh-donus-hedef') || 'DEPO';
+    ctx.kumasDonus.hedef = hedef;
+    const konf = hedef === 'KONFEKSIYON';
+    const depo = document.getElementById('fh-depo');
+    if (depo) { depo.checked = !konf; depo.disabled = konf; }
+    const kk = document.getElementById('fh-donus-kalem-kutu');
+    if (kk) kk.style.display = konf ? '' : 'none';
+    const bilgi = document.getElementById('fh-donus-bilgi');
+    if (bilgi) bilgi.innerHTML = konf
+        ? '✂️ Kumaş Konfeksiyon’un <b>Kesim önünde bekleyen</b> listesine düşer (masaüstü + Konfeksiyon tableti). Kumaş deposuna yazılmaz. Yanlışsa bu kaydı silin — kumaşı kesilmişse silinmez.'
+        : '📦 Kumaş deposuna GİRİŞ (lot = sipariş no). Müşteriye gönderirken Sevkiyat’ta <b>“→ Siparişe say”</b> ile sipariş kalemine bağlayın.';
+}
+/* KUMAS_GELIS satırı (02 dokumaDepoKonfGelisNot ile aynı alanlar; kaynak BOYAHANE) — yazmadan kurulur: aynı satır M6
+   karşılaştırmasında kapıya (12 fasonHareketKaydet → 38 yapiFasonDeneBekle, ek.kesim_onu) sorulur, sonra AYNEN yazılır */
+function terbiyeKonfGelisSatir(b, plan, v, fgid) {
+    const sid = String(plan.sid || '').trim();
+    const ki = parseInt(plan.ki, 10);
+    const kalemler = typeof konfGetSiparisKalemlerById === 'function' ? (konfGetSiparisKalemlerById(sid) || []) : [];
+    const kalem = kalemler[ki];
+    if (!sid || !kalem) return { ok: false, hata: 'Sipariş kalemi bulunamadı — Kesim önüne yazılmadı, kayıt yapılmadı.' };
+    const mt = fasonTakipNum(v.mt, 2), kg = fasonTakipNum(v.kg, 2);
+    const ikinciTip = dtKalemIkinciBirimTip(kalem);
+    const stokKodu = String(v.kumas_kodu || '').trim().toUpperCase();
+    const user = fasonKullanici();
+    const t = b.tanim || {};
+    const notJ = {
+        ts: new Date().toISOString(), user, kaynak: 'BOYAHANE', terbiye_fgid: fgid, terbiye_anahtar: b.anahtar,
+        stok_kodu: stokKodu, lot_no: String(v.lot_no || ''), kumas_cinsi: String(v.kumas_ad || ''),
+        kg: ikinciTip === 'KG' ? kg : 0, mt, adet: 0, siparis_birim: siparisKalemBirim(kalem), ikinci_birim: ikinciTip,
+        renk: terbiyeRenkGoster(t), firma: String(v.firma || ''),
+        kalem_idx: ki, kalem_renk: kalem.renk || '', kalem_ebat: kalem.ebat || kalem.olcu || '', kalem_key: typeof konfKalemKey === 'function' ? konfKalemKey(kalem) : '',
+        durum: 'KESIM_BEKLIYOR', kesilen_kg: 0, kesilen_mt: 0, kesilen_adet: 0, hedef: 'KONFEKSIYON', konf_panel: true,
+        pipeline: ortakKesimOnuPipeline(),
+        note: `Boyahane (${terbiyeIslemAd(terbiyeIslem(t)).replace(/^\S+\s/, '').toLocaleLowerCase('tr-TR')}) → Konfeksiyon · ${String(v.firma || '')} · ${fasonFmtM(mt)} m${kg ? ' · ' + fasonFmtM(kg) + ' kg' : ''}`
+    };
+    return { ok: true, satir: { siparis_id: sid, islem: 'KUMAS_GELIS', kalem_ad: stokKodu || String(v.lot_no || '') || 'Kumaş',
+        miktar: dokumaSevkAnaMiktar(kalem, mt, kg, 0), notlar: JSON.stringify(notJ) } };
+}
+/* Kurulmuş satırı (terbiyeKonfGelisSatir) yazar */
+async function terbiyeKonfGelisYaz(satir) {
+    const sid = String(satir?.siparis_id || '');
+    const { data, error } = await sb.from('siparis_akis').insert([satir]).select('id').single();
+    if (error || data?.id == null) return { ok: false, hata: 'Kesim önüne yazılamadı, kayıt yapılmadı: ' + (error?.message || error || 'kayıt kimliği dönmedi') };
+    /* Kesim ekranı / sipariş durumu tazelensin (02 Dokuma Depo sevkiyle aynı) — beklenmez */
+    try { if (typeof _konfGlobalKumasGelisAt !== 'undefined' && _konfGlobalKumasGelisAt) konfGlobalKumasGelisSiparisTazele(sid).then(() => konfKesimOnuPanelTazele()).catch(() => {}); } catch (e) {}
+    try { if (typeof konfPipelineSiparisDurumSenkron === 'function') konfPipelineSiparisDurumSenkron(sid).catch(() => {}); } catch (e) {}
+    return { ok: true, id: data.id };
+}
+/* Hareket yazılamadıysa (12 fasonHareketKaydet) az önce yazılan Kesim önü satırı geri silinir — true: silindi */
+async function terbiyeKonfGelisGeriAl(id) {
+    const { error } = await sb.from('siparis_akis').delete().eq('id', id);
+    return !error;
+}
+/* Silmeden önce: kumaşı kesilmiş / kesimi bitti denmiş dönüş silinmez ('' = engel yok) */
+async function terbiyeKonfGelisEngeli(h) {
+    const kg = h.konfGelis || {};
+    const { data: akis, error } = await sb.from('siparis_akis').select('id,siparis_id,notlar').eq('id', kg.id).maybeSingle();
+    if (error) return 'Kesim önü kaydı okunamadı: ' + (error.message || error);
+    if (!akis) return '';   /* satır zaten yok — yalnız hareket silinir */
+    let j = {};
+    try { j = JSON.parse(akis.notlar || '{}') || {}; } catch (e) {}
+    if (j.kesim_onu_kapali) return 'Bu kumaşın kesimi "✓ Bitti" ile kapatılmış — önce Kesim önünde "Kapatılanlar"dan yeniden açın.';
+    if (['kesilen_adet', 'yikama_sevk_adet', 'yikama_gelen_adet', 'kalite_gecen_adet', 'sevk_edilen_adet'].some(k => (parseInt(j[k], 10) || 0) > 0)) return 'Bu kumaşa kesim / kalite / sevk işlenmiş — silinemez.';
+    if (typeof konfKesimOnuTazeKalem === 'function') {
+        const g = await konfKesimOnuTazeKalem(String(akis.siparis_id), parseInt(j.kalem_idx, 10));
+        const mt = parseFloat(j.mt) || 0;
+        if (!g || (g.metreMi ? g.kalanMt + 0.01 < mt : false)) return `Bu kumaş Kesim önünde kesilmeye başlanmış (kalan ${g ? fasonFmtM(g.kalanMt) + ' m' : '0'}, bu dönüş ${fasonFmtM(mt)} m) — silinemez. Kesim yanlışsa önce kesimi düzeltin.`;
+    }
+    return '';
+}
+/* Silinen dönüşün iz bilgisi (tek tanım: aşağıdaki silme + 12 fasonHareketSil'in M6 denemesi ek.kesim_onu) */
+function terbiyeKonfGelisIz(h) {
+    return { kanal: 'Kumaş', etiket: `Boyahane dönüşü · ${h.kumas_kodu || h.kumas_ad || ''}`, kaynak: 'BOYAHANE_DONUS_GERI' };
+}
+/* Hareket silindikten sonra (12 fasonHareketSil): önce iz, sonra Kesim önü satırı */
+async function terbiyeKonfGelisSil(h, neden) {
+    const kg = h.konfGelis || {};
+    const { data: akis, error } = await sb.from('siparis_akis').select('*').eq('id', kg.id).maybeSingle();
+    if (error) return { ok: false, hata: 'Kesim önü kaydı okunamadı — Kesim ekranından kontrol edin.' };
+    if (!akis) return { ok: true };
+    try {
+        await depoIzYaz({ tablo: 'siparis_akis', kayit_id: akis.id, islem: 'SIL', ...terbiyeKonfGelisIz(h), eski: akis, yeni: null,
+            neden: neden || 'Boyalı kumaş dönüşü silindi (Terbiye)' });
+    } catch (e) { return { ok: false, hata: 'Değişiklik kaydı yazılamadığı için Kesim önü satırı silinmedi — Kesim ekranından kontrol edin.' }; }
+    const { data: sil, error: e2 } = await sb.from('siparis_akis').delete().eq('id', akis.id).select('id');
+    if (e2 || !(sil || []).length) return { ok: false, hata: 'Kesim önü satırı silinemedi — Kesim ekranından kontrol edin.' };
+    try { if (typeof konfGlobalKumasGelisCacheMutate === 'function') konfGlobalKumasGelisCacheMutate((_konfGlobalKumasGelisCache || []).filter(r => String(r.akis_id) !== String(akis.id))); } catch (e) {}
+    return { ok: true };
+}
+
+/* Gönderim kaydedilince (12 fasonHareketKaydet, 24 stoktan gönder) talimat sorulur */
+function terbiyeGonderimSonrasi(n) {
+    if (!n || !['BOYA_IPLIK', 'BOYA_KUMAS'].includes(n.tip) || !n.anahtar) return;
+    const kumas = n.tip === 'BOYA_KUMAS';
+    setTimeout(async () => {
+        try {
+            if (await erpAskConfirm(`${kumas ? 'Kumaş' : 'Bobin boya'} talimatı (PDF) hazırlansın mı?\n\n${kumas ? 'İşlem, renk, metre, kg, en, gramaj, tolerans, tuşe ve top listesi' : 'İplik, renk, kg, bobin ve termin bilgileri'} talimata yazılır.`)) await terbiyeTalimatPdf(n.anahtar, n.fgid || 'SON');
+        } catch (e) {}
+    }, 400);
+}
+
+/* ── Boyahanenin verdiği termin (tek alan; değişiklik fason olayında eski / yeni ile kalır) ── */
+function terbiyeTerminFormAc(anahtar) {
+    if (!fasonYazabilir('TERBIYE')) { erpToast('Terbiye kaydı girme yetkiniz yok.', 'error'); return; }
+    const o = terbiyeOzet(anahtar);
+    _fasonForm = { tur: 'TERBIYE_TERMIN', anahtar };
+    const gecmis = terbiyeTerminGecmisi(anahtar);
+    fasonPencereAc(fasonPencereBaslik('📅', 'Boyahanenin verdiği termin', pdfEsc(o.b.baslik)) + `
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+                ${fasonAlanHtml('tt', 'termin', 'date', o.boyahaneTermin, { etiket: 'Boyahane termini' })}
+                ${fasonAlanHtml('tt', 'neden', 'text', '', { etiket: 'Not (isteğe bağlı)', ph: 'ör. boyahane telefonla erteledi' })}
+            </div>
+            <div style="font-size:10px;color:var(--text3)">İstediğimiz termin: ${o.istenenTermin ? fasonTarihYaz(o.istenenTermin) : '—'}. Termine 2 gün kala zilde bilgi, geçince uyarı çıkar.</div>
+            ${gecmis.length ? `<div style="font-size:10px;line-height:1.6">${gecmis.map(g => `${g.tur === 'BOYAHANE' ? 'Boyahane' : 'İstenen'}: ${g.eski ? fasonTarihYaz(g.eski) + ' → ' : ''}<b>${g.yeni ? fasonTarihYaz(g.yeni) : 'silindi'}</b> · ${pdfEsc(g.user)} · ${fasonZamanYaz(g.ts)}`).join('<br>')}</div>` : ''}
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button type="button" class="btn-pro btn-ghost-pro" style="padding:8px 14px" onclick="fasonPencereKapat()">Vazgeç</button>
+                <button id="tt-kaydet" type="button" class="btn-pro btn-primary-pro" style="padding:8px 18px" onclick="terbiyeTerminKaydet()">Kaydet</button>
+            </div>
+        </div>`, 560);
+}
+async function terbiyeTerminKaydet() {
+    const ctx = _fasonForm;
+    if (!ctx || ctx.tur !== 'TERBIYE_TERMIN' || _fasonMesgul) return;
+    const termin = fasonDeger('tt-termin');
+    const neden = fasonDeger('tt-neden');
+    _fasonMesgul = true;
+    try {
+        const res = await terbiyeIsYaz(ctx.anahtar.slice(2), null, { termin }, `Boyahane termini ${termin ? fasonTarihYaz(termin) : 'silindi'}${neden ? ' — ' + neden : ''}`);
+        if (!res.ok) return;
+        _fasonMesgul = false;
+        fasonPencereKapat();
+        terbiyeEkranYenile();
+        erpToast(res.bos ? 'Termin değişmedi.' : 'Boyahane termini kaydedildi.', res.bos ? 'info' : 'success', 3000);
+    } catch (e) {
+        erpToast('Kaydedilemedi: ' + (e.message || e), 'error', 8000);
+    } finally {
+        _fasonMesgul = false;
+    }
+}
+
+/* ── Boyahanede ne var: boyahane boyahane açık işlerde kalan mal ── */
+/** Boyahanelerde ne var: açık işlerde kalan mal, boyahane boyahane (çok kalan önce), içinde termine göre (ana program + mobil). */
+function terbiyeBoyahaneStokModeli(tur) {
+    const A = TERBIYE_ALANLAR[tur];
+    const acik = terbiyeOzetleri(tur).filter(o => !o.kapali && o.kalan > 0.004);
+    const firmalar = new Map();
+    acik.forEach(o => { const k = o.firma || 'Boyahane yok'; if (!firmalar.has(k)) firmalar.set(k, []); firmalar.get(k).push(o); });
+    const genel = acik.reduce((x, o) => x + o.kalan, 0);
+    const bloklar = [...firmalar].sort((a, b) => b[1].reduce((x, o) => x + o.kalan, 0) - a[1].reduce((x, o) => x + o.kalan, 0)).map(([firma, isler]) => ({
+        firma,
+        toplam: terbiyeY(isler.reduce((x, o) => x + o.kalan, 0)),
+        isler: isler.sort((a, b) => String(a.termin || '9999').localeCompare(String(b.termin || '9999'))).map(o => {
+            const mal = tur === 'BOBIN'
+                ? [...new Set(terbiyeGonderimleri(o).map(h => [h.iplik_kodu, h.iplik_ad].filter(Boolean).join(' ')))].join(', ')
+                : [...new Set(terbiyeGonderimleri(o).map(h => [h.kumas_kodu, h.kumas_ad].filter(Boolean).join(' ')))].join(', ');
+            const sonGon = terbiyeGonderimleri(o).slice(-1)[0];
+            const gun = sonGon ? fasonGunFarki(sonGon.tarih) : null;
+            const yakin = o.terminKalan != null && o.terminKalan >= 0 && o.terminKalan <= ERP_UYARI_ESIK.boyahaneTerminGun;
+            return { o, mal, sonGon, gun, yakin };
+        })
+    }));
+    return { A, acik, genel, bloklar };
+}
+function terbiyeBoyahaneStokHtml(tur) {
+    const { A, acik, genel, bloklar } = terbiyeBoyahaneStokModeli(tur);
+    if (!acik.length) return `<div class="panel-box" style="padding:30px;text-align:center;font-size:12px;color:var(--text3)">${A.ikon} Boyahanelerde bekleyen ${A.malzemeAd.toLocaleLowerCase('tr-TR')} yok.</div>`;
+    const td = "padding:5px 8px;text-align:right;font-family:'DM Mono',monospace;white-space:nowrap";
+    const blok = bloklar.map(({ firma, toplam, isler }) => {
+        const satirlar = isler.map(({ o, mal, sonGon, gun, yakin }) => {
+            return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="terbiyeStoktanAc(${fasonArg(o.b.anahtar)})" title="Boya işini aç">
+                <td style="padding:5px 8px"><b>${pdfEsc(o.tanim.renk || '—')}</b>${o.tanim.renk_kodu ? ` <span style="color:var(--text3)">${pdfEsc(o.tanim.renk_kodu)}</span>` : ''}</td>
+                <td style="padding:5px 8px;color:var(--text2)">${pdfEsc(mal || o.tanim.malzeme || '—')}</td>
+                <td style="padding:5px 8px;white-space:nowrap">${pdfEsc(o.siparis ? `${o.siparis.sno || ''} · ${o.siparis.firma || ''}` : 'Stok için')}</td>
+                <td style="${td}">${terbiyeMiktar(o.net, A)}</td><td style="${td};color:var(--emerald-c)">${terbiyeMiktar(o.gelen[A.ana], A)}</td>
+                <td style="${td};font-weight:800;color:var(--amber-c)">${terbiyeMiktar(o.kalan, A)}</td>
+                <td style="padding:5px 8px;white-space:nowrap;font-size:9px;color:var(--text3)">${sonGon ? `${fasonTarihYaz(sonGon.tarih)}${gun != null ? ` · ${gun} gün` : ''}` : '—'}</td>
+                <td style="padding:5px 8px;white-space:nowrap;font-size:9px;color:${o.gecikme ? 'var(--rose-c);font-weight:700' : yakin ? 'var(--amber-c);font-weight:700' : 'var(--text3)'}">${o.termin ? fasonTarihYaz(o.termin) + (o.gecikme ? ` · ${o.gecikme} gün geçti` : yakin ? ` · ${o.terminKalan ? o.terminKalan + ' gün' : 'bugün'}` : '') : '—'}</td></tr>`;
+        }).join('');
+        return `<div class="panel-box" style="padding:0;overflow:hidden">
+            <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)">
+                <b style="color:var(--amber-c);font-size:13px">🏭 ${pdfEsc(firma)}</b><span style="font-size:10px;color:var(--text3)">${isler.length} açık iş</span>
+                <span style="flex:1"></span><span style="font-size:13px;font-weight:800;font-family:'DM Mono',monospace;color:var(--amber-c)">${terbiyeMiktar(toplam, A)}</span></div>
+            <div style="overflow:auto"><table class="dt-table" style="width:100%;min-width:820px;font-size:10px">
+                <thead><tr style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">
+                    <th style="text-align:left;padding:4px 8px">Renk</th><th style="text-align:left;padding:4px 8px">${tur === 'BOBIN' ? 'Gönderilen iplik' : 'Gönderilen kumaş'}</th><th style="text-align:left;padding:4px 8px">Sipariş</th>
+                    <th style="text-align:right;padding:4px 8px">Gönderilen</th><th style="text-align:right;padding:4px 8px">Gelen</th><th style="text-align:right;padding:4px 8px">Boyahanede</th>
+                    <th style="text-align:left;padding:4px 8px">Son gönderim</th><th style="text-align:left;padding:4px 8px">Termin</th></tr></thead>
+                <tbody>${satirlar}</tbody></table></div></div>`;
+    }).join('');
+    return `<div style="font-size:12px;font-weight:700">${A.ikon} Boyahanelerde toplam <span style="color:var(--amber-c);font-family:'DM Mono',monospace">${terbiyeMiktar(genel, A)}</span> ${A.malzemeAd.toLocaleLowerCase('tr-TR')}
+            <span style="font-size:10px;font-weight:500;color:var(--text3)">· boyahanede = gönderilen − boyalı gelen − boyanmadan dönen (açık işler)</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px">${blok}</div>`;
+}
+function terbiyeStoktanAc(anahtar) {
+    _terbiye.gorunum = 'IS';
+    terbiyeAc(anahtar);
+}
+
+/* ════ RENK KARTI (22.10.2026, kullanıcı kararı "C") ═══════════════════
+   Kullanıcı: "her bobin boyadan sonra stok kartı açıldığında belli bir süre sonra kaosa dönmez mi". Karar: boyalı iplik
+   İPLİK × RENK başına TEK karta girer; kart elle açılmaz, ilk boyalı dönüşte program bir kez açar, sonrakiler aynı karta
+   yeni lot. Rengin kimliği MÜŞTERİNİN renk kodu (iş tanımındaki renk_kodu = sipariş kalemi rkod); kod yoksa renk adı.
+   Kart = iplik_stok kart satırı (IPLIK_KART_GIRIS, miktar 0, lot paketi yok), kod `<ham kart>-Rnn` (IP-0013-R01 —
+   `^IP-\d+$` numaralayıcıları bu biçime dokunmaz), notta [ANA_IPLIK:<ham kart>][RENK_KODU:<kod>], renk adı iplik_rengi.
+   Artan boyalı iplik renk kartında stokta kalır (yeni boya işi formunda "stokta X kg var"). */
+function terbiyeRenkAdNorm(x) { return String(x || '').toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ').trim(); }
+function terbiyeRenkKodNorm(x) { return String(x || '').toLocaleUpperCase('tr-TR').replace(/[\s\[\]:|]+/g, ''); }
+function terbiyeEtiketTemiz(x) { return String(x || '').replace(/[\[\]\n\r]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function terbiyeRenkKartlari(satirlar) {
+    const out = new Map();
+    (satirlar || dataCache.iplik_stok || []).forEach(r => {
+        const n = String(r?.notlar || '');
+        const ana = (n.match(/\[ANA_IPLIK:([^\]]+)\]/) || [])[1];
+        if (!ana || String(r.kaynak_birim || '').toUpperCase() !== 'IPLIK_KART_GIRIS') return;
+        const kod = String(r.stok_kodu || '').trim().toUpperCase();
+        if (kod && !out.has(kod)) out.set(kod, { kod, id: r.id, ana: ana.trim().toUpperCase(), renkKodu: ((n.match(/\[RENK_KODU:([^\]]+)\]/) || [])[1] || '').trim(), renk: String(r.iplik_rengi || '').trim(), iplikNo: r.iplik_no || '', cins: r.cins || r.iplik_cinsi || '' });
+    });
+    return [...out.values()];
+}
+function terbiyeRenkKartiMi(kod) { return /-R\d+$/i.test(String(kod || '').trim()) && terbiyeRenkKartlari().some(k => k.kod === String(kod).trim().toUpperCase()); }
+/* Aynı renk = aynı ham kart + aynı müşteri renk kodu (kod yoksa: kodsuz kart + aynı renk adı) */
+function terbiyeRenkKartiEsMi(k, ana, renkKodu, renk) {
+    if (k.ana !== String(ana || '').trim().toUpperCase()) return false;
+    const rk = terbiyeRenkKodNorm(renkKodu);
+    return rk ? terbiyeRenkKodNorm(k.renkKodu) === rk : (!k.renkKodu && terbiyeRenkAdNorm(k.renk) === terbiyeRenkAdNorm(renk));
+}
+function terbiyeRenkKartiBul(ana, renkKodu, renk, kartlar) {
+    return (kartlar || terbiyeRenkKartlari()).find(k => terbiyeRenkKartiEsMi(k, ana, renkKodu, renk)) || null;
+}
+function terbiyeRenkKartiSonrakiKod(ana, kartlar) {
+    const A = String(ana || '').trim().toUpperCase();
+    const n = (kartlar || []).reduce((m, k) => { const x = k.kod.match(/-R(\d+)$/i); return k.kod.startsWith(A + '-R') && x ? Math.max(m, parseInt(x[1], 10)) : m; }, 0);
+    return `${A}-R${String(n + 1).padStart(2, '0')}`;
+}
+/* Ham iplik kartları (renk kartı olmayan) — kodsuz gönderimde ham kart seçimi için */
+function terbiyeHamIplikKartlari() {
+    const renk = new Set(terbiyeRenkKartlari().map(k => k.kod));
+    return fasonIplikSecenekleri().filter(s => /^IP-\d+$/i.test(s.kod) && !renk.has(s.kod));
+}
+/* Kaydetme anında: veritabanından TAZE okur (iki kişi aynı anda ilk dönüşü girerse ikinci kart açılmasın); yoksa ve ac
+   true ise kartı açar. Dönüş { ok, kod, yeni } — kod '' = kart yok (depoya yazılmayan kayıtta açılmaz). */
+async function terbiyeRenkKartiHazirla(plan, ac) {
+    const ana = String(plan?.ana || '').trim().toUpperCase();
+    if (!ana) return ac ? { ok: false, hata: 'Hangi ham iplikten boyandığını seçin.' } : { ok: true, kod: '' };
+    const { data, error } = await sb.from('iplik_stok').select('id,stok_kodu,notlar,iplik_rengi,iplik_no,cins,kaynak_birim').like('stok_kodu', ana + '-R%');
+    if (error) return { ok: false, hata: 'Renk kartları okunamadı, kayıt yapılmadı: ' + (error.message || error) };
+    const kartlar = terbiyeRenkKartlari(data || []);
+    const var_ = terbiyeRenkKartiBul(ana, plan.renkKodu, plan.renk, kartlar);
+    if (var_) return { ok: true, kod: var_.kod, yeni: false };
+    if (!ac) return { ok: true, kod: '' };
+    const ham = typeof iplikKartKayitBulByKod === 'function' ? iplikKartKayitBulByKod(ana) : null;
+    const hamS = ham || (dataCache.iplik_stok || []).find(r => String(r.stok_kodu || '').trim().toUpperCase() === ana) || {};
+    const kod = terbiyeRenkKartiSonrakiKod(ana, kartlar);
+    const user = fasonKullanici();
+    const renk = terbiyeRenkAdNorm(plan.renk);
+    const satir = {
+        stok_kodu: kod, kaynak_birim: 'IPLIK_KART_GIRIS', iplik_no: hamS.iplik_no || '', cins: hamS.cins || hamS.iplik_cinsi || '', marka: hamS.marka || 'GENEL',
+        kalite: 'AKTİF', iplik_rengi: renk, lot_no: '', miktar_kg: 0, cuval_sayisi: 0, updated_by: user,
+        notlar: `[ANA_IPLIK:${ana}]` + (plan.renkKodu ? `[RENK_KODU:${terbiyeEtiketTemiz(plan.renkKodu)}]` : '') +
+            ` Boyalı iplik renk kartı — ${ana} ${renk}${plan.musteri ? ' · ' + terbiyeEtiketTemiz(plan.musteri) : ''} · ilk dönüş ${fasonBugun()} · ${user}`
+    };
+    const { data: yeni, error: e2 } = await sb.from('iplik_stok').insert(satir).select('*').single();
+    if (e2 || !yeni) return { ok: false, hata: 'Renk kartı açılamadı, kayıt yapılmadı: ' + (e2?.message || e2 || '') };
+    if (Array.isArray(dataCache.iplik_stok)) dataCache.iplik_stok.push(yeni);
+    return { ok: true, kod, yeni: true };
+}
+/* Boya işinin renk kartı planı: ham kart(lar) gönderimlerden, renk / kod / müşteri tanımdan */
+function terbiyeRenkKartPlani(b) {
+    const o = terbiyeOzet(b.anahtar);
+    const renkK = new Set(terbiyeRenkKartlari().map(k => k.kod));
+    const anaKodlar = [...new Set(terbiyeGonderimleri(o).map(h => String(h.iplik_kodu || '').trim().toUpperCase()).filter(k => k && !renkK.has(k)))];
+    return { anaKodlar, ana: anaKodlar[0] || '', renkKodu: String(o.tanim.renk_kodu || '').trim(), renk: String(o.tanim.renk || '').trim(),
+        musteri: o.siparis?.firma || o.tanim.musteri || '', o };
+}
+function terbiyeRenkKartAdi(plan) {
+    const ham = fasonIplikSecenekleri().find(s => s.kod === plan.ana);
+    return [ham?.ad || plan.ana, terbiyeRenkAdNorm(plan.renk), plan.renkKodu].filter(Boolean).join(' ');
+}
+/* 12 fasonHareketFormAc → yeni "Boyalı geldi" (bobin): iplik kodu renk kartından, elle yazılmaz */
+function terbiyeBoyaliFormHazirla(b) {
+    const ctx = _fasonForm;
+    const kodEl = document.getElementById('fh-iplik_kodu');
+    if (!ctx || ctx.tur !== 'HAREKET' || !kodEl) return;
+    const plan = terbiyeRenkKartPlani(b);
+    delete plan.o;
+    ctx.renkKart = plan;
+    const secenek = plan.anaKodlar.length ? plan.anaKodlar.map(k => ({ kod: k, ad: (fasonIplikSecenekleri().find(s => s.kod === k) || {}).ad || '' })) : terbiyeHamIplikKartlari();
+    const kutu = document.createElement('div');
+    kutu.id = 'fh-renk-kart';
+    kutu.style.cssText = 'grid-column:1/-1;border:1px solid rgba(16,185,129,0.45);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px';
+    kutu.innerHTML = `${plan.anaKodlar.length === 1 ? '' : `<div><label class="pro-label">Hangi ham iplik boyandı <span style="color:var(--rose-c)">*</span></label>
+            <select id="fh-renk-ana" class="pro-input" style="padding:6px 9px" onchange="terbiyeBoyaliAnaDegisti(this.value)">
+            <option value="">— ham iplik kartı seçin —</option>${secenek.map(s => `<option value="${pdfEsc(s.kod)}" ${s.kod === plan.ana ? 'selected' : ''}>${pdfEsc(`${s.kod} · ${s.ad || ''}`)}</option>`).join('')}</select></div>`}
+        <div id="fh-renk-kart-bilgi" style="font-size:10px;line-height:1.5"></div>`;
+    let izgara = kodEl.parentElement;
+    while (izgara && getComputedStyle(izgara).display !== 'grid') izgara = izgara.parentElement;
+    if (izgara) izgara.prepend(kutu);
+    kodEl.readOnly = true;
+    kodEl.title = 'Renk kartından gelir (boyalı iplik iplik × renk başına tek karta girer)';
+    terbiyeBoyaliAnaDegisti(plan.ana);
+}
+function terbiyeBoyaliAnaDegisti(ana) {
+    const ctx = _fasonForm;
+    if (!ctx?.renkKart) return;
+    const plan = ctx.renkKart;
+    plan.ana = String(ana || '').trim().toUpperCase();
+    const kodEl = document.getElementById('fh-iplik_kodu');
+    const adEl = document.getElementById('fh-iplik_ad');
+    const bilgi = document.getElementById('fh-renk-kart-bilgi');
+    const kartlar = terbiyeRenkKartlari();
+    const kart = plan.ana ? terbiyeRenkKartiBul(plan.ana, plan.renkKodu, plan.renk, kartlar) : null;
+    const yeniKod = plan.ana ? terbiyeRenkKartiSonrakiKod(plan.ana, kartlar) : '';
+    if (kodEl) kodEl.value = kart ? kart.kod : yeniKod;
+    if (adEl && plan.ana) { adEl.value = terbiyeRenkKartAdi(plan); adEl.dataset.oto = '0'; }
+    const kodBilgi = document.getElementById('fh-iplik_kodu-bilgi');
+    if (kodBilgi) { kodBilgi.textContent = kart ? 'renk kartı' : (plan.ana ? 'ilk dönüş — kart açılacak' : ''); kodBilgi.style.color = 'var(--emerald-c)'; }
+    if (!bilgi) return;
+    const rk = plan.renkKodu ? `müşteri renk kodu <b>${pdfEsc(plan.renkKodu)}</b>` : '<b style="color:var(--amber-c)">renk kodu yok</b> — renk adıyla eşleşir (işe renk kodu girmek için ✎ İşi düzelt)';
+    bilgi.innerHTML = !plan.ana
+        ? '<span style="color:var(--rose-c)">Gönderimde iplik kodu yok — boyanan ham iplik kartını seçin.</span>'
+        : kart
+            ? `✔ Renk kartı <b>${pdfEsc(kart.kod)}</b> (${pdfEsc(plan.ana)} · ${pdfEsc(terbiyeRenkAdNorm(plan.renk))} · ${rk}) — boyalı iplik bu karta yeni lot olarak girer.`
+            : `✨ İlk dönüş: <b>${pdfEsc(plan.ana)}</b> için <b>${pdfEsc(terbiyeRenkAdNorm(plan.renk))}</b> renk kartı açılacak (<b>${pdfEsc(yeniKod)}</b>; ${rk}). Bu rengin sonraki dönüşleri de aynı karta girer.`;
+}
+/* Yeni boya işi formu: aynı müşteri renk kodunun (yoksa adının) renk kartlarında stok */
+function terbiyeRenkStokHtml(renkKodu, renk) {
+    const rk = terbiyeRenkKodNorm(renkKodu), ad = terbiyeRenkAdNorm(renk);
+    if (!rk && !ad) return '';
+    const bakiye = new Map(fasonIplikSecenekleri().map(s => [s.kod, s]));
+    const esler = terbiyeRenkKartlari().filter(k => rk ? terbiyeRenkKodNorm(k.renkKodu) === rk : (!k.renkKodu && terbiyeRenkAdNorm(k.renk) === ad))
+        .map(k => ({ ...k, s: bakiye.get(k.kod) })).filter(k => (k.s?.kg || 0) > 0.001);
+    if (!esler.length) return '';
+    return `<div style="border:1px solid rgba(245,158,11,0.55);background:rgba(245,158,11,0.08);border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.6">
+        📦 <b>Stokta bu renkten boyalı iplik var</b> — önce bunu kullanmayı düşünün:<br>
+        ${esler.map(k => `<b>${pdfEsc(k.kod)}</b> ${pdfEsc([k.iplikNo, k.cins, k.renk, k.renkKodu].filter(Boolean).join(' · '))} — <b style="color:var(--emerald-c)">${fasonFmtM(k.s.kg)} kg</b>
+            <span style="color:var(--text3)">(${Object.entries(k.s.lots || {}).filter(([, l]) => l.kg > 0.001).map(([lot, l]) => `${lot === 'LOTSUZ' ? 'lotsuz' : 'lot ' + pdfEsc(lot)}: ${fasonFmtM(l.kg)} kg`).join(', ')})</span>`).join('<br>')}</div>`;
+}
+function terbiyeRenkStokYenile() {
+    const el = document.getElementById('ti-renk-stok');
+    if (el) el.innerHTML = terbiyeRenkStokHtml(fasonDeger('ti-renk_kodu'), fasonDeger('ti-renk'));
+}
+function terbiyeRenkStokBagla() {
+    ['ti-renk', 'ti-renk_kodu'].forEach(id => document.getElementById(id)?.addEventListener('input', () => debounce('terbiyeRenkStok', terbiyeRenkStokYenile, 300)));
+    terbiyeRenkStokYenile();
+}
+
+/* ════ MÜŞTERİ RENKLERİ (22.10.2026) ════════════════════════════════════
+   Kullanıcı: "bundan 2 yıl sonra aynı müşteri bir sipariş geçtiğinde bakın bu renk kodunu kullanmıştınız". Yeni kayıt YOK:
+   boya işlerinden (silinmeyen fason olayları) türetilir — müşteri → renk (müşteri renk kodu, yoksa adı) → işler; bobinde renk
+   kartındaki stok. Müşteri adı siparişten, sipariş artık listede yoksa işin tanımındaki `musteri`den (22.10'dan sonra açılanlar). */
+function terbiyeIsTarihi(o) {
+    const g = terbiyeGonderimleri(o)[0];
+    return String(g?.tarih || (fasonFoyGecmis(o.b.anahtar, 'tis', '')[0]?.ts || '')).slice(0, 10);
+}
+function terbiyeMusteriRenkleri() {
+    const musteriler = new Map();
+    const bakiye = new Map(fasonIplikSecenekleri().map(s => [s.kod, s.kg]));
+    const kartlar = terbiyeRenkKartlari();
+    terbiyeOzetleri().forEach(o => {
+        if (o.islem === 'YIKAMA') return;   /* yıkama renk değildir */
+        const musteri = String(o.siparis?.firma || o.tanim.musteri || '').trim() || 'Stok için (müşterisiz)';
+        const rk = terbiyeRenkKodNorm(o.tanim.renk_kodu);
+        const anahtar = rk ? 'K:' + rk : 'A:' + terbiyeRenkAdNorm(o.tanim.renk);
+        if (!musteriler.has(musteri)) musteriler.set(musteri, new Map());
+        const renkler = musteriler.get(musteri);
+        if (!renkler.has(anahtar)) renkler.set(anahtar, { renkKodu: String(o.tanim.renk_kodu || '').trim(), renkler: new Set(), isler: [] });
+        const r = renkler.get(anahtar);
+        if (o.tanim.renk) r.renkler.add(terbiyeRenkAdNorm(o.tanim.renk));
+        r.isler.push(o);
+    });
+    return [...musteriler].map(([musteri, renkler]) => ({
+        musteri,
+        renkler: [...renkler.values()].map(r => {
+            const isler = r.isler.sort((a, b) => terbiyeIsTarihi(b).localeCompare(terbiyeIsTarihi(a)));
+            const esKart = kartlar.filter(k => r.renkKodu ? terbiyeRenkKodNorm(k.renkKodu) === terbiyeRenkKodNorm(r.renkKodu) : (!k.renkKodu && r.renkler.has(terbiyeRenkAdNorm(k.renk))));
+            const fireler = isler.filter(o => o.kapali && o.farkPct != null).map(o => o.farkPct);
+            return { ...r, isler, son: terbiyeIsTarihi(isler[0]),
+                malzeme: [...new Set(isler.flatMap(o => { const g = terbiyeGonderimleri(o); return g.length ? g.map(h => o.tur === 'BOBIN' ? (h.iplik_ad || h.iplik_kodu) : (h.kumas_ad || h.kumas_kodu)) : [o.tanim.malzeme]; }).filter(Boolean))],
+                boyahaneler: [...new Set(isler.map(o => o.firma).filter(Boolean))],
+                gelenKg: terbiyeY(isler.filter(o => o.tur === 'BOBIN').reduce((x, o) => x + o.gelen.kg, 0)),
+                gelenMt: terbiyeY(isler.filter(o => o.tur === 'KUMAS').reduce((x, o) => x + o.gelen.mt, 0)),
+                fire: fireler.length ? terbiyeY(fireler.reduce((x, y) => x + y, 0) / fireler.length, 1) : null,
+                kartlar: esKart.map(k => ({ ...k, kg: bakiye.get(k.kod) || 0 })) };
+        }).sort((a, b) => b.son.localeCompare(a.son))
+    })).sort((a, b) => (b.renkler[0]?.son || '').localeCompare(a.renkler[0]?.son || ''));
+}
+function terbiyeMusteriRenkleriHtml() {
+    if (!(dataCache.iplik_stok || []).length && !_terbiyeIplikYukleniyor) terbiyeIplikHazir().then(() => { if (_terbiye.gorunum === 'RENK') terbiyeRenkAra(_terbiye.renkAra || ''); });
+    return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <input id="ti-renk-ara" class="pro-input" placeholder="Ara: müşteri, renk, renk kodu, iplik, boyahane, sipariş…" value="${pdfEsc(_terbiye.renkAra || '')}"
+                oninput="debounce('terbiyeRenkAra', () => terbiyeRenkAra(this.value), 250)" style="min-width:220px;flex:1;max-width:420px;padding:6px 10px">
+            <span style="font-size:10px;color:var(--text3)">Boya işlerinden türetilir (silinen iş hariç); renk kimliği müşterinin renk kodu, kod yoksa renk adı.</span></div>
+        <div id="ti-renk-sonuc" style="display:flex;flex-direction:column;gap:10px">${terbiyeMusteriRenkleriSonucHtml(_terbiye.renkAra || '')}</div>`;
+}
+function terbiyeRenkAra(q) {
+    _terbiye.renkAra = q;
+    const el = document.getElementById('ti-renk-sonuc');
+    if (el) el.innerHTML = terbiyeMusteriRenkleriSonucHtml(q);
+}
+/** Müşteri renkleri aramayla süzülmüş (ana program + mobil). */
+function terbiyeMusteriRenkleriSuz(q) {
+    const ara = String(q || '').toLocaleLowerCase('tr-TR').trim();
+    return terbiyeMusteriRenkleri().map(m => ({ ...m, renkler: m.renkler.filter(r => !ara || [m.musteri, r.renkKodu, ...r.renkler, ...r.malzeme, ...r.boyahaneler,
+        ...r.isler.map(o => o.siparis?.sno || '')].join(' ').toLocaleLowerCase('tr-TR').includes(ara)) })).filter(m => m.renkler.length);
+}
+function terbiyeMusteriRenkleriSonucHtml(q) {
+    const ara = String(q || '').toLocaleLowerCase('tr-TR').trim();
+    const liste = terbiyeMusteriRenkleriSuz(q);
+    if (!liste.length) return `<div class="panel-box" style="padding:24px;text-align:center;font-size:11px;color:var(--text3)">${ara ? 'Aramaya uyan renk yok.' : 'Henüz boya işi yok.'}</div>`;
+    const td = 'padding:5px 8px;vertical-align:top';
+    return liste.map(m => `<div class="panel-box" style="padding:0;overflow:hidden">
+        <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)">
+            <b style="font-size:13px">👤 ${pdfEsc(m.musteri)}</b><span style="font-size:10px;color:var(--text3)">${m.renkler.length} renk</span></div>
+        <div style="overflow:auto"><table class="dt-table" style="width:100%;min-width:900px;font-size:10px">
+            <thead><tr style="font-size:8px;color:var(--text3);text-transform:uppercase;font-family:'DM Mono',monospace">
+                <th style="text-align:left;padding:4px 8px">Renk kodu · renk</th><th style="text-align:left;padding:4px 8px">İplik / kumaş</th><th style="text-align:left;padding:4px 8px">Boyahane</th>
+                <th style="text-align:left;padding:4px 8px">Siparişler (son önce)</th><th style="text-align:right;padding:4px 8px">Boyalı gelen</th><th style="text-align:right;padding:4px 8px">Fire</th>
+                <th style="text-align:left;padding:4px 8px">Stokta (renk kartı)</th></tr></thead>
+            <tbody>${m.renkler.map(r => `<tr style="border-top:1px solid var(--border)">
+                <td style="${td}"><b style="font-size:12px">${pdfEsc(r.renkKodu || '—')}</b><br>${pdfEsc([...r.renkler].join(' / ') || '—')}</td>
+                <td style="${td};color:var(--text2)">${pdfEsc(r.malzeme.join(', ') || '—')}</td>
+                <td style="${td};color:var(--amber-c)">${pdfEsc(r.boyahaneler.join(', ') || '—')}</td>
+                <td style="${td}">${r.isler.map(o => `<span role="button" tabindex="0" onclick="terbiyeStoktanAc(${fasonArg(o.b.anahtar)})" style="display:inline-block;margin:1px 4px 1px 0;padding:1px 6px;border:1px solid var(--border);border-radius:6px;cursor:pointer;white-space:nowrap" title="Boya işini aç">${o.A.ikon} ${pdfEsc(o.siparis?.sno || 'stok')} · ${fasonTarihYaz(terbiyeIsTarihi(o))}</span>`).join('')}</td>
+                <td style="${td};text-align:right;font-family:'DM Mono',monospace;white-space:nowrap">${[r.gelenKg ? fasonFmtM(r.gelenKg) + ' kg' : '', r.gelenMt ? fasonFmtM(r.gelenMt) + ' m' : ''].filter(Boolean).join('<br>') || '—'}</td>
+                <td style="${td};text-align:right;font-family:'DM Mono',monospace">${r.fire != null ? '%' + fasonFmtM(r.fire) : '—'}</td>
+                <td style="${td}">${r.kartlar.length ? r.kartlar.map(k => `<b>${pdfEsc(k.kod)}</b> <span style="color:${k.kg > 0.001 ? 'var(--emerald-c)' : 'var(--text3)'}">${fasonFmtM(k.kg)} kg</span>`).join('<br>') : '<span style="color:var(--text3)">—</span>'}</td>
+            </tr>`).join('')}</tbody></table></div></div>`).join('');
+}
+
+try {
+    Object.assign(window, { terbiyeRenkKartlari, terbiyeRenkKartiBul, terbiyeRenkKartiHazirla, terbiyeRenkKartiMi, terbiyeBoyaliFormHazirla, terbiyeBoyaliAnaDegisti,
+        terbiyeRenkStokHtml, terbiyeRenkStokYenile, terbiyeRenkStokBagla, terbiyeMusteriRenkleri, terbiyeMusteriRenkleriHtml, terbiyeRenkAra,
+        terbiyeTopListeOku, terbiyeTopListeBagla, terbiyeKumasTalimatGovde, terbiyeKumasTeknikMetin,
+        terbiyeKumasDonusFormHazirla, terbiyeKumasDonusDegisti, terbiyeKonfGelisSatir, terbiyeKonfGelisYaz, terbiyeKonfGelisGeriAl, terbiyeKonfGelisEngeli, terbiyeKonfGelisIz, terbiyeKonfGelisSil });
+} catch (e) {}
+
+try {
+    Object.assign(window, { terbiyeIplikOzellik, terbiyeIsBilgiHtml, terbiyeDefterHtml, terbiyeTalimatDugme, terbiyeTalimatPdf, terbiyeGonderimSonrasi,
+        terbiyeTerminFormAc, terbiyeTerminKaydet, terbiyeBoyahaneStokHtml, terbiyeStoktanAc, terbiyeTerminGecmisi });
+} catch (e) {}
