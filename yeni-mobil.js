@@ -210,12 +210,9 @@
         let l = siparisler();
         if (q) l = l.filter(s => (aramaKapsami() === 'kapanan') === siparisKapaliMi(s) && aramaUyar(s, q));
         else l = l.filter(s => suzgecUyar(s, D.suzgec));
-        const kapanan = D.suzgec === 'kapanan';
-        return l.slice().sort((a, b) => {
-            if (kapanan) return String(b.ttarih || b.starih || '').localeCompare(String(a.ttarih || a.starih || ''));
-            const ka = siparisKapaliMi(a) ? 1 : 0, kb = siparisKapaliMi(b) ? 1 : 0;
-            return ka - kb || siraAnahtar(a) - siraAnahtar(b);
-        });
+        /* Sıra: sipariş numarasına göre EN YENİDEN EN ESKİYE (26.10.2026, kullanıcı) — numara karşılaştırması ana programın
+           02 compareSiparisNo kuralı (yıl + sıra), ters çevrilmiş; aramada da, Kapanan'da da aynı */
+        return l.slice().sort((a, b) => compareSiparisNo(b.sno, a.sno) || (Number(b.id) || 0) - (Number(a.id) || 0));
     }
 
     function olaylar() { return (typeof _raporVeri !== 'undefined' && _raporVeri && _raporVeri.olaylar) || []; }
