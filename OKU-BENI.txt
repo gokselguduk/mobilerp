@@ -1,0 +1,33 @@
+SIMTEKS MOBIL — YUKLEME
+=======================
+
+1) Bu klasordeki TUM dosyalari secin
+2) GitHub (mobilerp deposu) → Add file → Upload files → surukleyin
+3) Commit
+
+26.10.2026 — HERKES YENI MOBILE GECTI
+  Sitenin bilinen adresi (…/mobilerp/mobil-erp.html) ve ana sayfasi (index.html)
+  artik YENI mobili acar. Telefonlarda ayrica bir sey yapmaya gerek yok: sayfa
+  bir kez yenilenince (ya da uygulama kapatilip acilinca) yeni gorunum gelir,
+  oturum kapanmaz.
+
+KONTROL:
+  Sayfa acilinca giris ekraninda "Simteks ERP · Mobil" yazar, sekme basligi
+  "Simteks Mobil" olur. Eski gorunum gelirse: sayfayi asagi cekip yenileyin
+  ya da gizli pencerede acin.
+
+ACIL DURUM:
+  Eski mobil eski-mobil.html adiyla duruyor (hicbir yerden baglanti yok).
+  Bir sorun cikarsa gecici olarak …/mobilerp/eski-mobil.html acilabilir.
+  Plan: birkac gun sorunsuz gecince eski mobil tamamen silinecek.
+
+Dosyalar (hepsi ayni klasorde, kaynagi mobil-yeni/ + assets/ — npm run sync:mobil
+yazar, ELLE DEGISTIRMEYIN):
+  mobil-erp.html        yeni mobil (sitenin adresi)
+  yeni-mobil.html       ayni sayfa (deneme adresi, eski baglantilar icin)
+  yeni-mobil.js / .css  yeni mobilin gorunumu
+  erp-core.js           ana programin cekirdegi (hesaplarin hepsi burada)
+  manifest.webmanifest  ana ekrana ekleme simgesi
+  index.html            mobil-erp.html'e yonlendirir
+  eski-mobil.html + mobil-app.js   eski mobil (yalniz acil durum)
+  diger .js / .png      ortak dosyalar
