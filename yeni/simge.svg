@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Simteks">
+<!-- Simteks mobil simgesi (26.10.2026, kullanıcı seçimi "C · Bugünkü S, yenilenmiş"): telefonlardaki eski S simgesinin yeni mobil
+     renkleriyle hâli. TEK KAYNAK: giriş ekranı + sekme simgesi bunu kullanır; PNG'ler (icon-192/512, maskable, apple-touch)
+     bundan üretilir — npx electron scripts/yeni-mobil-simge-png.js → mobil-yeni/simge/*.png. Renk değişirse PNG'ler yeniden üretilir. -->
+<rect width="120" height="120" rx="27" fill="#4A5FC1"/>
+<g id="isaret">
+<g transform="translate(0 -9)">
+<path d="M90 31H47A14.5 14.5 0 0 0 47 60H73A14.5 14.5 0 0 1 73 89H30" fill="none" stroke="#FFFFFF" stroke-width="17"/>
+<polygon points="90,21 100,21 100,41 78,41" fill="#4A5FC1"/>
+<polygon points="42,79 20,79 20,99 30,99" fill="#4A5FC1"/>
+</g>
+<polygon points="44,97 78,97 72,106 38,106" fill="#C9D2F5"/>
+</g>
+</svg>
