@@ -579,8 +579,10 @@ async function erpAkisEkle(satirHam, etiket) {
             if (d > 0 && gid && await erpAkisGidVarMi(satir, gid)) return { ok: true };
             const { error } = await sb.from('siparis_akis').insert([satir]);
             if (!error) {
-                /* kalite kaydı: açık siparişin kalite sayısı kayıtlardan (04 konfKaliteKayitTazele) — ekran hemen görsün */
-                if (typeof konfKaliteKayitTazele === 'function' && ortakKaliteKayitIslemleri().includes(String(satir.islem || ''))) konfKaliteKayitTazele(satir.siparis_id);
+                /* kalite kaydı: açık siparişin kalite sayısı kayıtlardan (04 konfKaliteKayitTazele) — ekran hemen görsün;
+                   yıkama önü kapatması da aynı yükleyicide (28.10.2026) */
+                if (typeof konfKaliteKayitTazele === 'function' && (ortakKaliteKayitIslemleri().includes(String(satir.islem || ''))
+                    || String(satir.islem || '') === ortakYikamaOnuKapatIslem())) konfKaliteKayitTazele(satir.siparis_id);
                 return { ok: true };
             }
             son = error;
@@ -6794,8 +6796,10 @@ async function erpSyncFetchTablePaged(table, light, fetchOpts) {
     const maxPages = fetchOpts.maxPages || Math.ceil(maxRows / pageSize);
     let all = [];
     let page = 0;
+    /* M8c: anahtar 'iplik' YENI'de iplik önbelleği yeni yapının görünümünden (iplik_stok'un birebir satır biçimi) dolar */
+    const kaynakTablo = typeof yapiIplikOkumaKaynagi === 'function' ? yapiIplikOkumaKaynagi(table) : table;
     for (let from = 0; from < maxRows && page < maxPages; from += pageSize, page++) {
-        let q = sb.from(table).select(cols);
+        let q = sb.from(kaynakTablo).select(cols);
         if (table === 'tezgahlar') q = q.order('tezgah_no', { ascending: true });
         else q = q.order('created_at', { ascending: false });
         if (fetchOpts.sinceIso) {
@@ -6857,6 +6861,11 @@ async function erpSyncFetchTablePaged(table, light, fetchOpts) {
             return { data: null, error: { message: msg }, partial: all.length ? all : null };
         }
         const { data, error } = batchResult || {};
+        if (error && kaynakTablo !== table && /PGRST20[05]|42P01|does not exist|could not find/i.test(`${error.code || ''} ${error.message || ''}`)) {
+            /* görünüm kurulu değil: bu oturumda eski tablodan */
+            if (typeof _yapiIplik === 'object' && _yapiIplik) _yapiIplik.gorunumYok = true;
+            return erpSyncFetchTablePaged(table, light, fetchOpts);
+        }
         if (error) {
             const msg = error.message || String(error);
             const retry = retrySiparisCols(msg);
@@ -7446,7 +7455,7 @@ function erpLiveApplyPayloadYap(table, payload) {
             }
             if (!kendiAkis) erpLiveAkisOnbellek(satir);
             /* Kalite kaydı (eklenen / iptal edilen, kendi yazması da): açık siparişin kalite sayısı bu kayıtlardan */
-            if (ortakKaliteKayitIslemleri().includes(String(satir.islem || ''))) konfKaliteKayitTazele(satir.siparis_id);
+            if (ortakKaliteKayitIslemleri().includes(String(satir.islem || '')) || String(satir.islem || '') === ortakYikamaOnuKapatIslem()) konfKaliteKayitTazele(satir.siparis_id);
             /* Geri alınan sevk (silme olayında yalnız id gelir): önbellekteki sevk satırıysa düşür — istek atılmaz */
             if (String(payload?.eventType || payload?.event || '').toUpperCase() === 'DELETE' && payload?.old?.id != null && _konfGlobalKumasGelisAt
                 && (_konfGlobalKumasGelisCache || []).some(r => String(r.akis_id) === String(payload.old.id))) {
@@ -8235,7 +8244,7 @@ function dashboardUretimOzetHesapla(aktifSiparisler) {
             bekleyen.yikama += yBek;
             bekleyen.kalite += kaliteBek;
             bekleyen.sevk += sevkHazirBek;
-            const urunEtiket = String(k.ad || k.kod || `Kalem ${i + 1}`).trim();
+            const urunEtiket = String(siparisKalemAdMetni(k) || k.kod || `Kalem ${i + 1}`).trim();
             if (kesBek > 0) kuyruk.push({ tip: 'kesim', adet: kesBek, s, urun: urunEtiket, mode: 'KONFEKSIYON_KESIM' });
             if (yBek > 0) kuyruk.push({ tip: 'yikama', adet: yBek, s, urun: urunEtiket, mode: 'KONFEKSIYON_YIKAMA' });
             if (kaliteBek > 0) kuyruk.push({ tip: 'kalite', adet: kaliteBek, s, urun: urunEtiket, mode: 'KONFEKSIYON_KALITE' });
@@ -8245,14 +8254,25 @@ function dashboardUretimOzetHesapla(aktifSiparisler) {
     let yikamadaToplamAd = 0;
     let yikamayaHazirAd = 0;
     let yikamadaListe = [];
-    if (typeof konfYikamaHazirListe === 'function') {
-        yikamayaHazirAd = konfYikamaHazirListe().reduce((s, x) => s + (x.gidecek || 0), 0);
+    let yikamadaGrupSay = 0;
+    let yikamayaHazirListe = [];
+    /* Sayılar Yıkama ekranının modelinden (28.10.2026): toplam bütün gruplardan — eskiden yalnız listede görünen ilk 10 grup toplanıyordu.
+       Yıkamaya hazır listesi de (28.10 kullanıcı: ana sayfada da görünsün) — sipariş + kalem başına toplanır. */
+    if (typeof konfYikamaPanelModeli === 'function') {
+        const ym = konfYikamaPanelModeli();
+        yikamayaHazirAd = ym.hazirToplamAd;
+        yikamadaToplamAd = ym.yikamadaToplamAd;
+        yikamadaGrupSay = ym.yikamadaGruplar.length;
+        yikamadaListe = ym.yikamadaGruplar;
+        const hz = new Map();
+        ym.hazirListe.forEach((x) => {
+            const k = `${x.siparis_id}|${x.kalem_idx}`;
+            if (!hz.has(k)) hz.set(k, { siparis_sno: x.siparis_sno, urun: x.desen, renk: x.renk, ebat: x.ebat, ad: 0 });
+            hz.get(k).ad += x.gidecek || 0;
+        });
+        yikamayaHazirListe = [...hz.values()].sort((a, b) => b.ad - a.ad);
     }
-    if (typeof konfPipelineYikamaYikamadaGrupDetay === 'function') {
-        yikamadaListe = konfPipelineYikamaYikamadaGrupDetay().slice(0, 10);
-        yikamadaToplamAd = yikamadaListe.reduce((s, g) => s + (g.yikamadaTop || 0), 0);
-    }
-    return { bekleyen, kuyruk: kuyruk.slice(0, 14), yikamadaToplamAd, yikamayaHazirAd, yikamadaListe };
+    return { bekleyen, kuyruk: kuyruk.slice(0, 14), yikamadaToplamAd, yikamayaHazirAd, yikamadaListe, yikamadaGrupSay, yikamayaHazirListe };
 }
 
 /* D-02: ana sayfa "Dokuma · bugün giriş" — yalnız bugün değişen dokuma kayıtlarından (tek istek, birkaç KB;
@@ -8326,6 +8346,38 @@ function dashboardKonfVeriYukle() {
         _dashKonfYukleniyor = false;
         if (appMode === 'DASHBOARD') renderDashboard();
     }).catch(() => { _dashKonfYukleniyor = false; });
+}
+
+/* Ana ekran "Kesimde bekleyen" (26.10.2026, kullanıcı: "dokuma depodan kesim alanına gönderilenlerin toplamı;
+   tıklayınca kesimde bekleyen mallar"): Kesim ekranındaki "Kesim önünde bekleyen" ile AYNI hesap
+   (konfKesimOnuBekleyenler — gelen sevk − kesilen, ✓ Bitti hariç). Önbellekler dashboardKonfVeriYukle ile gelir;
+   gelmeden null (kutuda "…"). Yalnız okur. */
+function dashboardKesimOnuOzet() {
+    if (!_konfGlobalKumasGelisAt || !_konfKesimGecmisAt) return null;
+    let liste = [];
+    try { liste = konfKesimOnuBekleyenler(); } catch (e) { console.warn('dashboardKesimOnuOzet', e); return null; }
+    const { topAd, topMt } = konfKesimOnuToplam(liste);
+    const say = konfKesimOnuSayi;
+    const buyuk = topAd || !topMt ? `${say(topAd)} <span style="font-size:.5em;font-weight:600">ad</span>` : `${say(topMt)} <span style="font-size:.5em;font-weight:600">m</span>`;
+    const alt = liste.length
+        ? `${liste.length} kalem${topAd && topMt ? ` · +${say(topMt)} m kumaş` : ''} · dokuma depodan`
+        : 'bekleyen yok';
+    return { topAd, topMt, kalem: liste.length, buyuk, alt };
+}
+/** Kutuya tıklanınca: Kesim ekranı → "Kesim önünde bekleyen" paneline kaydırır. */
+function dashboardKesimOnuAc() {
+    setAppMode('KONFEKSIYON_KESIM');
+    let deneme = 0;
+    const bul = () => {
+        const el = document.getElementById('kesim-onu-panel');
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            el.style.transition = 'box-shadow .3s';
+            el.style.boxShadow = '0 0 0 3px rgba(139,92,246,.45)';
+            setTimeout(() => { el.style.boxShadow = ''; }, 1600);
+        } else if (++deneme < 30) setTimeout(bul, 200);
+    };
+    setTimeout(bul, 50);
 }
 
 function renderDashboard() {
@@ -8467,6 +8519,7 @@ function renderDashboard() {
     ].sort((a, b) => new Date(b.t || 0) - new Date(a.t || 0)).slice(0, 8);
 
     const uretimOzet = dashboardUretimOzetHesapla(aktifSiparisler);
+    const kesimOnu = dashboardKesimOnuOzet();
     const tipEtiket = { kesim: 'Kesim', yikama: 'Yıkama', kalite: 'Kalite' };
     const tipBadge = { kesim: 'is-warn', yikama: 'is-ok', kalite: 'is-warn' };
 
@@ -8509,10 +8562,10 @@ function renderDashboard() {
                 <div class="dash-metric-n" style="color:${gecikmisSiparisler.length ? 'var(--rose-c)' : 'var(--text)'}">${gecikmisSiparisler.length}</div>
                 <div class="dash-metric-h">${sevke2Gun.length} sipariş ≤ 2 gün</div>
             </div>
-            <div class="dash-metric" onclick="setAppMode('KONFEKSIYON_KESIM')">
-                <div class="dash-metric-l">Kesim bekleyen</div>
-                <div class="dash-metric-n" style="color:${uretimOzet.bekleyen.kesim ? 'var(--amber-c)' : 'var(--text)'}">${uretimOzet.bekleyen.kesim.toLocaleString('tr-TR')}</div>
-                <div class="dash-metric-h">adet · dokuma sonrası</div>
+            <div class="dash-metric" onclick="dashboardKesimOnuAc()" title="Kesim önünde bekleyen malları aç">
+                <div class="dash-metric-l">Kesimde bekleyen</div>
+                <div class="dash-metric-n" style="color:${kesimOnu && (kesimOnu.topAd || kesimOnu.topMt) ? 'var(--amber-c)' : 'var(--text)'}">${kesimOnu ? kesimOnu.buyuk : '…'}</div>
+                <div class="dash-metric-h">${kesimOnu ? kesimOnu.alt : 'yükleniyor'}</div>
             </div>
             <div class="dash-metric" onclick="setAppMode('KONFEKSIYON_YIKAMA')">
                 <div class="dash-metric-l">Yıkamada</div>
@@ -8598,13 +8651,29 @@ function renderDashboard() {
 
             <div class="dash-col">
                 <div class="dash-col-head">
-                    <div class="dash-col-title">Yıkamada olanlar</div>
-                    <div class="dash-col-meta">${uretimOzet.yikamadaToplamAd.toLocaleString('tr-TR')} ad · ${uretimOzet.yikamadaListe.length} grup</div>
+                    <div class="dash-col-title">Yıkama hattı</div>
+                    <div class="dash-col-meta">hazır ${uretimOzet.yikamayaHazirAd.toLocaleString('tr-TR')} ad · yıkamada ${uretimOzet.yikamadaToplamAd.toLocaleString('tr-TR')} ad</div>
                 </div>
                 <div class="dash-table-head" style="grid-template-columns:80px 1fr 52px">
-                    <span>Sipariş</span><span>Ürün / renk</span><span style="text-align:right">Ad</span>
+                    <span>Yıkamaya hazır</span><span>Ürün / renk</span><span style="text-align:right">Ad</span>
                 </div>
-                <div style="flex:1;max-height:280px;overflow:auto">
+                <div style="max-height:150px;overflow:auto">
+                    ${uretimOzet.yikamayaHazirListe.length === 0
+                        ? `<div class="dash-empty" style="padding:12px 18px"><strong>Yıkamaya hazır mal yok</strong></div>`
+                        : uretimOzet.yikamayaHazirListe.map((g) => `
+                            <div class="dash-row" style="grid-template-columns:80px 1fr 52px" onclick="setAppMode('KONFEKSIYON_YIKAMA')">
+                                <div class="dash-code">${pdfEsc(g.siparis_sno || '—')}</div>
+                                <div style="min-width:0">
+                                    <div class="dash-muted" style="color:var(--text2) !important">${pdfEsc(g.urun || '—')}</div>
+                                    <div class="dash-muted">${pdfEsc(g.renk || '—')}${g.ebat ? ' · ' + pdfEsc(g.ebat) : ''}</div>
+                                </div>
+                                <div style="justify-self:end;font-family:'DM Mono',monospace;font-size:11px !important;font-weight:700;color:var(--amber-c)">${(g.ad || 0).toLocaleString('tr-TR')}</div>
+                            </div>`).join('')}
+                </div>
+                <div class="dash-table-head" style="grid-template-columns:80px 1fr 52px">
+                    <span>Yıkamada</span><span>Ürün / renk</span><span style="text-align:right">Ad</span>
+                </div>
+                <div style="flex:1;max-height:180px;overflow:auto">
                     ${uretimOzet.yikamadaListe.length === 0
                         ? `<div class="dash-empty"><strong>Yıkamada ürün yok</strong>${uretimOzet.yikamayaHazirAd > 0 ? uretimOzet.yikamayaHazirAd.toLocaleString('tr-TR') + ' ad yıkamaya gönderilmeyi bekliyor.' : 'Yıkama hattı boş.'}</div>`
                         : uretimOzet.yikamadaListe.map((g) => `
@@ -11182,7 +11251,7 @@ function renderPlanlamaKalemIslemOzeti(siparisId) {
         const row = kd[`kalem_${i}`] || {};
         const hedef = parseInt(k.miktar, 10) || 0;
         const renkEbat = [k.renk, k.ebat || k.olcu].filter(Boolean).join(' · ');
-        const ad = k.ad || k.kod || `Kalem ${i + 1}`;
+        const ad = siparisKalemAdMetni(k) || k.kod || `Kalem ${i + 1}`;
         planlamaIslemlerForKalem(i, kdUa).forEach((islemKey) => {
             const meta = islemMap[islemKey];
             if (!meta) return;
@@ -11218,7 +11287,7 @@ function renderPlanlamaKalemIslemOzeti(siparisId) {
         return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:${checked ? 'rgba(99,102,241,0.06)' : 'transparent'}">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="planlamaKalemSecimToggle(${sidJs}, ${i}, this.checked)" style="accent-color:var(--accent2);width:14px;height:14px;flex-shrink:0">
             <div style="flex:1;min-width:0">
-                <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(k.ad || k.kod || `Kalem ${i + 1}`)}</div>
+                <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pdfEsc(siparisKalemAdMetni(k) || k.kod || `Kalem ${i + 1}`)}</div>
                 <div style="font-size:9px;color:var(--text3);margin-top:2px">Renk: ${pdfEsc(renkTxt)} · Ebat: ${pdfEsc(ebatTxt)} · <span style="font-family:'DM Mono',monospace">Sipariş: ${(parseInt(k.miktar, 10) || 0).toLocaleString('tr-TR')}</span></div>
             </div>
             <span class="pill ${tanimli ? 'pill-green' : 'pill-gray'}" style="flex-shrink:0;font-size:8px">${tanimli ? '✓ Ağaç' : '—'}</span>
@@ -11610,7 +11679,7 @@ async function planlamaModeli() {
             yikBekUrunTop += yBek;
             const sevkYuzde = planlamaSevkTamamlanma(hedef, sevkPr);
             const kolaySkor = planlamaKapatmaKolaylikSkoru(hedef, dokAdet, kes, dik, kk, kol, sevkPr);
-            const urunEtiket = String(k.ad || k.kod || `Kalem ${i + 1}`).trim() || `Kalem ${i + 1}`;
+            const urunEtiket = String(siparisKalemAdMetni(k) || k.kod || `Kalem ${i + 1}`).trim() || `Kalem ${i + 1}`;
             const alan = planlamaKalemUretimAlani(s.id, i);
             const kesBek = Math.max(0, Math.round(dokAdet) - kes);
             const kaliteBek = Math.max(0, dik - kk);
@@ -15258,22 +15327,152 @@ function konfKesimKayitRota(k) {
     return rota || live || 'KALITE';
 }
 
-function konfYikamaHazirListe(filtreSiparisId) {
+/** Yıkama hattı, satır başına KALEM içinde netleşmiş (28.10.2026, kullanıcı: ana sayfadaki yıkama sayıları).
+    Konfeksiyon tableti kesimi girilmemiş malın sevkini ayrı "kesimsiz yıkama" satırına yazar; kesim sonradan girilince o
+    satırlar "gönderilmedi" görünüyor, aynı mal hem gidecek hem yıkamada sayılıyordu (SP554 4. kalem: 940 kesim, 760 sevk →
+    940 gidecek). Kalemin fazla sevki (satırın kendi kesiminden fazlası) en eski kesim satırlarından, fazla geleni en eski
+    yıkamada satırlarından düşer → kalem toplamı max(0, kesim − sevk) / max(0, sevk − gelen), Planlama'daki "Yıkamada
+    bekleyen mal" ile aynı. Kapanmış sipariş girmez (kullanıcı kararı 28.10). Yalnız okur.
+    Hesap ORTAK kuralda (30 ortakYikamaKalemPaylari, Konfeksiyon Panel de onu çağırır); "✓ Bitti" ile kapatılan mal
+    (YIKAMA_ONU_KAPAT kayıtları, konfYikamaOnuKapatmalari) hazırdan düşer.
+    → Map(satır id → { gidecek, yikamada, gelEk, kapali }) — gelEk: başka satırın fazla geleninden bu satıra düşen */
+function konfYikamaKalemPaylari() {
+    const kapali = new Set((dataCache.siparisler || []).filter(s => siparisKapaliMi(s)).map(s => String(s.id)));
+    const kalemler = new Map();
+    for (const k of (_konfKesimGecmisCache || [])) {
+        if (k.aktif === false || kapali.has(String(k.siparis_id))) continue;
+        if (konfKesimKayitRota(k) !== 'YIKAMA') continue;
+        const key = `${k.siparis_id}|${k.kalem_idx}`;
+        if (!kalemler.has(key)) kalemler.set(key, { sid: k.siparis_id, ki: k.kalem_idx, satirlar: [] });
+        kalemler.get(key).satirlar.push({ id: k.id, ts: new Date(k.ts || 0).getTime() || 0,
+            kes: k.kesilen_adet ?? k.miktar, sevk: k.yikama_sevk_adet, gel: k.yikama_gelen_adet });
+    }
+    const out = new Map();
+    for (const g of kalemler.values()) {
+        ortakYikamaKalemPaylari(g.satirlar, konfYikamaOnuKapatmalari(g.sid, g.ki)).forEach(p => out.set(p.id, p));
+    }
+    return out;
+}
+
+/* ── YIKAMA ÖNÜ KAPATMA ("✓ Bitti", 28.10.2026, kullanıcı: yıkamaya hazır görünen ama yıkamaya gitmeyecek mal) ──
+   Kayıt siparis_akis, islem YIKAMA_ONU_KAPAT (30 ortakYikamaOnuKapatIslem), notta { kalem_idx, ky_id, adet, user, ts };
+   geri açılınca notta iptal. Açık siparişlerin kayıtları kalite kayıtlarıyla AYNI istekte okunur (konfKaliteKayitOku,
+   10 dk; canlı değişiklikte o siparişinki) — ek istek yok. Kesim / yıkama / kalite sayılarına dokunmaz. */
+function konfYikamaOnuKapatmalari(siparisId, kalemIdx) {
+    const l = _konfKaliteKayit.kapat && _konfKaliteKayit.kapat.get(String(siparisId));
+    if (!l || !l.length) return [];
+    const ki = parseInt(kalemIdx, 10);
+    return l.map((r) => ortakYikamaOnuKapatOku(r.not)).filter((k) => k && k.ki === ki);
+}
+/** Etkin (geri açılmamış) kapatma kayıtları, en yeni önce: { akis_id, siparis_id, siparis_sno, firma, kalem_idx, ky_id, adet, user, ts, urun, renk, ebat } */
+function konfYikamaOnuKapatilanlar(filtreSiparisId) {
+    const sipMap = new Map(((typeof dataCache !== 'undefined' && dataCache.siparisler) || []).map((s) => [String(s.id), s]));
+    const out = [];
+    (_konfKaliteKayit.kapat || new Map()).forEach((l, sid) => {
+        if (filtreSiparisId && String(filtreSiparisId) !== sid) return;
+        l.forEach((r) => {
+            const k = ortakYikamaOnuKapatOku(r.not);
+            if (!k) return;
+            const s = sipMap.get(sid);
+            const kalem = (konfGetSiparisKalemlerById(sid) || [])[k.ki] || {};
+            out.push({ akis_id: r.id, siparis_id: sid, siparis_sno: s?.sno || sid, firma: s?.firma || '', kalem_idx: k.ki, ky_id: k.kyId,
+                adet: k.adet, user: r.not.user || '', ts: r.not.ts || '',
+                urun: r.not.urun || kalem.ad || kalem.kod || '', renk: r.not.kalem_renk || kalem.renk || '', ebat: r.not.kalem_ebat || kalem.ebat || kalem.olcu || '' });
+        });
+    });
+    return out.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+}
+function konfYikamaOnuYetkiliMi() {
+    return !window.ERP_MOBIL_LITE && typeof erpUserCan === 'function' && (erpUserCan('KONFEKSIYON_YIKAMA') || erpUserCan('KONFEKSIYON_KESIM'));
+}
+/** Bir siparişin kalite + kapatma kayıtlarını hemen yeniden okur (kendi yazmasından sonra ekran beklemesin). */
+async function konfYikamaOnuSiparisTazele(siparisId) {
+    const sid = String(siparisId);
+    const satirlar = await konfKaliteKayitOku([sid]);
+    konfKaliteKayitDagit(satirlar, [sid]);
+}
+let _konfYikamaOnuMesgul = false;
+async function konfYikamaOnuKapat(kyId) {
+    if (_konfYikamaOnuMesgul) return;
+    /* Yazma kapısı: düğme gizli olsa da yetki burada yeniden sorulur */
+    if (!konfYikamaOnuYetkiliMi()) { erpToast('Yıkama önünü kapatma yetkiniz yok (Konfeksiyon Yıkama ekranı) — yöneticinize başvurun.', 'error', 6000); return; }
+    _konfYikamaOnuMesgul = true;
+    try {
+        await konfLoadKesimGecmis({ force: true, skipRotaDuzelt: true });
+        const ky = (_konfKesimGecmisCache || []).find((k) => String(k.id) === String(kyId));
+        if (ky) await konfYikamaOnuSiparisTazele(ky.siparis_id);
+        const x = konfYikamaHazirListe(ky?.siparis_id).find((h) => String(h.kesim_id) === String(kyId));
+        if (!x || !(x.gidecek > 0)) { erpToast('Bu satırda yıkamaya hazır mal kalmamış.', 'info', 4000); renderKonfeksiyon(); return; }
+        const baslik = [x.siparis_sno, x.desen, x.renk, x.ebat].filter(Boolean).join(' · ');
+        if (!(await erpAskConfirm(`${baslik}\n\nYıkamaya hazır ${x.gidecek} ad (bu kesim kaydında kesilen ${x.kesilen})\n\nBu mal yıkamaya gitmeyecek mi (bitti)?`
+            + `\nSatır "Yıkamaya hazır" listesinden düşer; kesim, yıkama ve kalite sayıları değişmez. Adınızla kaydedilir, "Kapatılanlar"dan geri açılır.`))) return;
+        const user = konfKesimOnuKullanici();
+        const not = { kalem_idx: Number(x.kalem_idx), ky_id: String(x.kesim_id), adet: x.gidecek, user, ts: new Date().toISOString(),
+            kesilen: x.kesilen, urun: x.desen || '', kalem_renk: x.renk || '', kalem_ebat: x.ebat || '',
+            note: `Yıkama önü kapatıldı (bitti) · ${x.gidecek} ad · ${baslik}` };
+        const r = await erpAkisEkle({ siparis_id: x.siparis_id, islem: ortakYikamaOnuKapatIslem(), kalem_ad: x.desen || 'Kalem', miktar: x.gidecek,
+            notlar: JSON.stringify(not) }, 'Yıkama önü kapatma');
+        if (!r.ok) return;
+        await erpIslemIzYaz({ tablo: 'yikama_onu', kayit_id: `${x.siparis_id}|${x.kalem_idx}|${x.kesim_id}`, islem: 'DEGISTIR', kaynak: 'YIKAMA_ONU',
+            etiket: `${baslik} · yıkamaya gitmeyecek (bitti): ${x.gidecek} ad`, yeni: not });
+        if (!r.bekliyor) await konfYikamaOnuSiparisTazele(x.siparis_id);
+        renderKonfeksiyon();
+        erpToast(`Bitti — ${x.gidecek} ad "Yıkamaya hazır" listesinden düştü. "Kapatılanlar"dan geri açılabilir.`, 'success', 6000);
+    } catch (e) {
+        console.error(e);
+        erpToast('Kapatılamadı: ' + (e.message || e) + ' — yeniden deneyin.', 'error', 8000);
+    } finally { _konfYikamaOnuMesgul = false; }
+}
+window.konfYikamaOnuKapat = konfYikamaOnuKapat;
+
+async function konfYikamaOnuGeriAc(akisId) {
+    if (_konfYikamaOnuMesgul) return;
+    if (!konfYikamaOnuYetkiliMi()) { erpToast('Yıkama önünü açma yetkiniz yok (Konfeksiyon Yıkama ekranı) — yöneticinize başvurun.', 'error', 6000); return; }
+    _konfYikamaOnuMesgul = true;
+    try {
+        const { data, error } = await sb.from('siparis_akis').select('id,siparis_id,islem,notlar').eq('id', akisId).limit(1);
+        if (error) throw error;
+        const row = data?.[0];
+        let j = null;
+        try { j = JSON.parse(row?.notlar || 'null'); } catch (e) { j = null; }
+        if (!row || row.islem !== ortakYikamaOnuKapatIslem() || !ortakYikamaOnuKapatOku(j)) {
+            erpToast('Bu kapatma zaten geri açılmış.', 'info', 4000);
+            if (row) await konfYikamaOnuSiparisTazele(row.siparis_id);
+            renderKonfeksiyon();
+            return;
+        }
+        const sno = (dataCache.siparisler || []).find((s) => String(s.id) === String(row.siparis_id))?.sno || row.siparis_id;
+        const baslik = [sno, j.urun, j.kalem_renk, j.kalem_ebat].filter(Boolean).join(' · ');
+        if (!(await erpAskConfirm(`${baslik}\n\nKapatan: ${j.user || '—'} · ${j.ts ? new Date(j.ts).toLocaleString('tr-TR') : '—'} · ${j.adet} ad\n\nGeri açılsın mı? Mal yeniden "Yıkamaya hazır" listesine girer. Adınızla kaydedilir.`))) return;
+        const eski = { ...j };
+        j.iptal = { ts: new Date().toISOString(), user: konfKesimOnuKullanici() };
+        const { data: yazilan, error: e2 } = await sb.from('siparis_akis').update({ notlar: JSON.stringify(j) }).eq('id', row.id).select('id');
+        if (e2) throw e2;
+        if (!(yazilan || []).length) { erpToast('Bu kapatma az önce başka biri tarafından değiştirilmiş — ekranı yenileyin.', 'info', 5000); return; }
+        await erpIslemIzYaz({ tablo: 'yikama_onu', kayit_id: `${row.siparis_id}|${j.kalem_idx}|${j.ky_id || ''}`, islem: 'DEGISTIR', kaynak: 'YIKAMA_ONU',
+            etiket: `${baslik} · yıkama önü geri açıldı (${j.adet} ad, kapatan ${eski.user || '—'})`, eski });
+        await konfYikamaOnuSiparisTazele(row.siparis_id);
+        renderKonfeksiyon();
+        erpToast(`Geri açıldı — ${j.adet} ad yeniden yıkamaya hazır.`, 'success', 5000);
+    } catch (e) {
+        console.error(e);
+        erpToast('Geri açılamadı: ' + (e.message || e) + ' — yeniden deneyin.', 'error', 8000);
+    } finally { _konfYikamaOnuMesgul = false; }
+}
+window.konfYikamaOnuGeriAc = konfYikamaOnuGeriAc;
+
+/** opts.sifirDahil: kalemde netleşip 0'a inen satırlar da gelir (elle fişe eklemede "kesim kaydı yok" denmesin);
+    opts.paylar: art arda çağıranın bir kez hesapladığı konfYikamaKalemPaylari() */
+function konfYikamaHazirListe(filtreSiparisId, opts) {
+    const paylar = opts?.paylar || konfYikamaKalemPaylari();
     return (_konfKesimGecmisCache || [])
         .filter((k) => {
             if (filtreSiparisId && String(k.siparis_id) !== String(filtreSiparisId)) return false;
-            if (k.aktif === false) return false;
-            if (konfKesimKayitRota(k) !== 'YIKAMA') return false;
-            return konfKyBekleyen(k) > 0 || (
-                // rota yeni düzeltilmiş olabilir — bekleyen kesilen-sevk
-                Math.max(0, (parseInt(k.kesilen_adet ?? k.miktar, 10) || 0) - (parseInt(k.yikama_sevk_adet, 10) || 0)) > 0
-            );
+            const p = paylar.get(String(k.id));
+            return !!p && (p.gidecek > 0 || (!!opts?.sifirDahil && p.kes > p.sevk));
         })
         .map((k) => {
-            const gidecek = Math.max(
-                konfKyBekleyen(k),
-                Math.max(0, (parseInt(k.kesilen_adet ?? k.miktar, 10) || 0) - (parseInt(k.yikama_sevk_adet, 10) || 0))
-            );
+            const gidecek = paylar.get(String(k.id)).gidecek;
             return {
                 akis_id: String(k.id),
                 kesim_id: k.id,
@@ -15290,7 +15489,6 @@ function konfYikamaHazirListe(filtreSiparisId) {
                 kalem_idx: k.kalem_idx,
             };
         })
-        .filter((x) => x.gidecek > 0)
         .sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
 }
 
@@ -15318,17 +15516,18 @@ function konfKyAsPipelineRow(k) {
     };
 }
 
-function konfPipelineYikamaYikamadaRows(filtreSiparisId) {
+/** Yıkamada olan satırlar — kalem içinde netleşmiş (konfYikamaKalemPaylari): yikamada_net, gelen_net */
+function konfPipelineYikamaYikamadaRows(filtreSiparisId, opts) {
+    const paylar = opts?.paylar || konfYikamaKalemPaylari();
     return (_konfKesimGecmisCache || [])
         .filter((k) => {
             if (filtreSiparisId && String(k.siparis_id) !== String(filtreSiparisId)) return false;
-            if (k.aktif === false) return false;
-            if (konfKesimKayitRota(k) !== 'YIKAMA') return false;
-            const sevk = parseInt(k.yikama_sevk_adet, 10) || 0;
-            const gel = parseInt(k.yikama_gelen_adet, 10) || 0;
-            return sevk > gel;
+            return (paylar.get(String(k.id))?.yikamada || 0) > 0;
         })
-        .map(konfKyAsPipelineRow);
+        .map((k) => {
+            const p = paylar.get(String(k.id));
+            return { ...konfKyAsPipelineRow(k), yikamada_net: p.yikamada, gelen_net: p.gel + p.gelEk };
+        });
 }
 
 function konfPipelineYikamaGelenRows(filtreSiparisId) {
@@ -15394,24 +15593,20 @@ function konfPipelineYikamaGidecekGrupla(filtreSiparisId) {
 function konfPipelineYikamaYikamadaGrupla(filtreSiparisId) {
     return konfPipelineYikamaGrupla(
         konfPipelineYikamaYikamadaRows(filtreSiparisId),
-        (r) => konfPipelineYikamaOzet(r).yikamada
+        (r) => r.yikamada_net || 0
     );
 }
 
 /** Yıkamada olan: aynı sipariş + ürün + renk + ebat → sevk/gelen/yıkamada toplanır */
-function konfPipelineYikamaYikamadaGrupDetay(filtreSiparisId) {
-    const rows = konfPipelineYikamaYikamadaRows(filtreSiparisId);
+function konfPipelineYikamaYikamadaGrupDetay(filtreSiparisId, opts) {
+    const rows = konfPipelineYikamaYikamadaRows(filtreSiparisId, opts);
     const map = new Map();
     (rows || []).forEach((r) => {
-        const o = konfPipelineYikamaOzet(r);
-        const sevkRaw = parseInt(r.yikama_sevk_adet, 10) || 0;
-        const gelRaw = parseInt(r.yikama_gelen_adet, 10) || 0;
-        // Liste sevk>gel ile gelir; ozet geçici sıfırda 0 döner → satırı gizle
-        const yik = (o.yikamada > 0) ? o.yikamada : Math.max(0, sevkRaw - gelRaw);
+        /* kalem içinde netleşmiş (konfYikamaKalemPaylari): sevk − gel = yıkamada */
+        const yik = r.yikamada_net || 0;
         if (!(yik > 0)) return;
-        if (r.gecici_yikamadaki_sifir || (r.not_json || {}).gecici_yikamadaki_sifir) return;
-        const sevk = (o.sevk > 0) ? o.sevk : sevkRaw;
-        const gel = (o.gel > 0 || gelRaw === 0) ? (o.gel || 0) : gelRaw;
+        const sevk = parseInt(r.yikama_sevk_adet, 10) || 0;
+        const gel = r.gelen_net || 0;
         const key = konfPipelineKesilenGrupAnahtar(r);
         let g = map.get(key);
         if (!g) {
@@ -16027,11 +16222,12 @@ function konfManuelYikamaGirisSatirlari(q) {
     const parts = String(q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return [];
     const out = [];
+    const paylar = { paylar: konfYikamaKalemPaylari() };
     konfManuelKesimSiparisListesi().forEach((sip) => {
         const kalemler = konfGetSiparisKalemlerById(sip.id) || [];
         kalemler.forEach((k, idx) => {
             if (!konfManuelKesimKalemAramaEslesir(k, idx, q, sip)) return;
-            const hazirItems = konfYikamaHazirListe(sip.id).filter((x) => Number(x.kalem_idx) === idx);
+            const hazirItems = konfYikamaHazirListe(sip.id, paylar).filter((x) => Number(x.kalem_idx) === idx);
             const kesilenTop = hazirItems.reduce((s, x) => s + (x.kesilen || 0), 0);
             const fisteTop = hazirItems.reduce((s, x) => s + konfYikamaFisAkisAdet(x.akis_id), 0);
             const kalanTop = hazirItems.reduce((s, x) => s + Math.max(0, (x.gidecek || 0) - konfYikamaFisAkisAdet(x.akis_id)), 0);
@@ -16119,7 +16315,10 @@ function konfManuelYikamaSatirEkleByEl(rowId, siparisId, kalemIdx) {
 
 function konfManuelYikamaFiseEkle(siparisId, kalemIdx, adet) {
     konfYikamaFisMetaKaydet();
-    const items = konfYikamaHazirListe(siparisId).filter((x) => Number(x.kalem_idx) === Number(kalemIdx));
+    const kalemin = (liste) => liste.filter((x) => Number(x.kalem_idx) === Number(kalemIdx));
+    let items = kalemin(konfYikamaHazirListe(siparisId));
+    /* kalemde netleşip bekleyeni 0'a inmiş kesim varsa "kesim kaydı yok" denmez — bekleyen 0 sorusuyla eklenir */
+    if (!items.length) items = kalemin(konfYikamaHazirListe(siparisId, { sifirDahil: true }));
     if (!items.length) {
         erpToast('Bu kalem için kesim kaydı yok — önce kesim girişi yapılmalı.', 'error');
         return;
@@ -16634,11 +16833,12 @@ try { window.konfYikamayaGeriYukle = konfYikamayaGeriYukle; } catch (e) {}
 /** Yıkama ekranının satırları ve üç kutunun toplamları — ekrana dokunmaz; Yıkama ekranı ve yeni mobil (mobil-yeni/) AYNI
     modeli kullanır (22.10.2026, kullanıcı: "sayısal fark olmamalı") */
 function konfYikamaPanelModeli(filtreSiparisId) {
-    const hazirListe = konfYikamaHazirListe(filtreSiparisId);
+    const paylar = { paylar: konfYikamaKalemPaylari() };
+    const hazirListe = konfYikamaHazirListe(filtreSiparisId, paylar);
     const all = konfPipelineYikamaAllRows(filtreSiparisId);
-    const yikamadaRows = konfPipelineYikamaYikamadaRows(filtreSiparisId);
+    const yikamadaRows = konfPipelineYikamaYikamadaRows(filtreSiparisId, paylar);
     const yikamadaGruplar = typeof konfPipelineYikamaYikamadaGrupDetay === 'function'
-        ? konfPipelineYikamaYikamadaGrupDetay(filtreSiparisId)
+        ? konfPipelineYikamaYikamadaGrupDetay(filtreSiparisId, paylar)
         : [];
     const gelenRows = konfPipelineYikamaGelenRows(filtreSiparisId);
 
@@ -16646,17 +16846,64 @@ function konfYikamaPanelModeli(filtreSiparisId) {
     const hazirToplamAd = hazirListe.reduce((s, x) => s + (x.gidecek || 0), 0);
     const yikamadaToplamAd = yikamadaGruplar.length
         ? yikamadaGruplar.reduce((s, g) => s + (g.yikamadaTop || 0), 0)
-        : yikamadaRows.reduce((s, r) => {
-            const sevk = parseInt(r.yikama_sevk_adet, 10) || 0;
-            const gel = parseInt(r.yikama_gelen_adet, 10) || 0;
-            return s + Math.max(0, sevk - gel);
-        }, 0);
+        : yikamadaRows.reduce((s, r) => s + (r.yikamada_net || 0), 0);
 
     const gelenAktifRows = gelenRows.filter(r => konfPipelineYikamaOzet(r).yikamada > 0);
     const gelenAktifToplamAd = gelenAktifRows.reduce((s, r) => s + (konfPipelineYikamaOzet(r).yikamada || 0), 0);
     const bitmisYikamaRows = all.filter(konfPipelineYikamaBitmisMi);
     return { hazirListe, all, yikamadaRows, yikamadaGruplar, gelenRows, hazirToplamAd, yikamadaToplamAd, gelenAktifRows, gelenAktifToplamAd, bitmisYikamaRows };
 }
+/** "Yıkamaya hazır" tablosu (28.10.2026, kullanıcı: "kesilen mallar yıkamaya gönderilmeye hazır olarak listelenecek"):
+ *  kesim kaydı başına; "✓ Bitti" = bu mal yıkamaya gitmeyecek (konfYikamaOnuKapat), altında "Kapatılanlar" (geri aç). */
+function konfYikamaHazirPanelHtml(hazirListe, filtreSiparisId) {
+    const yetkili = konfYikamaOnuYetkiliMi();
+    const tarih = (t) => t ? new Date(t).toLocaleDateString('tr-TR') : '—';
+    const top = hazirListe.reduce((s, x) => s + (x.gidecek || 0), 0);
+    const satir = hazirListe.map((x) => `<tr>
+            <td class="mono" style="font-size:10px;white-space:nowrap">${pdfEsc(tarih(x.ts))}</td>
+            <td class="mono" style="font-weight:600;font-size:10px">${pdfEsc(x.siparis_sno || '—')}</td>
+            <td style="font-size:10px;color:var(--text2);max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${pdfEsc(x.firma || '')}">${pdfEsc(x.firma || '—')}</td>
+            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500" title="${pdfEsc(x.desen || '')}">${pdfEsc(x.desen || '—')}</td>
+            <td class="mono" style="font-size:10px;color:var(--rose-c)">${pdfEsc(x.renk || '—')}</td>
+            <td class="mono" style="font-size:10px;color:var(--text3)">${pdfEsc(x.ebat || '—')}</td>
+            <td class="mono" style="text-align:right;font-size:10px">${(parseInt(x.kesilen, 10) || 0).toLocaleString('tr-TR')} ad</td>
+            <td class="mono" style="text-align:right;font-size:11px;font-weight:700;color:var(--amber-c)">${(x.gidecek || 0).toLocaleString('tr-TR')} ad</td>
+            <td style="white-space:nowrap">${yetkili ? `<button type="button" onclick="konfYikamaOnuKapat('${pdfEsc(String(x.kesim_id))}')" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:10px" title="Bu mal yıkamaya gitmeyecek — listeden düşer, kesim / yıkama / kalite sayıları değişmez">✓ Bitti</button>` : ''}</td>
+        </tr>`).join('');
+    const kapatilan = konfYikamaOnuKapatilanlar(filtreSiparisId);
+    const kapatilanSatir = kapatilan.map((k) => `<tr>
+            <td class="mono" style="font-size:10px;white-space:nowrap">${pdfEsc(k.ts ? new Date(k.ts).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')}</td>
+            <td style="font-size:10px">${pdfEsc(k.user || '—')}</td>
+            <td class="mono" style="font-weight:600;font-size:10px">${pdfEsc(k.siparis_sno)}</td>
+            <td style="font-size:10px">${pdfEsc([k.urun, k.renk, k.ebat].filter(Boolean).join(' · ') || ('Kalem ' + (k.kalem_idx + 1)))}</td>
+            <td class="mono" style="text-align:right;font-size:10px;font-weight:700">${k.adet.toLocaleString('tr-TR')} ad</td>
+            <td>${yetkili ? `<button type="button" onclick="konfYikamaOnuGeriAc('${pdfEsc(String(k.akis_id))}')" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px">↩ Geri aç</button>` : ''}</td>
+        </tr>`).join('');
+    return `<div class="panel-box" style="border:1px solid rgba(251,191,36,0.35);background:rgba(251,191,36,0.03)">
+            <div class="panel-head">
+                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--amber-c)"></span>1 · Yıkamaya hazır</span>
+                <span style="font-size:9px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace">${hazirListe.length} kesim kaydı · ${top.toLocaleString('tr-TR')} ad</span>
+            </div>
+            <p style="font-size:10px;color:var(--text3);padding:8px 16px 0;margin:0;line-height:1.5">Kesilip henüz yıkamaya gönderilmeyen mallar (kesim kaydı başına). Yıkama fişiyle gönderilince düşer.
+                ${yetkili ? '<br>Yıkamaya gitmeyecek mal için <strong>✓ Bitti</strong> — listeden düşer; kesim, yıkama ve kalite sayıları değişmez.' : ''}</p>
+            <div style="overflow:auto;padding-bottom:8px;max-height:420px">
+                <table class="dt-table" style="min-width:860px;margin-top:8px">
+                    <thead><tr>
+                        <th style="font-size:9px">Kesim</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Müşteri</th><th style="font-size:9px">Ürün</th><th style="font-size:9px">Renk</th><th style="font-size:9px">Ebat</th>
+                        <th style="font-size:9px;text-align:right">Kesilen</th><th style="font-size:9px;text-align:right">Yıkamaya hazır</th><th style="font-size:9px"></th>
+                    </tr></thead>
+                    <tbody>${satir || `<tr><td colspan="9" style="padding:14px;text-align:center;font-size:10px;color:var(--text3)">Yıkamaya hazır mal yok.</td></tr>`}</tbody>
+                </table>
+            </div>
+            ${kapatilan.length ? `<details style="padding:0 16px 10px"><summary style="cursor:pointer;font-size:10px;color:var(--text3)">Kapatılanlar (${kapatilan.length} · ${kapatilan.reduce((s, k) => s + k.adet, 0).toLocaleString('tr-TR')} ad) — "✓ Bitti" denmiş, yıkamaya gitmeyecek</summary>
+                <div style="overflow:auto;max-height:300px"><table class="dt-table" style="min-width:640px;margin-top:6px">
+                    <thead><tr><th style="font-size:9px">Ne zaman</th><th style="font-size:9px">Kapatan</th><th style="font-size:9px">Sipariş</th><th style="font-size:9px">Ürün</th><th style="font-size:9px;text-align:right">Adet</th><th></th></tr></thead>
+                    <tbody>${kapatilanSatir}</tbody>
+                </table></div>
+            </details>` : ''}
+        </div>`;
+}
+
 function renderKonfGlobalYikamaPanel(filtreSiparisId) {
     const fisPanel = renderKonfYikamaFisPanel(filtreSiparisId);
     const { hazirListe, all, yikamadaRows, yikamadaGruplar, gelenRows, hazirToplamAd, yikamadaToplamAd, gelenAktifRows, gelenAktifToplamAd, bitmisYikamaRows } = konfYikamaPanelModeli(filtreSiparisId);
@@ -16741,9 +16988,11 @@ function renderKonfGlobalYikamaPanel(filtreSiparisId) {
             </div>
         </div>
 
+        ${konfYikamaHazirPanelHtml(hazirListe, filtreSiparisId)}
+
         <div class="panel-box" style="border:1px solid rgba(6,182,212,0.35);background:rgba(6,182,212,0.03)">
             <div class="panel-head">
-                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>1 · Yıkamada olan</span>
+                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--cyan-c)"></span>2 · Yıkamada olan</span>
                 <span style="font-size:9px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace">${yikamadaGruplar.length} satır · ${yikamadaToplamAd.toLocaleString('tr-TR')} ad${yikamadaRows.length !== yikamadaGruplar.length ? ` · ${yikamadaRows.length} kayıt birleşik` : ''}</span>
             </div>
             <p style="font-size:10px;color:var(--text3);padding:8px 16px 0;margin:0;line-height:1.5">Yıkamaya sevk edilmiş, henüz tamamı dönmeyen mallar. Aynı sipariş · müşteri · ürün · renk · ebat satırları toplanır.
@@ -16761,7 +17010,7 @@ function renderKonfGlobalYikamaPanel(filtreSiparisId) {
 
         <div class="panel-box" style="border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.03)">
             <div class="panel-head">
-                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>2 · Yıkamadan gelen (aktif)</span>
+                <span class="panel-head-title"><span class="panel-head-dot" style="background:var(--emerald-c)"></span>3 · Yıkamadan gelen (aktif)</span>
                 <span style="font-size:9px;color:var(--text3);margin-left:auto;font-family:'DM Mono',monospace">${gelenAktifRows.length} aktif</span>
                 <button type="button" onclick="konfPipelineYenile()" class="btn-pro btn-ghost-pro" style="padding:3px 8px;font-size:9px;margin-left:8px">↻ Yenile</button>
             </div>
@@ -18643,22 +18892,35 @@ function konfGetKdForSiparis(siparisId) {
    Açık siparişte kalite = kalite kayıtlarının toplamı (30 ortakKonfKalemKayitSayilari). Yalnız AÇIK siparişlerin satırları
    okunur (23.10 ölçüm: 600 satır); kesim tablosu okunurken birlikte (konfLoadKesimGecmis), tamamı 10 dk'da bir. Canlı
    değişiklikte (başka cihaz ya da kendi yazması) yalnız o siparişin satırları yeniden okunur — konfKaliteKayitTazele. */
-const _konfKaliteKayit = { map: null, at: 0, yuk: null };
+const _konfKaliteKayit = { map: null, kapat: null, at: 0, yuk: null };
 const KONF_KALITE_KAYIT_TAM_MS = 10 * 60000;
 function konfKaliteKayitSatir(r) {
     let j = {};
     try { j = JSON.parse(r.notlar || '{}') || {}; } catch (e) {}
     return { id: r.id, sid: String(r.siparis_id), ki: ortakKaliteKayitKalemi(j), islem: r.islem, miktar: r.miktar, not: j };
 }
+/* Yıkama önü kapatma kayıtları (28.10.2026) aynı istekte gelir: ek istek yok, satır sayısı küçük */
 async function konfKaliteKayitOku(sidler) {
     const out = [];
+    const islemler = [...ortakKaliteKayitIslemleri(), ortakYikamaOnuKapatIslem()];
     for (let i = 0; i < sidler.length; i += 150) {
         const { data, error } = await sbTumSatirlar(() => sb.from('siparis_akis').select('id,siparis_id,islem,kalem_ad,miktar,notlar')
-            .in('siparis_id', sidler.slice(i, i + 150)).in('islem', ortakKaliteKayitIslemleri()).order('id', { ascending: true }));
+            .in('siparis_id', sidler.slice(i, i + 150)).in('islem', islemler).order('id', { ascending: true }));
         if (error) throw error;
         out.push(...(data || []));
     }
     return out.map(konfKaliteKayitSatir);
+}
+/** Okunan satırları ayırır: kalite kayıtları → _konfKaliteKayit.map, yıkama önü kapatmaları → _konfKaliteKayit.kapat (sipariş başına). */
+function konfKaliteKayitDagit(satirlar, sidler) {
+    if (!_konfKaliteKayit.map) _konfKaliteKayit.map = new Map();
+    if (!_konfKaliteKayit.kapat) _konfKaliteKayit.kapat = new Map();
+    const kapatIslem = ortakYikamaOnuKapatIslem();
+    (sidler || []).forEach((sid) => { _konfKaliteKayit.map.set(String(sid), []); _konfKaliteKayit.kapat.set(String(sid), []); });
+    (satirlar || []).forEach((r) => {
+        const hedef = r.islem === kapatIslem ? _konfKaliteKayit.kapat : _konfKaliteKayit.map;
+        if (hedef.has(r.sid)) hedef.get(r.sid).push(r);
+    });
 }
 async function konfKaliteKayitlariYukle(force) {
     if (_konfKaliteKayit.yuk) return _konfKaliteKayit.yuk;
@@ -18668,9 +18930,9 @@ async function konfKaliteKayitlariYukle(force) {
     _konfKaliteKayit.yuk = (async () => {
         try {
             const satirlar = await konfKaliteKayitOku(acik);
-            const map = new Map(acik.map((sid) => [sid, []]));
-            satirlar.forEach((r) => { if (map.has(r.sid)) map.get(r.sid).push(r); });
-            _konfKaliteKayit.map = map;
+            _konfKaliteKayit.map = new Map();
+            _konfKaliteKayit.kapat = new Map();
+            konfKaliteKayitDagit(satirlar, acik);
             _konfKaliteKayit.at = Date.now();
         } catch (e) {
             console.warn('kalite kayıtları okunamadı:', e?.message || e);
@@ -18693,7 +18955,7 @@ function konfKaliteKayitTazele(sid) {
         _konfKaliteBekleyen.clear();
         try {
             const satirlar = await konfKaliteKayitOku(sidler);
-            sidler.forEach((sid) => _konfKaliteKayit.map.set(sid, satirlar.filter((r) => r.sid === sid)));
+            konfKaliteKayitDagit(satirlar, sidler);
             erpLiveIzYaz('siparis_akis', { islem: 'KALİTE KONTROL' });
             erpLiveScheduleUi('realtime');
         } catch (e) {
@@ -18944,7 +19206,7 @@ function dtAraGoster() {
         const s = r.s;
         const termin = s.ttarih ? new Date(s.ttarih).toLocaleDateString('tr-TR') : '';
         const secili = String(dtSeciliSiparisId) === String(s.id);
-        const kalemTxt = r.kalem ? [r.kalem.ad || r.kalem.kod, r.kalem.renk, r.kalem.ebat || r.kalem.olcu].filter(Boolean).join(' · ') : '';
+        const kalemTxt = r.kalem ? [siparisKalemAdMetni(r.kalem) || r.kalem.kod, r.kalem.renk, r.kalem.ebat || r.kalem.olcu].filter(Boolean).join(' · ') : '';
         return `<div class="dt-ara-satir" data-i="${i}" onmousedown="event.preventDefault();dtAraSec(${i})" onmousemove="dtAraAktifYap(${i})"
             style="padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--border);${i === _dtAraAktif ? 'background:var(--surface2);' : ''}${secili ? 'border-left:3px solid var(--cyan-c);' : ''}">
             <div style="display:flex;gap:8px;align-items:baseline">
@@ -19136,7 +19398,7 @@ async function dtRaporGirisleriCek(hazirSatirlar) {
         Object.entries(kd.urunler || {}).forEach(([idx, u]) => {
             const i = parseInt(idx, 10);
             const k = kalemler[i] || {};
-            const urun = [k.ad || k.kod || `Kalem ${i + 1}`, k.renk, k.ebat || k.olcu].filter(Boolean).join(' · ');
+            const urun = [siparisKalemAdMetni(k) || k.kod || `Kalem ${i + 1}`, k.renk, k.ebat || k.olcu].filter(Boolean).join(' · ');
             (u?.girisler || []).forEach(g => {
                 const d = dtDokumaDepoTarihParse(dtDokumaDepoGirisTarihDegeri(g));
                 if (!d) { tarihsiz++; return; }
@@ -20775,7 +21037,7 @@ function dtFormModeli(siparis, kd) {
     const girisler = kalemler.flatMap((k, i) => {
         const u = urunler[i] || {};
         const arr = Array.isArray(u.girisler) ? u.girisler.map((g, gi) => ({ g, gi })) : [];
-        return arr.slice().reverse().map(({ g, gi }) => ({ i, gi, g, ad: dtKumas(i)?.kalem.ad || k.ad || 'Ürün '+(i+1) }));
+        return arr.slice().reverse().map(({ g, gi }) => ({ i, gi, g, ad: dtKumas(i)?.kalem.ad || siparisKalemAdMetni(k) || 'Ürün '+(i+1) }));
     });
     return { siparis, kalemler, urunler, toplamMetre, toplamKg, toplamAdetDokuma, siparisAdedi, siparisKgMi,
         ikinciToplamLabel, ikinciToplamDeger, ikinciToplamUnit, satirlar, girisler };
@@ -20837,7 +21099,7 @@ async function renderDtForm() {
                         return `
                         <div style="display:grid;grid-template-columns:3fr 1fr 2fr 2fr 2fr 88px;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
                             <div>
-                                <div style="font-size:11px;font-weight:500;color:var(--text)">${pdfEsc(k.ad||k.kod||'Ürün '+(i+1))}${kb ? ' <span class="pill pill-amber" style="font-size:8px">KUMAŞ</span>' : ''}</div>
+                                <div style="font-size:11px;font-weight:500;color:var(--text)">${pdfEsc(siparisKalemAdMetni(k)||k.kod||'Ürün '+(i+1))}${kb ? ' <span class="pill pill-amber" style="font-size:8px">KUMAŞ</span>' : ''}</div>
                                 <div style="font-size:9px;color:var(--text3);margin-top:1px">${kb
                                     ? pdfEsc(`ham · yalnız metre · ${kb.kalemSay} kalem bu kumaştan kesilir${kb.km.kod ? ' · ' + kb.km.kod : ''}`)
                                     : ([k.kod&&dtKalemStokKodu(k),k.renk,k.ebat,alan.ek.length ? `${birim} (${ortakKalemGirisEtiket(k)})` : birim].filter(Boolean).join(' · ')||'—')}</div>
@@ -21631,7 +21893,7 @@ function tpFiltreliTezgahlar() {
    Fazla dokuma ENGELLENMEZ — hedefin üstü "fazlalık" olarak gösterilir. */
 
 function tpKalemEtiketi(k, idx) {
-    return [k?.ad || k?.kod || ('Ürün ' + (Number(idx) + 1)), k?.renk, k?.ebat || k?.olcu].filter(Boolean).join(' · ');
+    return [siparisKalemAdMetni(k) || k?.kod || ('Ürün ' + (Number(idx) + 1)), k?.renk, k?.ebat || k?.olcu].filter(Boolean).join(' · ');
 }
 /**
  * Tezgah Planlama'dan yalnızca TEZGAHA/LEVENTE özel bilgi girilir (çözgü, tarak,
@@ -21649,7 +21911,7 @@ function tpIsGosterimBilgisi(i) {
     return {
         siparis_sno: sip?.sno || i?.siparis_sno || '',
         musteri: sip?.firma || sip?.musteri || i?.musteri || '',
-        urun_adi: tpIsKumasId(i) ? tpKumasIsAdi(i, tpIsKumasId(i)) : (kalem?.ad || kalem?.kod || i?.urun_adi || ''),
+        urun_adi: tpIsKumasId(i) ? tpKumasIsAdi(i, tpIsKumasId(i)) : (siparisKalemAdMetni(kalem) || kalem?.kod || i?.urun_adi || ''),
         renk: kalem?.renk || i?.renk || '',
         ebat: kalem?.ebat || kalem?.olcu || i?.ebat || ''
     };
@@ -29058,7 +29320,7 @@ function buildSiparisKapamaRaporPdfHtml(siparis, bundle) {
 
         const renkEbat = [uaKalemRenkGetir(k) || k.renk, uaKalemEbatGetir(k) || k.ebat].filter(Boolean).join(' · ');
         return `<tr>
-            <td style="${pdfTd}">${fasonMu ? '🏭 ' : ''}${pdfEsc(k.ad || k.kod || 'Kalem ' + (i + 1))}${renkEbat ? '<br><span style="color:#64748b;font-size:8px">' + pdfEsc(renkEbat) + '</span>' : ''}</td>
+            <td style="${pdfTd}">${fasonMu ? '🏭 ' : ''}${pdfEsc(siparisKalemAdMetni(k) || k.kod || 'Kalem ' + (i + 1))}${renkEbat ? '<br><span style="color:#64748b;font-size:8px">' + pdfEsc(renkEbat) + '</span>' : ''}</td>
             <td style="${pdfTd};text-align:right">${sipAd.toLocaleString('tr-TR')}</td>
             <td style="${pdfTd};text-align:right">${planMt > 0 ? planMt.toLocaleString('tr-TR') + ' m' : '—'}</td>
             <td style="${pdfTd};text-align:right">${sevkMt > 0 ? sevkMt.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) + ' m' : '—'}</td>
@@ -33271,6 +33533,8 @@ async function handleSave() {
     let p = { updated_by: currentUser, kaynak_birim: kaynakBirim, islem_gecmisi: yeniLog };
     /* Boyahaneye çıkış → Terbiye boya işi / müşteriye teslim (23/24-terbiye); kayıttan sonra bağlanır */
     let _terbiyeBag = null, _terbiyeBagVeri = null;
+    /* M8c (K3): iplik çıkışı lot bakiyesini eksiye düşürecekse YENI'de sorulur ("devam" → kapıya onayla) */
+    let _iplikEksiOnay = false;
 
     /* Kart fotoğrafı: veritabanına gömülü base64 yerine Storage URL —
        büyüme ile birlikte tablo şişmesin / sorgular yavaşlamasın diye. */
@@ -33746,7 +34010,11 @@ async function handleSave() {
             if (!p.miktar_mt) delete p.miktar_mt;
             if (movementType === 'ÇIKIŞ') {
                 const bakiyeErr = depoStokCikisBakiyeKontrol('IPLIK', sKodu, p, editingId);
-                if (bakiyeErr) {
+                if (bakiyeErr && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+                    /* K3 (26.10 kararı): eksi bakiye engel değil, hep bilerek — kapı yalnız bu onayla yazar */
+                    if (!(await erpAskConfirm('Bu çıkış lot bakiyesini eksiye düşürür — karttaki stok da bakiyeye dahildir.\n\n' + bakiyeErr + '\n\nYine de kaydedilsin mi?'))) return;
+                    _iplikEksiOnay = true;
+                } else if (bakiyeErr) {
                     erpToast('Çıkış yapılamıyor — karttaki stok da bakiyeye dahildir. ' + bakiyeErr, 'error', 7000);
                     return;
                 }
@@ -33922,10 +34190,26 @@ async function handleSave() {
         /* irsaliye/renk kumas_stok'ta kolon değil — sessizce düşmesin, nota/kumas_rengi'ne taşınır */
         if (table === 'kumas_stok') kumasStokYazimUyarla(p);
         if (editingId) {
+            /* M8b karşılaştırma: iplik kartı / hareketi düzeltmesi kapıya deneme (yalnız anahtar 'iplik' KARSILASTIR; yazım değişmez) */
+            if (table === 'iplik_stok') {
+                try {
+                    if (typeof yapiIplikDeneBekle === 'function') {
+                        await yapiIplikDeneBekle(yapiIplikEkran(appMode), [yapiDuzeltIslem('guncelle', 'iplik_stok', { ...(originalRecordSnapshot || {}), id: editingId }, p)]);
+                    }
+                } catch (e) {}
+            }
+            /* M8c: anahtar 'iplik' YENI'de iplik kartı / hareketi düzeltmesi kapıdan (gördüğü hâl, kurallar, kişi oturumdan) */
+            let iplikKapiYazdi = false;
+            if (table === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+                const k = await yapiIplikYaz(yapiIplikEkran(appMode), [yapiDuzeltIslem('guncelle', 'iplik_stok', { ...(originalRecordSnapshot || {}), id: editingId }, p)],
+                    { onay: _iplikEksiOnay ? ['eksi'] : [] });
+                if (k.ok) { iplikKapiYazdi = true; error = null; }
+                else if (!k.kapiYok) { erpToast(k.iptal ? 'Kayıt yapılmadı.' : k.hata, k.iptal ? 'info' : 'error', 9000); return; }
+            }
             // UPDATE: eksik kolon (schema cache) hatalarinda payload'tan otomatik dusur ve tekrar dene.
             const triedCols = new Set();
             let usedKey = 'id';
-            while (true) {
+            while (!iplikKapiYazdi) {
                 const upd = await sb.from(table).update(p).eq(usedKey, editingId);
                 error = upd.error || null;
                 if (!error) break;
@@ -33980,8 +34264,28 @@ async function handleSave() {
             let insertPayload = [{ ...p }];
             /* M5b karşılaştırma: depo formu satırı kapıya deneme (yalnız anahtar 'depo' KARSILASTIR; yazım değişmez) */
             if (table === 'kumas_stok') { try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('DEPO_HAREKET', insertPayload); } catch (e) {} }
+            /* M8b karşılaştırma: iplik kartı / depo formu satırı kapıya deneme (yalnız anahtar 'iplik' KARSILASTIR; yazım değişmez) */
+            if (table === 'iplik_stok') { try { if (typeof yapiIplikDeneBekle === 'function') await yapiIplikDeneBekle(yapiIplikEkran(appMode), yapiIplikEkle(insertPayload)); } catch (e) {} }
+            /* M8c: anahtar 'iplik' YENI'de iplik kartı / depo formu satırı kapıdan (K1 kart kodu veritabanında, K8 kişi oturumdan) */
+            let iplikKapiYazdi = false;
+            if (table === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+                let k = await yapiIplikYaz(yapiIplikEkran(appMode), yapiIplikEkle(insertPayload), { onay: _iplikEksiOnay ? ['eksi'] : [] });
+                if (!k.ok && k.cevap && k.cevap.err === 'kod_var' && appMode === 'IPLIK_KART_GIRIS') {
+                    /* kod bu arada başka bir kartın oldu: kapı sıradaki numarayı verir */
+                    const istenen = insertPayload[0].stok_kodu;
+                    k = await yapiIplikYaz('IPLIK_KART', yapiIplikEkle(insertPayload.map((x) => ({ ...x, stok_kodu: '' }))));
+                    if (k.ok && k.kodlar[0]) erpToast(`${istenen} kodu bu arada kullanılmış — kart ${k.kodlar[0]} koduyla açıldı.`, 'info', 8000);
+                }
+                if (k.ok) {
+                    iplikKapiYazdi = true; error = null; _siparisSonKayitId = k.idler[0] || null;
+                    if (k.kodlar[0]) {
+                        insertPayload[0].stok_kodu = k.kodlar[0]; p.stok_kodu = k.kodlar[0];
+                        const kodEl = document.getElementById('val-stok-kodu'); if (kodEl) kodEl.value = k.kodlar[0];
+                    }
+                } else if (!k.kapiYok) { erpToast(k.iptal ? 'Kayıt yapılmadı.' : k.hata, k.iptal ? 'info' : 'error', 9000); return; }
+            }
             const triedCols = new Set();
-            while (true) {
+            while (!iplikKapiYazdi) {
                 const ins = await sb.from(table).insert(insertPayload).select('id');
                 error = ins.error || null;
                 if (!error) {
@@ -34340,7 +34644,7 @@ function siparisKalemMobilListeHtml(kalemler) {
         const alt = [k.renk, k.ebat].map(x => String(x || '').trim()).filter(Boolean).join(' · ');
         return `<div class="siparis-kalem-liste__satir">
             <div class="siparis-kalem-liste__sol">
-                <div class="siparis-kalem-liste__ad">${pdfEsc(k.ad || '—')}</div>
+                <div class="siparis-kalem-liste__ad">${pdfEsc(siparisKalemAdMetni(k) || '—')}</div>
                 ${alt ? `<div class="siparis-kalem-liste__alt">${pdfEsc(alt)}</div>` : ''}
             </div>
             <div class="siparis-kalem-liste__miktar">${miktar.toLocaleString('tr-TR')} <span>${pdfEsc(birim)}</span></div>
@@ -34468,7 +34772,7 @@ function buildSiparisDetailModalHtml(i, opts) {
                             const o = siparisKalemAsamaSayilari(i, ix, k).metraj;
                             return `<tr>
                                 <td style="font-family:'DM Mono',monospace;color:var(--text3)">${ix + 1}</td>
-                                <td style="font-weight:500">${pdfEsc(k.ad || '—')}</td>
+                                <td style="font-weight:500">${pdfEsc(siparisKalemAdMetni(k) || '—')}</td>
                                 <td style="color:var(--text2)">${typeof stokKartKodHucreHtml === 'function' ? stokKartKodHucreHtml(k.kod) : pdfEsc(k.kod || '—')}</td>
                                 <td style="color:var(--text2)">${pdfEsc(k.renk || '—')}</td>
                                 <td style="color:var(--text2);white-space:nowrap">${pdfEsc(k.ebat || '—')}</td>
@@ -34522,7 +34826,7 @@ function buildSiparisDetailModalHtml(i, opts) {
                             const yuklemeN = as.sevk;
                             return `<tr>
                                 <td style="font-family:'DM Mono',monospace;color:var(--text3);vertical-align:top">${ix + 1}</td>
-                                <td style="font-weight:500;color:var(--text);vertical-align:top;line-height:1.4">${pdfEsc(k.ad || '—')}</td>
+                                <td style="font-weight:500;color:var(--text);vertical-align:top;line-height:1.4">${pdfEsc(siparisKalemAdMetni(k) || '—')}</td>
                                 <td style="color:var(--text2);vertical-align:top;white-space:nowrap">${typeof stokKartKodHucreHtml === 'function' ? stokKartKodHucreHtml(k.kod) : pdfEsc(k.kod || '—')}</td>
                                 <td style="color:var(--text2);vertical-align:top">${pdfEsc(k.grup || '—')}</td>
                                 <td style="color:var(--text2);vertical-align:top">${pdfEsc(k.renk || '—')}</td>
@@ -35332,7 +35636,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
                         const u = urunler[i] || urunler[String(i)] || {};
                         const row = (kdKonf && kdKonf[`kalem_${i}`]) ? kdKonf[`kalem_${i}`] : {};
                         const o = siparisKalemKumasMetrajOzet(siparis.id, i, k, u, row);
-                        const ad = pdfEsc(k.ad || k.kod || ('Kalem ' + (i + 1)));
+                        const ad = pdfEsc(siparisKalemAdMetni(k) || k.kod || ('Kalem ' + (i + 1)));
                         const renkEbat = [k.renk, k.ebat].filter(Boolean).map(pdfEsc).join(' · ');
                         const titleAttr = pdfEsc([k.ad, k.kod, k.renk, k.ebat].filter(Boolean).join(' · ') || '');
                         const fmtM = (n) => {
@@ -35383,7 +35687,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         : urunIndices.map((i) => {
             const { k, row, yik, kkN, kesN, dikN, koliN, sevkN, fireTop, dokOzet, sipBirim } = urunKalemDegerleri(i);
             const ua = kdUrunAgaciAll[`u_${i}`] || {};
-            const ad = pdfEsc(k.ad || k.kod || ('Kalem ' + (i + 1)));
+            const ad = pdfEsc(siparisKalemAdMetni(k) || k.kod || ('Kalem ' + (i + 1)));
             const renkEbat = [k.renk, k.ebat].filter(Boolean).map(pdfEsc).join(' · ');
             const titleAttr = pdfEsc([k.ad, k.kod, k.renk, k.ebat].filter(Boolean).join(' · ') || '');
             return `<tr style="border-bottom:1px solid var(--border);vertical-align:middle;font-size:10px">
@@ -35453,7 +35757,7 @@ function buildSiparisDurumIncelemeHtml(siparis, kdKonf, kdDok, islemRows, kdUrun
         };
         const baslik = (k, i, hedefHtml) => `<div class="sdk__ust">
                 <div class="sdk__sol">
-                    <div class="sdk__ad">${pdfEsc(k.ad || k.kod || ('Kalem ' + (i + 1)))}</div>
+                    <div class="sdk__ad">${pdfEsc(siparisKalemAdMetni(k) || k.kod || ('Kalem ' + (i + 1)))}</div>
                     ${[k.renk, k.ebat].filter(Boolean).length ? `<div class="sdk__alt">${[k.renk, k.ebat].filter(Boolean).map(pdfEsc).join(' · ')}</div>` : ''}
                 </div>
                 <div class="sdk__hedef">${hedefHtml}</div>
@@ -36391,24 +36695,45 @@ async function deleteRecord() {
     const neden = await erpAskPrompt(`⚠️ ${ad} kalıcı olarak silinecek.${ekUyari}\n\nTam kopyası değişiklik geçmişinde kalır. Neden (isteğe bağlı):`, '');
     if (neden === null) return;
 
-    /* Önce tam kopya → iz; iz yazılamazsa silme yok */
+    /* Önce tam kopya → iz; iz yazılamazsa silme yok. M8c: anahtar 'iplik' YENI'de iplik satırı kapıdan silinir (iz + silme tek işlemde) */
+    let iplikKapiSildi = false;
     try {
         const { data: taze, error: e0 } = await sb.from(table).select('*').eq('id', item.id).maybeSingle();
         if (e0) throw e0;
         if (!taze) { erpToast('Bu kayıt zaten silinmiş.', 'error', 5000); hideDetailModal(); loadData(); return; }
+        /* M8b karşılaştırma: iplik kartı (ya da yöneticinin ham sildiği iplik hareketi) silmesi kapıya deneme (yazım aşağıda aynen;
+           hareket uyarısı gösterildiyse onaylı) */
+        if (table === 'iplik_stok' && (tur === 'KART' || tur === 'DEPO')) {
+            try {
+                if (typeof yapiIplikDeneBekle === 'function') {
+                    await yapiIplikDeneBekle(tur === 'KART' ? 'KART_SIL' : 'DEPO_DUZELT', [yapiDuzeltIslem('sil', 'iplik_stok', taze, null,
+                        { kanal: tur === 'DEPO' ? 'YONETICI' : 'KART', etiket: `${tur === 'KART' ? 'Stok kartı' : 'Depo kaydı'} ${ad}`, kaynak: 'KAYIT_SIL' })],
+                        null, { neden: String(neden || '').trim() || null, onay: ekUyari.includes('depo hareketi var') ? ['kart_hareketli'] : [] });
+                }
+            } catch (e) {}
+        }
+        if (table === 'iplik_stok' && (tur === 'KART' || tur === 'DEPO') && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+            const k = await yapiIplikYaz(tur === 'KART' ? 'KART_SIL' : 'DEPO_DUZELT', [yapiDuzeltIslem('sil', 'iplik_stok', taze, null,
+                { kanal: tur === 'DEPO' ? 'YONETICI' : 'KART', etiket: `${tur === 'KART' ? 'Stok kartı' : 'Depo kaydı'} ${ad}`, kaynak: 'KAYIT_SIL' })],
+                { neden: String(neden || '').trim() || null, onay: ekUyari.includes('depo hareketi var') ? ['kart_hareketli'] : [] });
+            if (k.ok) iplikKapiSildi = true;
+            else if (!k.kapiYok) { erpToast(k.iptal ? 'Silme yapılmadı.' : k.hata, k.iptal ? 'info' : 'error', 9000); return; }
+        }
         const kullanici = String(erpCurrentUser?.display_name || erpCurrentUser?.username || '').trim() || '—';
-        const { error: eIz } = await sb.from('depo_hareket_iz').insert([{
+        let eIz = null;   /* kapı yolunda iz kapıda yazıldı */
+        if (!iplikKapiSildi) ({ error: eIz } = await sb.from('depo_hareket_iz').insert([{
             tablo: table, kayit_id: String(item.id), islem: 'SIL', kanal: tur === 'DEPO' ? 'YONETICI' : tur,
             etiket: `${tur === 'SIPARIS' ? 'Sipariş' : tur === 'KART' ? 'Stok kartı' : 'Depo kaydı'} ${ad}${taze.firma ? ' · ' + taze.firma : ''}`,
             eski: taze, yeni: null, neden: String(neden || '').trim() || null, kullanici, kaynak: 'KAYIT_SIL'
-        }]);
+        }]));
         if (eIz) throw new Error('Değişiklik kaydı yazılamadı, silme yapılmadı: ' + (eIz.message || eIz));
     } catch (e) {
         erpToast(String(e?.message || e), 'error', 9000);
         return;
     }
 
-    const { error } = await sb.from(table).delete().eq('id', item.id);
+    let error = null;   /* kapı yolunda satır kapıda silindi */
+    if (!iplikKapiSildi) ({ error } = await sb.from(table).delete().eq('id', item.id));
     if (!error) {
         hideDetailModal();
         erpToast(`${ad} silindi — tam kopyası değişiklik geçmişinde.`, 'success', 5000);
@@ -39503,7 +39828,7 @@ function raporTarihMs(v) {
     return d && !isNaN(d.getTime()) ? d.getTime() : NaN;
 }
 function raporKalemEtiket(k, i) {
-    return [k?.ad || k?.kod || `Kalem ${i + 1}`, k?.renk, k?.ebat || k?.olcu].filter(Boolean).join(' · ');
+    return [siparisKalemAdMetni(k) || k?.kod || `Kalem ${i + 1}`, k?.renk, k?.ebat || k?.olcu].filter(Boolean).join(' · ');
 }
 function raporFmt(n, ondalik) {
     const x = Number(n) || 0;
@@ -42312,10 +42637,26 @@ async function depoHareketDuzeltKaydet() {
                     await yapiDepoDuzeltDeneBekle('DEPO_DUZELT', [yapiDuzeltIslem('guncelle', 'kumas_stok', taze, patch, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], null, { neden });
                 }
             } catch (e) {}
+        } else if (tablo === 'iplik_stok') {
+            /* M8b karşılaştırma: iplik hareketi düzeltmesi kapıya deneme (yalnız anahtar 'iplik' KARSILASTIR; yazım aşağıda aynen) */
+            try {
+                if (typeof yapiIplikDeneBekle === 'function') {
+                    await yapiIplikDeneBekle('DEPO_DUZELT', [yapiDuzeltIslem('guncelle', 'iplik_stok', taze, patch, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], null, { neden });
+                }
+            } catch (e) {}
+        }
+        /* M8c: anahtar 'iplik' YENI'de iplik hareketi kapıdan düzelir (gördüğü hâl, kurallar, iz + satır tek işlemde; K3 eksiye düşerse sorar) */
+        let iplikKapiSatir = null;
+        if (tablo === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+            const k = await yapiIplikYaz('DEPO_DUZELT', [yapiDuzeltIslem('guncelle', 'iplik_stok', taze, patch, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], { neden });
+            if (k.ok) {
+                const { data: ys } = await sb.from(tablo).select('*').eq('id', row.id).maybeSingle();
+                iplikKapiSatir = ys || { ...taze, ...patch };
+            } else if (!k.kapiYok) { erpToast(k.iptal ? 'Düzeltme yapılmadı.' : k.hata, k.iptal ? 'info' : 'error', 9000); return; }
         }
         /* Önce iz: yazılamazsa hareket değişmez. */
         try {
-            await depoIzYaz({ tablo, kayit_id: row.id, islem: 'DUZENLE', kanal, etiket, eski: fark.eski, yeni: fark.yeni, neden: neden || null });
+            if (!iplikKapiSatir) await depoIzYaz({ tablo, kayit_id: row.id, islem: 'DUZENLE', kanal, etiket, eski: fark.eski, yeni: fark.yeni, neden: neden || null });
         } catch (e) {
             erpToast(depoIzTabloYokMu(e)
                 ? 'Değişiklik kaydı tablosu kurulmamış — düzeltme yapılmadı. Önce supabase/migrations/depo_hareket_iz.sql çalıştırılmalı.'
@@ -42323,7 +42664,8 @@ async function depoHareketDuzeltKaydet() {
             if (depoIzTabloYokMu(e)) _depoIz.yok = true;
             return;
         }
-        const { data: yeniSatir, error } = await sb.from(tablo).update(patch).eq('id', row.id).select('*').maybeSingle();
+        let yeniSatir = iplikKapiSatir, error = null;   /* kapı yolunda satır kapıda yazıldı */
+        if (!iplikKapiSatir) ({ data: yeniSatir, error } = await sb.from(tablo).update(patch).eq('id', row.id).select('*').maybeSingle());
         if (error || !yeniSatir) {
             try { await depoIzYaz({ tablo, kayit_id: row.id, islem: 'DUZENLE_OLMADI', kanal, etiket, eski: fark.eski, yeni: fark.yeni, neden: String(error?.message || 'kayıt güncellenemedi') }); } catch (e2) {}
             throw error || new Error('kayıt güncellenemedi');
@@ -42392,9 +42734,23 @@ async function depoHareketSil() {
                     await yapiDepoDuzeltDeneBekle('DEPO_DUZELT', [yapiDuzeltIslem('sil', 'kumas_stok', taze, null, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], null, { neden });
                 }
             } catch (e) {}
+        } else if (tablo === 'iplik_stok') {
+            /* M8b karşılaştırma: iplik hareketi silmesi kapıya deneme (yazım aşağıda aynen) */
+            try {
+                if (typeof yapiIplikDeneBekle === 'function') {
+                    await yapiIplikDeneBekle('DEPO_DUZELT', [yapiDuzeltIslem('sil', 'iplik_stok', taze, null, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], null, { neden });
+                }
+            } catch (e) {}
+        }
+        /* M8c: anahtar 'iplik' YENI'de iplik hareketi kapıdan silinir (iz = tam kopya + silme tek işlemde) */
+        let iplikKapiSildi = false;
+        if (tablo === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+            const k = await yapiIplikYaz('DEPO_DUZELT', [yapiDuzeltIslem('sil', 'iplik_stok', taze, null, { kanal, etiket, kaynak: 'DEPO_HAREKETLERI' })], { neden });
+            if (k.ok) iplikKapiSildi = true;
+            else if (!k.kapiYok) { erpToast(k.iptal ? 'Silme yapılmadı.' : k.hata, k.iptal ? 'info' : 'error', 9000); return; }
         }
         try {
-            await depoIzYaz({ tablo, kayit_id: row.id, islem: 'SIL', kanal, etiket, eski: taze, yeni: null, neden: neden || null });
+            if (!iplikKapiSildi) await depoIzYaz({ tablo, kayit_id: row.id, islem: 'SIL', kanal, etiket, eski: taze, yeni: null, neden: neden || null });
         } catch (e) {
             erpToast(depoIzTabloYokMu(e)
                 ? 'Değişiklik kaydı tablosu kurulmamış — silme yapılmadı. Önce supabase/migrations/depo_hareket_iz.sql çalıştırılmalı.'
@@ -42402,7 +42758,8 @@ async function depoHareketSil() {
             if (depoIzTabloYokMu(e)) _depoIz.yok = true;
             return;
         }
-        const { error } = await sb.from(tablo).delete().eq('id', row.id);
+        let error = null;   /* kapı yolunda satır kapıda silindi */
+        if (!iplikKapiSildi) ({ error } = await sb.from(tablo).delete().eq('id', row.id));
         if (error) {
             try { await depoIzYaz({ tablo, kayit_id: row.id, islem: 'SIL_OLMADI', kanal, etiket, eski: null, yeni: null, neden: String(error.message || error) }); } catch (e2) {}
             throw error;
@@ -49249,6 +49606,20 @@ function stoktanSevkMevcut(sid, ki) {
     return Math.round(n);
 }
 
+/* Tek hedef (sipariş kalemi) — "→ Siparişe say" penceresi ve kumaş formunun sipariş no araması
+   (assets/stok-kart-desktop.js kumasTopluKartliSiparisAdaylari) aynı nesneyi kullanır. */
+function stoktanSevkHedefKur(s, k, ki, kartKod, kartAd, ek = {}) {
+    const birim = typeof siparisKalemBirim === 'function' ? siparisKalemBirim(k) : String(k.birim || 'ADET').toUpperCase();
+    const siparis = Math.round(parseFloat(k.miktar) || 0);
+    const sevk = stoktanSevkMevcut(s.id, ki);
+    return {
+        sid: String(s.id), ki, sno: String(s.sno || ''), firma: String(s.firma || ''),
+        ad: String(k.ad || k.urun || ''), kod: String(k.kod || ''), renk: String(k.renk || ''), ebat: String(k.ebat || ''),
+        birim, siparis, sevk, kalan: siparis - sevk,
+        ayni: stoktanSevkAyniUrunMu(k, kartKod, kartAd, ek)
+    };
+}
+
 /* grup: 'KUMAS' (MT/KG kalemler) | 'MAMUL' (adet kalemler). Açık siparişlerin kalemleri. */
 function stoktanSevkAdaylar(grup, kartKod, kartAd, ek = {}) {
     const out = [];
@@ -49257,15 +49628,7 @@ function stoktanSevkAdaylar(grup, kartKod, kartAd, ek = {}) {
         kalemler.forEach((k, ki) => {
             const kumas = typeof siparisKalemKumasMi === 'function' ? siparisKalemKumasMi(k) : false;
             if ((grup === 'KUMAS') !== kumas) return;
-            const birim = typeof siparisKalemBirim === 'function' ? siparisKalemBirim(k) : String(k.birim || 'ADET').toUpperCase();
-            const siparis = Math.round(parseFloat(k.miktar) || 0);
-            const sevk = stoktanSevkMevcut(s.id, ki);
-            out.push({
-                sid: String(s.id), ki, sno: String(s.sno || ''), firma: String(s.firma || ''),
-                ad: String(k.ad || k.urun || ''), kod: String(k.kod || ''), renk: String(k.renk || ''), ebat: String(k.ebat || ''),
-                birim, siparis, sevk, kalan: siparis - sevk,
-                ayni: stoktanSevkAyniUrunMu(k, kartKod, kartAd, ek)
-            });
+            out.push(stoktanSevkHedefKur(s, k, ki, kartKod, kartAd, ek));
         });
     });
     const snoSayi = (x) => parseInt(String(x.sno).replace(/\D/g, ''), 10) || 0;
@@ -52457,7 +52820,7 @@ try {
 const ERP_SURUM_KONTROL_MS = 5 * 60 * 1000;
 const ERP_SURUM_ODAK_MS = 60 * 1000;
 /* Veri yazan rpc'ler — oturum (erp_login, erp_session_*) ve okuma rpc'leri serbest */
-const ERP_SURUM_YAZAN_RPC = /^erp_admin_user_(create|delete|password|save)$|^erp_fiyat_(yaz|yetki_ver)$|^erp_sayim_yaz$|^erp_yapi_(ayar_yaz|fark_acikla)$/;
+const ERP_SURUM_YAZAN_RPC = /^erp_admin_user_(create|delete|password|save)$|^erp_fiyat_(yaz|yetki_ver)$|^erp_sayim_yaz$|^erp_iplik_yaz$|^erp_firma_birlestir$|^erp_yapi_(ayar_yaz|fark_acikla)$/;
 let _erpSurum = { eski: false, kontrolAt: 0, bekliyor: null, uzakSurum: '', uyariAt: 0, zamanlayici: null };
 
 function erpSurumKapisiVarMi() {
@@ -54319,6 +54682,61 @@ function ortakKesimOnuKesimOku(r) {
     };
 }
 
+/* ── Yıkama hattı: yıkamaya hazır / yıkamada (28.10.2026) ────────────────
+   Kullanıcı 28.10: "kesilen mallar yıkamaya gönderilmeye hazır olarak listelenecek"; yıkamaya gitmeyecek mal "✓ Bitti" ile
+   kapatılır — kapatma kaydı siparis_akis, islem YIKAMA_ONU_KAPAT, notta { kalem_idx, ky_id, adet, user, ts }; geri açılınca
+   notta iptal. Kesim / yıkama / kalite sayıları DEĞİŞMEZ, mal yalnız hazır listesinden düşer (kapatılan adet kalıcı:
+   kalemin hazırı = kesilen − gönderilen − kapatılan). Kesimi girilmeden yıkamaya giden mal ayrı "kesimsiz yıkama"
+   satırındadır: hesap KALEM içinde netleşir (fazla sevk en eski kesim satırlarından, fazla gelen en eski yıkamada
+   satırlarından düşer — 04 konfYikamaKalemPaylari'nın 28.10 kuralı). Ana program, mobil ve Konfeksiyon Panel aynı
+   fonksiyonu çağırır; satırların seçimi (yıkama rotası, açık sipariş) platformda. */
+function ortakYikamaOnuKapatIslem() { return 'YIKAMA_ONU_KAPAT'; }
+
+/** Kapatma kaydının notu (JSON nesnesi) → { ki, adet, kyId }; iptal edilmiş / geçersiz kayıt → null. */
+function ortakYikamaOnuKapatOku(not) {
+    if (!not || typeof not !== 'object' || not.iptal || not.silindi || not.panel_silindi) return null;
+    const ki = parseInt(not.kalem_idx, 10);
+    const adet = parseInt(not.adet, 10) || 0;
+    if (!Number.isInteger(ki) || ki < 0 || adet <= 0) return null;
+    return { ki, adet, kyId: not.ky_id != null && not.ky_id !== '' ? String(not.ky_id) : '' };
+}
+
+/** Bir kalemin yıkama hattı, satır satır. satirlar: [{ id, ts (ms), kes, sevk, gel }] = kalemin yıkama rotasındaki etkin
+ *  kesim / kesimsiz yıkama satırları; kapatmalar: ortakYikamaOnuKapatOku sonuçları (o kalemin).
+ *  → [{ id, ts, kes, sevk, gel, gidecek, yikamada, gelEk, kapali }] zaman sırasıyla: gidecek = yıkamaya hazır, yikamada =
+ *  yıkamada, gelEk = başka satırın fazla geleninden bu satıra düşen, kapali = bu satırdan "✓ Bitti" ile kapatılan.
+ *  Kapatma önce kendi satırından (ky_id), artanı en eski satırlardan düşer. */
+function ortakYikamaKalemPaylari(satirlar, kapatmalar) {
+    const n = (v) => parseInt(v, 10) || 0;
+    const p = (satirlar || []).map((r) => {
+        const kes = n(r.kes), sevk = n(r.sevk), gel = n(r.gel);
+        return { id: String(r.id), ts: Number(r.ts) || 0, kes, sevk, gel,
+            gidecek: Math.max(0, kes - sevk), yikamada: Math.max(0, sevk - gel), gelEk: 0, kapali: 0 };
+    }).sort((a, b) => (a.ts - b.ts) || ((Number(a.id) || 0) - (Number(b.id) || 0)));
+    const dus = (alan, fazla, ek) => {
+        for (const x of p) {
+            if (fazla <= 0) break;
+            const d = Math.min(fazla, x[alan]);
+            x[alan] -= d;
+            if (ek) x[ek] += d;
+            fazla -= d;
+        }
+    };
+    dus('gidecek', p.reduce((s, x) => s + Math.max(0, x.sevk - x.kes), 0));
+    dus('yikamada', p.reduce((s, x) => s + Math.max(0, x.gel - x.sevk), 0), 'gelEk');
+    let havuz = 0;
+    (kapatmalar || []).forEach((k) => {
+        const adet = n(k && k.adet);
+        if (adet <= 0) return;
+        const x = k.kyId ? p.find((y) => y.id === String(k.kyId)) : null;
+        const d = x ? Math.min(adet, x.gidecek) : 0;
+        if (x) { x.gidecek -= d; x.kapali += d; }
+        havuz += adet - d;
+    });
+    dus('gidecek', havuz, 'kapali');
+    return p;
+}
+
 /* ── Kumaş planı ─────────────────────────────────────────────────────── */
 
 /** Plandaki kumaşlar (KD_URUN_AGACI siparis.kumas_plani.kumaslar) → [{ id, kod, ad, cekme }] (hepsi metin).
@@ -55224,13 +55642,17 @@ function fisDuzeltFormOku() {
 /** Başlık değişikliğinin bu satırdaki karşılığı: kolon yaması + notlardaki etiketler. */
 function fisBaslikYamasi(row, bas, not) {
     const patch = {};
-    if ('musteri' in bas && String(row.firma || '').trim() !== bas.musteri) patch.firma = bas.musteri;
+    /* iplik satırında firma sütunu yok: fiş firmayı aracı firmadan (fason / boya gönderiminde gideceği firmadan) okur — oraya yazılır
+       (muhasebe-fis.js muhasebeFisIplikFirma; M8b-2, 28.10.2026) */
+    const iplik = 'iplik_no' in row && !('kumas_cinsi' in row);
+    const firmaAlan = !iplik ? 'firma' : (String(row.araci_firma || '').trim() || !String(row.gidecegi_firma || '').trim() ? 'araci_firma' : 'gidecegi_firma');
+    if ('musteri' in bas && String(row[firmaAlan] || '').trim() !== bas.musteri) patch[firmaAlan] = bas.musteri;
     ['teslim_alan', 'teslim_tel', 'sofor', 'teslim_adres'].forEach((k) => {
         if (k in bas) not = fisNotEtiketYaz(not, FIS_BASLIK_ALANLARI.find(a => a.k === k).etiket, bas[k]);
     });
     if ('plaka' in bas) {
         /* fiş plakayı [PLAKA:] etiketinden, yoksa "aracı firma / araç" kolonundan okur — okunduğu yere yazılır */
-        if (!/\[PLAKA:/i.test(not) && String(row.araci_firma || '').trim()) patch.araci_firma = bas.plaka || null;
+        if (!iplik && !/\[PLAKA:/i.test(not) && String(row.araci_firma || '').trim()) patch.araci_firma = bas.plaka || null;
         else not = fisNotEtiketYaz(not, 'PLAKA', bas.plaka);
     }
     if ('irsaliye_no' in bas) {
@@ -55389,6 +55811,38 @@ async function fisDuzeltUygula(durum, plan, neden) {
                 if (isl.length) await yapiDepoDuzeltDeneBekle('SEVKIYAT_FISI', isl, null, { neden });
             }
         } catch (e) {}
+    } else if (tablo === 'iplik_stok') {
+        /* M8b karşılaştırma: iplik fişinin satır değişiklikleri kapıya TEK denemede (yalnız anahtar 'iplik' KARSILASTIR; yazım aynen) */
+        try {
+            if (typeof yapiIplikDeneBekle === 'function') {
+                const isl = plan.satirlar.filter((p) => p.sil || Object.keys(p.patch || {}).length).map((p) => {
+                    const r = { ...p.row, _tbl: tablo };
+                    return yapiDuzeltIslem(p.sil ? 'sil' : 'guncelle', 'iplik_stok', p.row, p.sil ? null : p.patch, { kanal: depoHareketDefterKanalBul(r).etiket,
+                        etiket: `Sevkiyat fişi ${fis.fis_no} ${p.sil ? '· kalem geri alındı' : 'düzeltildi'} · ` + depoHareketIzEtiketi(r), kaynak: FIS_IZ_KAYNAK });
+                });
+                if (isl.length) await yapiIplikDeneBekle('SEVKIYAT_FISI', isl, null, { neden });
+            }
+        } catch (e) {}
+    }
+    /* M8c: anahtar 'iplik' YENI'de iplik fişinin bütün satır değişiklikleri kapıdan TEK işlemde (iz + satırlar; iplikte öbür uç yok) */
+    if (tablo === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+        const degisen = plan.satirlar.filter((p) => p.sil || Object.keys(p.patch || {}).length);
+        const isl = degisen.map((p) => {
+            const r = { ...p.row, _tbl: tablo };
+            return yapiDuzeltIslem(p.sil ? 'sil' : 'guncelle', 'iplik_stok', p.row, p.sil ? null : p.patch, { kanal: depoHareketDefterKanalBul(r).etiket,
+                etiket: `Sevkiyat fişi ${fis.fis_no} ${p.sil ? '· kalem geri alındı' : 'düzeltildi'} · ` + depoHareketIzEtiketi(r), kaynak: FIS_IZ_KAYNAK });
+        });
+        const k = isl.length ? await yapiIplikYaz('SEVKIYAT_FISI', isl, { neden }) : { ok: true };
+        if (k.ok) {
+            const ids = degisen.map((p) => p.row.id);
+            const { data: taze } = ids.length ? await sb.from(tablo).select('*').in('id', ids) : { data: [] };
+            const tm = new Map((taze || []).map((x) => [String(x.id), x]));
+            dataCache[tablo] = (dataCache[tablo] || []).filter((x) => !degisen.some((p) => p.sil && String(p.row.id) === String(x.id)))
+                .map((x) => (tm.has(String(x.id)) ? { ...x, ...tm.get(String(x.id)), id: x.id } : x));
+            plan.satirlar.forEach((p) => sonuc.yapilan.push(p.ad));
+            return sonuc;
+        }
+        if (!k.kapiYok) { sonuc.durdu = k.iptal ? 'vazgeçildi — hiçbir satır değişmedi' : k.hata; return sonuc; }
     }
     for (const p of plan.satirlar) {
         const r = { ...p.row, _tbl: tablo };
@@ -57048,7 +57502,7 @@ var _yapi = { ortam: null, ayar: null, ayarZaman: 0, ayarYok: false, ayarYokZama
 
 /** Bu okuyucunun sürümü. Bir modülün okuma / yazma kodu değişince artar; eşitleme kapatılmadan önce cihaz listesinde
     bütün cihazların bu sayıya ulaştığına bakılır. */
-function yapiOkuyucuSurum() { return 11; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) + M1 ekran geçişi (YENI'de ekran yeni sevki gösterir, 21.10) + M6 fason okuma kıyası / yazma denemesi (21.10) · 9: M7a ürün ağacı okuma kıyası (22.10 gece) · 10: M7b ürün ağacı yazma denemesi (22.10 gece) · 11: M8a iplik okuma kıyası (26.10) */
+function yapiOkuyucuSurum() { return 13; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) + M1 ekran geçişi (YENI'de ekran yeni sevki gösterir, 21.10) + M6 fason okuma kıyası / yazma denemesi (21.10) · 9: M7a ürün ağacı okuma kıyası (22.10 gece) · 10: M7b ürün ağacı yazma denemesi (22.10 gece) · 11: M8a iplik okuma kıyası (26.10) · 12: M8b iplik yazma denemesi (28.10) · 13: M8c iplik ekran geçişi (YENI: okuma görünümden, yazma kapıdan; 28.10) */
 
 /** Geçiş modülleri (plan sırası). hazir: bu sürümde modülün karşılaştırma / yeni okuma kodu var mı.
     yeni: ekranın yeni sayıya geçiş kodu var mı — yoksa anahtar YENI'ye çevrilse de modül KARSILASTIR çalışır. */
@@ -57061,7 +57515,7 @@ function yapiModulleri() {
         { k: 'depo', m: 'M5', ad: 'Depo ve sevk yazma (ekleme)', hazir: true, yeni: false },   /* yapiDepoDene */
         { k: 'fason', m: 'M6', ad: 'Fason ve terbiye', hazir: true, yeni: false },   /* yapiFasonOkuKiyas + yapiFasonDene (21.10) */
         { k: 'recete', m: 'M7', ad: 'Ürün ağacı ve kumaş planı', hazir: true, yeni: false },   /* yapiReceteKiyasEkle (M7a, 22.10 gece) */
-        { k: 'iplik', m: 'M8', ad: 'İplik', hazir: true, yeni: false },   /* yapiIplikOkuKiyas (M8a, 26.10) */
+        { k: 'iplik', m: 'M8', ad: 'İplik', hazir: true, yeni: true },   /* yapiIplikOkuKiyas (M8a, 26.10) · yapiIplikDene (M8b) · ekran geçişi yapiIplikYaz / yapiIplikOkumaKaynagi (M8c, 28.10) */
         { k: 'stok_kart', m: 'M9', ad: 'Stok kartları', hazir: false },
         { k: 'islem_izi', m: 'M10', ad: 'İşlem izi ve günlük', hazir: false }
     ];
@@ -57919,6 +58373,183 @@ async function yapiIplikOkuKiyas(eskiSatirlar) {
     return { eski: em.size, yeni: ym.size, fark: farkSay, bayat, bakiye: bakiyeFark };
 }
 
+/* ═══ M8b İPLİK · YAZMA DENEMESİ (karşılaştırma aşaması, 28.10.2026) ════════════════════════════════════════════════════
+   SQL: supabase/yapi-adim/20-iplik-yaz (erp_iplik_yaz — iplik_stok'a yazan bütün yolların TEK kapısı; deneme: yaz + denetle + geri al).
+   Kararlar docs/M8-IPLIK-TASLAK.md (K1 kart kodu veritabanında, K3 eksi bakiye yalnız onayla, K4 kart yalnız tanım, K7 açılış lotu izi,
+   K8 kişi oturumdan). Anahtar 'iplik' KARSILASTIR'dayken program BUGÜNKÜ GİBİ yazar; yazmadan önce kapıya AYNI işlemler deneme olarak
+   sorulur (≤ 1,5 sn). Kapı reddederdi ya da bir alanı atardı → fark defteri: anahtar 'yaz|<neden>|<ekran>|<stok kodu>|<ayrıntı>',
+   eski 1 (program yazdı) / yeni 0 (kapı reddederdi) · 2 (kabul ama alan atardı). Geç gelen cevapta program yazmış olur: kapı onun
+   satırını görür (değişmiş / kod var / eksi) — fark sayılmaz. Ağ hatası / oturum fark sayılmaz; kapı kurulu değilse bu oturumda bir daha
+   sorulmaz; ESKI / YENI'de hiç istek yok. İşlemler: { tur: 'ekle', satir } (programın iplik_stok'a yazacağı satır AYNEN — tabloda olmayan
+   alan kapıda sessizce düşer, program da düşürür) · yapiDuzeltIslem('guncelle' | 'sil', 'iplik_stok', taze satır, yama, iz). Onay:
+   ['eksi'] (program eksiye düşeceğini sordu, kullanıcı devam dedi) · ['kart_hareketli'] (hareketi olan kart silinirken uyardı).
+   Bağlantı yerleri (ekran): 07 handleSave iplik kartı / depo formu ekle + düzelt (IPLIK_KART · DEPO_HAREKET · SEVKIYAT, yapiIplikEkran)
+   · 07 deleteRecord iplik kartı (KART_SIL) · 11 depoHareketDuzeltKaydet / depoHareketSil (DEPO_DUZELT) · 33 fisDuzeltUygula (SEVKIYAT_FISI)
+   · 42 terbiyeRenkKartiHazirla (RENK_KARTI) · stok-sayim.js sayimHareketleriYaz (STOK_SAYIM). Fason ters kaydı M6 kapısında (12).
+   Tabletler ve yeni mobil iplik yazmaz. Ölçüm _yapiIplikYaz.sayac (istek / fark / hata / gec). */
+var _yapiIplikYaz = { kapiYok: false, sayac: { istek: 0, fark: 0, hata: 0, gec: 0 } };
+
+function yapiIplikDeneAcikMi() { return yapiKarsilastirMi('iplik') && !_yapiIplikYaz.kapiYok; }
+
+/** 07 handleSave'in ekranı → kapının ekran adı. */
+function yapiIplikEkran(mod) {
+    if (mod === 'IPLIK_KART_GIRIS') return 'IPLIK_KART';
+    if (mod === 'SEVKIYAT') return 'SEVKIYAT';
+    return 'DEPO_HAREKET';
+}
+
+/** Programın iplik_stok'a ekleyeceği satırlar → kapı işlemleri. */
+function yapiIplikEkle(satirlar) { return (satirlar || []).filter(Boolean).map((s) => ({ tur: 'ekle', satir: s })); }
+
+/** ekran: kapının ekran adı; islemler: yapiIplikEkle / yapiDuzeltIslem çıktıları; ek: { neden, onay: [] }. Döner: kapının cevabı (ya da
+    null). Hiç fırlatmaz; programın yazımını değiştirmez (kopya gönderilir). */
+function yapiIplikDene(ekran, islemler, ek) {
+    if (!yapiIplikDeneAcikMi() || !Array.isArray(islemler) || !islemler.length) return Promise.resolve(null);
+    let liste;
+    try { liste = JSON.parse(JSON.stringify(islemler)); } catch (e) { return Promise.resolve(null); }
+    const g = { gid: 'i_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10), ekran: String(ekran || ''),
+        program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: true, islemler: liste };
+    if (ek && ek.neden) g.neden = String(ek.neden).slice(0, 500);
+    if (ek && Array.isArray(ek.onay) && ek.onay.length) g.onay = ek.onay.filter(Boolean).map(String);
+    const durum = { gec: false };
+    _yapiIplikYaz.sayac.istek++;
+    const p = yapiRpc('erp_iplik_yaz', { p_istek: g })
+        .then((r) => { try { yapiIplikDeneSonuc(g, r, durum); } catch (e) {} return r; }, () => null);
+    p.durum = durum;
+    return p;
+}
+
+/** Yazımdan hemen önce: kapıya sorar, en çok ms (varsayılan 1,5 sn) bekler. Kapalıysa beklemeden döner. */
+async function yapiIplikDeneBekle(ekran, islemler, ms, ek) {
+    const p = yapiIplikDene(ekran, islemler, ek);
+    if (!p.durum) return null;
+    const s = await Promise.race([p, new Promise((r) => setTimeout(() => r('__zaman'), ms != null ? ms : 1500))]);
+    if (s === '__zaman') { p.durum.gec = true; return null; }
+    return s;
+}
+
+function yapiIplikDeneSonuc(g, r, durum) {
+    if (!r) return;
+    if (r.err === 'kurulu_degil') { _yapiIplikYaz.kapiYok = true; return; }
+    if (['ag', 'baglanti', 'oturum', 'cevap'].includes(r.err)) { _yapiIplikYaz.sayac.hata++; return; }
+    const atilan = r.ok && Array.isArray(r.atilan) && r.atilan.length ? r.atilan : null;
+    if (r.ok && !atilan) return;
+    /* program yazmış: kapı onun yazdığını görür */
+    if (!r.ok && durum && durum.gec && ['degismis', 'yok', 'eksi_bakiye', 'kod_var', 'renk_karti_var'].includes(r.err)) { _yapiIplikYaz.sayac.gec++; return; }
+    _yapiIplikYaz.sayac.fark++;
+    const neden = r.ok ? 'atilan' : String(r.err || 'bilinmiyor');
+    const x = (Number.isInteger(r.islem) && g.islemler[r.islem]) || g.islemler[0] || {};
+    const kod = String(r.stok_kodu || (x.satir && x.satir.stok_kodu) || (x._b && x._b.kod) || '').trim().slice(0, 40);
+    const ayr = atilan ? atilan.join(',') : String(r.neden || r.alan || (r.alanlar && r.alanlar.join(',')) || r.lot_no || r.sevk_yer || '').slice(0, 40);
+    yapiFarkBildir('iplik', ['yaz', neden, g.ekran, kod, ayr].join('|'), 1, r.ok ? 2 : 0, {
+        ayrinti: { islem: 'yaz', neden, ekran: g.ekran, program: g.program, gid: g.gid, islem_sayisi: g.islemler.length,
+            islem_no: Number.isInteger(r.islem) ? r.islem : null, tur: x.tur || '', id: x.id || '', stok_kodu: kod, ayrinti: r.neden || '',
+            alan: r.alan || '', alanlar: r.alanlar, atilan, lot_no: r.lot_no, once: r.once, sonra: r.sonra, sonraki: r.sonraki,
+            hareket: r.hareket, onay: g.onay || null, detay: r.detay || '',
+            islem_turu: x.satir ? x.satir.islem_turu || '' : '', miktar_kg: x.satir ? x.satir.miktar_kg : undefined,
+            islemler: g.islemler.map((y) => (y.tur || '') + ':' + (y.id || (y.satir && y.satir.stok_kodu) || '')) }
+    });
+}
+
+/* ═══ M8c İPLİK · EKRAN GEÇİŞİ (anahtar 'iplik' YENI, 28.10.2026) ═══════════════════════════════════════════════════════
+   OKUMA: programın iplik önbelleği (dataCache.iplik_stok — 40 okuyucu) v_iplik_stok'tan dolar (iplik_stok'un birebir satır biçimi;
+   03 erpSyncFetchTablePaged → yapiIplikOkumaKaynagi); görünüm okunamazsa oturumda eski tabloya döner. YAZMA: bütün iplik yazımları
+   TEK kapıdan GERÇEK olarak (erp_iplik_yaz, deneme değil — SQL 20): kart / hareket ekle, düzelt, sil, renk kartı, sayım, fiş
+   düzeltmesi. Kapı lot bakiyesini eksiye düşürecek işlemi (K3) ya da hareketi olan kartın silinmesini reddederse kullanıcıya sorulur
+   ("devam" → aynı işlem onayla bir kez daha). Kapı kurulu değilse (anahtar YENI'ye ancak SQL kurulunca alınır) bu oturumda eski yazıma
+   dönülür. İz (depo_hareket_iz) kapıda yazılır — program o yolda kendi izini yazmaz. Bağlantı yerleri M8b'nin yerleri (yapiIplikYeniMi
+   ile seçilir). Tabletler ve yeni mobil iplik yazmaz. */
+function yapiIplikYeniMi() { return yapiYeniMi('iplik') && !_yapiIplikYaz.kapiYok; }
+
+/** 03 erpSyncFetchTablePaged: bu tablo nereden okunsun. */
+function yapiIplikOkumaKaynagi(tablo) {
+    if (tablo !== 'iplik_stok' || _yapiIplik.gorunumYok || !yapiYeniMi('iplik')) return tablo;
+    return 'v_iplik_stok';
+}
+
+/** Kapının ret nedeni → kullanıcıya gösterilecek metin. */
+function yapiIplikHataMetni(r) {
+    const x = r || {};
+    const kod = x.stok_kodu ? ` (${x.stok_kodu})` : '';
+    switch (x.err) {
+        case 'yetki': return 'Bu işlem için yetkiniz yok.';
+        case 'yetki_satir': return x.neden === 'baska_ekranin_kaydi_yonetici'
+            ? 'Bu kayıt başka bir ekranın kaydı — miktarını yalnız yönetici değiştirir / siler.' : 'Bu kayıtta bu işlem için yetkiniz yok.';
+        case 'kod_var': return `Bu stok koduyla zaten bir iplik kartı var${kod}.` + (x.sonraki ? ` Sıradaki boş kod: ${x.sonraki}.` : '');
+        case 'kod_yok': return 'Stok kodu boş olamaz.';
+        case 'kart_yok': return `Bu stok kodunun iplik kartı yok${kod} — önce kartı açın.`;
+        case 'renk_karti_var': return 'Bu ham iplik + renk kodu için renk kartı zaten var.';
+        case 'ana_kart_yok': return `Ham iplik kartı bulunamadı (${x.ana || ''}).`;
+        case 'renk_kodu': return 'Renk kartının kodu <ham kod>-Rnn biçiminde olmalı.';
+        case 'yon': return 'Hareketin yönü (GİRİŞ / ÇIKIŞ) eksik.';
+        case 'isaret': return 'Miktarın işareti hareket yönüyle uyuşmuyor (çıkış eksi, giriş artı).';
+        case 'miktar': return 'Miktar girilmesi zorunludur.';
+        case 'firma': return 'Dışarıya çıkışta firma adı zorunludur.';
+        case 'degismis': return 'Bu kayıt siz açtıktan sonra değiştirilmiş — pencereyi kapatıp yeniden açın.';
+        case 'yok': return 'Bu kayıt bu arada silinmiş.';
+        case 'alan': return 'Bu alan değiştirilemez' + (x.alanlar ? ` (${x.alanlar.join(', ')})` : '') + '.';
+        case 'tur': return 'Bu kayıt bu ekrandan değiştirilemez (kart ↔ hareket).';
+        case 'eksi_bakiye': return `Lot bakiyesi eksiye düşer${kod}${x.lot_no ? ' / lot ' + x.lot_no : ''} — kayıt yapılmadı.`;
+        case 'kart_hareketli': return `Bu kartın ${x.hareket || ''} depo hareketi var — kart silinmedi.`;
+        case 'oturum': return 'Oturum süresi dolmuş — yeniden giriş yapın.';
+        case 'ag': case 'baglanti': return 'Bağlantı hatası — kayıt yapılmadı, yeniden deneyin.';
+        case 'cakisma': return 'Aynı kayıt iki kez gönderildi — liste yenilenince kontrol edin.';
+        default: return 'Kayıt yapılamadı' + (x.err ? ` (${x.err}${x.detay ? ': ' + String(x.detay).slice(0, 120) : ''})` : '') + '.';
+    }
+}
+
+/** Kapının sorulabilir reddi (K3 eksi bakiye / hareketli kart) → soru metni ve onay adı. */
+function yapiIplikOnaySorusu(r) {
+    const x = r || {};
+    const say = (v) => (v == null ? '?' : Number(v).toLocaleString('tr-TR', { maximumFractionDigits: 2 }));
+    if (x.err === 'eksi_bakiye') {
+        return { onay: 'eksi', metin: `${x.stok_kodu || 'Bu iplik'}${x.lot_no ? ' · lot ' + x.lot_no : ''} bakiyesi eksiye düşecek `
+            + `(şimdi ${say(x.once)} kg → ${say(x.sonra)} kg).\n\nYine de kaydedilsin mi?` };
+    }
+    if (x.err === 'kart_hareketli') {
+        return { onay: 'kart_hareketli', metin: `${x.stok_kodu || 'Bu kart'} kodunda ${x.hareket || ''} depo hareketi var — kart silinirse bu hareketler `
+            + 'kartsız kalır.\n\nYine de silinsin mi?' };
+    }
+    return null;
+}
+
+async function yapiIplikSor(metin) {
+    try {
+        if (_yapi.ortam && typeof _yapi.ortam.sor === 'function') return !!(await _yapi.ortam.sor(metin));
+        if (typeof erpAskConfirm === 'function') return !!(await erpAskConfirm(metin));
+    } catch (e) {}
+    return false;
+}
+
+/** YENI'de iplik yazımı: kapıya GERÇEK istek. ek: { neden, onay: [] }. Döner { ok, idler, kodlar, cevap } | { ok: false, kapiYok } |
+    { ok: false, iptal } (kullanıcı "devam" demedi) | { ok: false, hata, cevap }. Hiç fırlatmaz. */
+async function yapiIplikYaz(ekran, islemler, ek) {
+    let liste;
+    try { liste = JSON.parse(JSON.stringify(islemler || [])); } catch (e) { return { ok: false, hata: 'Kayıt hazırlanamadı.' }; }
+    if (!liste.length) return { ok: true, idler: [], kodlar: [] };
+    const onay = new Set((ek && Array.isArray(ek.onay) ? ek.onay : []).filter(Boolean).map(String));
+    const istek = () => {
+        const g = { gid: 'iy_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10), ekran: String(ekran || ''),
+            program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: false, islemler: liste };
+        if (ek && ek.neden) g.neden = String(ek.neden).slice(0, 500);
+        if (onay.size) g.onay = [...onay];
+        /* kapının yazdığı satırın canlı yankısı bu oturumun kendi yazması ("başka oturumdan" bildirimi çıkmasın) */
+        try { if (_yapi.ortam && typeof _yapi.ortam.kendiYazma === 'function') _yapi.ortam.kendiYazma('iplik_stok'); } catch (e) {}
+        return yapiRpc('erp_iplik_yaz', { p_istek: g }, ['iplik_stok']);
+    };
+    let r = await istek();
+    for (let i = 0; i < 2 && r && !r.ok; i++) {
+        const s = yapiIplikOnaySorusu(r);
+        if (!s || onay.has(s.onay)) break;
+        if (!(await yapiIplikSor(s.metin))) return { ok: false, iptal: true, cevap: r };
+        onay.add(s.onay);
+        r = await istek();
+    }
+    if (r && r.err === 'kurulu_degil') { _yapiIplikYaz.kapiYok = true; return { ok: false, kapiYok: true }; }
+    if (!r || !r.ok) return { ok: false, hata: yapiIplikHataMetni(r), cevap: r };
+    return { ok: true, idler: (r.idler || []).map(String), kodlar: r.kodlar || [], cevap: r };
+}
+
 /* ═══ KARŞILAŞTIRMA OKUYUCUSU — M1 sevk · M2 üretim (16–17.10.2026) ════════════════════════════════════════════════
    Ekranın gösterdiği (eski) sayıyı yeni yapıdaki sayıyla kıyaslar; ekrana dokunmaz. Modüller (yapiOkuTanimi):
      sevk   M1 · v_kalem_sevk: kaleme açıkça bağlı depo hareketi + DEVIR satırı (4-depo-sevk/5-sevk-devir.sql). Alan: sevk.
@@ -58334,6 +58965,8 @@ function erpYapiKur() {
         token: () => (typeof erpGetToken === 'function' ? erpGetToken() : ''),
         ekran: () => String(typeof appMode === 'string' ? appMode : ''),
         yayinla: (t) => { if (typeof erpAnlikYayinla === 'function') erpAnlikYayinla(t); },
+        /* M8c: kapıdan (rpc) yazılan tablo — canlı yankı kendi yazması sayılır (04 erpKendiYazmasiMi) */
+        kendiYazma: (t) => { if (typeof _erpKendiYazmaAt === 'object' && _erpKendiYazmaAt) _erpKendiYazmaAt[t] = Date.now(); },
         ayarDegisti: () => { if (_yapiPanel.acik) yapiGecisCiz(); erpYapiSevkAnahtarDegisti(); },
         /* M1 YENI: yeni sevk sayıları okununca / değişince açık ekran yeniden çizilir */
         yeniGeldi: (modul) => { if (modul === 'sevk') erpYapiSevkEkranYenile(); },
@@ -59115,9 +59748,121 @@ function fasonCbGonderimlerHam(tur) {
 function fasonCbGonderimler(tur) {
     return fasonCbGonderimlerHam(tur).map(g => ({ ...g, key: fasonCbKok(tur, g.hamKey) }));
 }
+/* ── M8c (anahtar 'iplik' YENI, 29.10.2026): firmalar ORTAK FİRMA LİSTESİNDEN (K5 — "41'in kendi birleştirmesi aynı listeye taşınır") ──
+   Okuma: firma_yazim (yazım → firma) + firma (kök, ad) — 41'in anahtarı fasonCbFirmaKey(yazım) → kökün anahtarı fasonCbFirmaKey(kökün adı);
+   yalnız YENI'de okunur (10 dk; birleştirme / ayırmadan hemen sonra); okunamazsa (SQL yok) bu oturumda eski yol. Listede olmayan yazım
+   (sonradan yazılmış) kökünü cbad zincirinden alır, kapı onu ilk birleştirmede listeye ekler. Yazma: ⇄ Birleştir / ⤺ ayır → kapı
+   erp_firma_birlestir (SQL 22; yetki + iplik kapsamı veritabanında, iz firma_iz). ESKI / KARSILASTIR'da hiçbir şey değişmez (cbad). */
+let _fasonCbFirma = { liste: null, zaman: 0, yukleniyor: null, yok: false, mesgul: false };
+function fasonCbFirmaListesiAcikMi() { return typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi() && !_fasonCbFirma.yok; }
+/** Eşleme (yoksa okumayı başlatır, o an null): { kok: yazım anahtarı → kökün anahtarı, ad: kökün anahtarı → ad, yazim: anahtar → bir yazım } */
+function fasonCbFirmaListesi() {
+    if (!fasonCbFirmaListesiAcikMi()) return null;
+    if (!_fasonCbFirma.liste || Date.now() - _fasonCbFirma.zaman > 10 * 60000) fasonCbFirmaListesiYukle(false);
+    return _fasonCbFirma.liste;
+}
+/** Saf: firma_yazim + firma satırlarından 41 eşlemesi (yazımlar sıralı — iki firmanın yazımı 41 anahtarında çakışırsa ilki) */
+function fasonCbFirmaListesiKur(yazimlar, firmalar) {
+    const fm = new Map((firmalar || []).map((f) => [String(f.id), f]));
+    const kokFirma = (id) => { const f = fm.get(String(id)); return f && f.birlesti != null ? (fm.get(String(f.birlesti)) || f) : f; };
+    const kok = new Map(), ad = new Map(), yazim = new Map();
+    [...(yazimlar || [])].sort((a, b) => String(a.yazim).localeCompare(String(b.yazim), 'tr')).forEach((y) => {
+        const hk = fasonCbFirmaKey(y.yazim);
+        const k = kokFirma(y.firma_id);
+        if (!hk || !k || kok.has(hk)) return;
+        const kk = fasonCbFirmaKey(k.ad) || hk;
+        kok.set(hk, kk);
+        if (!yazim.has(hk)) yazim.set(hk, String(y.yazim));
+        if (!ad.has(kk)) ad.set(kk, String(k.ad));
+    });
+    ad.forEach((_, kk) => { if (!kok.has(kk)) kok.set(kk, kk); });
+    return { kok, ad, yazim };
+}
+async function fasonCbFirmaListesiYukle(zorla) {
+    if (!fasonCbFirmaListesiAcikMi() || typeof sb === 'undefined' || !sb) return null;
+    if (_fasonCbFirma.yukleniyor) return _fasonCbFirma.yukleniyor;
+    if (!zorla && _fasonCbFirma.liste && Date.now() - _fasonCbFirma.zaman < 10 * 60000) return _fasonCbFirma.liste;
+    const ilk = !_fasonCbFirma.liste;
+    _fasonCbFirma.yukleniyor = (async () => {
+        try {
+            const [y, f] = await Promise.all([sb.from('firma_yazim').select('yazim,firma_id'), sb.from('firma').select('id,ad,birlesti')]);
+            const e = y.error || f.error;
+            if (e) {
+                if (/PGRST20[05]|42P01|does not exist|could not find/i.test(`${e.code || ''} ${e.message || ''}`)) _fasonCbFirma.yok = true;
+                return _fasonCbFirma.liste;
+            }
+            _fasonCbFirma.liste = fasonCbFirmaListesiKur(y.data || [], f.data || []);
+            _fasonCbFirma.zaman = Date.now();
+            if (ilk) {   /* ilk okumada açık ekran yeni gruplarla çizilsin (masaüstü + yeni mobil) */
+                fasonCbEkranYenile();
+                try { if (typeof window !== 'undefined' && typeof window.erpEkranTazeleKanca === 'function') window.erpEkranTazeleKanca({ neden: 'fasonCbFirma' }); } catch (e2) {}
+            }
+            return _fasonCbFirma.liste;
+        } catch (e) {
+            return _fasonCbFirma.liste;
+        } finally {
+            _fasonCbFirma.yukleniyor = null;
+        }
+    })();
+    return _fasonCbFirma.yukleniyor;
+}
+/** Anahtarın kapıya gidecek yazımı: depodaki gönderimde en çok geçen yazı (iplik deposunda var), yoksa listedeki yazımı / firmanın adı */
+function fasonCbYazimBul(tur, key) {
+    const say = new Map();
+    fasonCbGonderimlerHam(tur).forEach((g) => { if (g.hamKey === key && g.firma !== FASON_CB_FIRMASIZ) say.set(g.firma, (say.get(g.firma) || 0) + 1); });
+    const enCok = [...say.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (enCok) return enCok[0];
+    const F = _fasonCbFirma.liste;
+    return (F && (F.yazim.get(key) || F.ad.get(key))) || '';
+}
+function fasonCbFirmaHataMetni(r) {
+    const x = r || {};
+    switch (x.err) {
+        case 'yetki': return 'Firma birleştirme yetkiniz yok.';
+        case 'kapsam': return `"${x.yazim || ''}" iplik firması değil — buradan birleştirilemez.`;
+        case 'zaten': return 'İki yazım zaten aynı firma.';
+        case 'birlesik_degil': return 'Bu yazım zaten ayrı bir firma.';
+        case 'oturum': return 'Oturum süresi dolmuş — yeniden giriş yapın.';
+        case 'ag': case 'baglanti': return 'Bağlantı hatası — yeniden deneyin.';
+        default: return 'Yapılamadı' + (x.err ? ` (${x.err})` : '') + '.';
+    }
+}
+/** YENI'de birleştir / ayır kapıdan. Döner true (yapıldı) | false (ret, söylendi) | null (kapı kurulu değil → eski yol) | { err } (ayırmada
+    birleşik değil → eski yol denenir) */
+async function fasonCbFirmaKapisi(tur, islem, key, hedefKey) {
+    if (_fasonCbFirma.mesgul) return false;
+    const yazim = fasonCbYazimBul(tur, key), hedefYazim = hedefKey ? fasonCbYazimBul(tur, hedefKey) : '';
+    if (!yazim || (islem === 'birlestir' && !hedefYazim)) { erpToast('Firmanın yazımı bulunamadı.', 'error'); return false; }
+    _fasonCbFirma.mesgul = true;
+    try {
+        const r = await yapiRpc('erp_firma_birlestir', { p_istek: { islem, yazim, hedef_yazim: hedefYazim,
+            program: String((typeof _yapi !== 'undefined' && _yapi.ortam && _yapi.ortam.platform) || ''), ekran: 'DOKUMA_FASON_TAKIP' } });
+        if (r && r.err === 'kurulu_degil') { _fasonCbFirma.yok = true; return null; }
+        if (r && r.err === 'birlesik_degil' && islem === 'ayir') return { err: r.err };
+        if (!r || !r.ok) { erpToast(fasonCbFirmaHataMetni(r), 'error', 7000); return false; }
+        await fasonCbFirmaListesiYukle(true);
+        if (islem === 'birlestir' && _fasonCbAcik.has(tur + '|' + key)) { _fasonCbAcik.delete(tur + '|' + key); _fasonCbAcik.add(tur + '|' + fasonCbKok(tur, hedefKey)); }
+        erpToast(islem === 'birlestir' ? `Birleştirildi → ${r.hedef || fasonCbFirmaAdi(tur, fasonCbKok(tur, hedefKey))}` : `"${yazim}" ayrı firma oldu.`, 'success', 5000);
+        _fasonCbFirma.mesgul = false;
+        if (typeof fasonPencereKapat === 'function') fasonPencereKapat();
+        fasonCbEkranYenile();
+        return true;
+    } finally {
+        _fasonCbFirma.mesgul = false;
+    }
+}
+/** Bu yazım ayrılabilir mi: cbad ile bağlı ya da (YENI) firma listesinde başka köke bağlı */
+function fasonCbAyrilabilirMi(tur, k) {
+    if (fasonFoyOku(tur + '|' + k, 'cbad').hedef) return true;
+    const F = fasonCbFirmaListesi();
+    return !!(F && F.kok.has(k) && F.kok.get(k) !== k);
+}
 /* Firma birleştirme (kullanıcı 22.10.2026: "ekrandan birleştir"): bir yazımın anahtarı (C|<yazım>) föy bölümü `cbad` {hedef}
    ile öbür firmaya bağlanır; depo kayıtlarına dokunulmaz, kim / ne zaman fason defterinde. Zincir en çok 5 adım, döngü kesilir. */
 function fasonCbKok(tur, key) {
+    /* M8c YENI: ortak firma listesi önce (listede olmayan yazım cbad zincirinden, sonucu yine listeden) */
+    const F = fasonCbFirmaListesi();
+    if (F && F.kok.has(key)) return F.kok.get(key);
     let k = key;
     const gorulen = new Set([k]);
     for (let i = 0; i < 5; i++) {
@@ -59125,7 +59870,7 @@ function fasonCbKok(tur, key) {
         if (!h || gorulen.has(h)) break;
         gorulen.add(h); k = h;
     }
-    return k;
+    return (F && F.kok.get(k)) || k;
 }
 /** Bu firmaya bağlanan bütün yazımların anahtarları (kökün kendisi dahil) */
 function fasonCbTakmaAdlar(tur, kok) {
@@ -59161,12 +59906,15 @@ function fasonCbFirmalar(tur) {
         ekle(kok, liste.find(h => h.firma)?.firma || '', an.slice(2) === kok);
     });
     const enCok = (mp) => [...mp.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    m.forEach(f => { f.ad = enCok(f.kendiAdlar) || enCok(f.adlar) || f.key; });
+    const F = fasonCbFirmaListesi();
+    m.forEach(f => { f.ad = (F && F.ad.get(f.key)) || enCok(f.kendiAdlar) || enCok(f.adlar) || f.key; });
     return [...m.values()];
 }
 /* Firma görünen adı: yalnız depo gönderimlerinden, önbellekli (fasonBaglam her olayda çağrılır; olay özetine dokunmaz) */
 let _fasonCbAdOnbellek = { imza: '', m: new Map() };
 function fasonCbFirmaAdi(tur, key) {
+    const F = fasonCbFirmaListesi();
+    if (F && F.ad.has(key)) return F.ad.get(key);   /* M8c YENI: kökün adı firma listesinden */
     const liste = dataCache.iplik_stok || [];
     const imza = `${liste.length}|${liste[0]?.id ?? ''}|${liste[liste.length - 1]?.id ?? ''}`;
     if (_fasonCbAdOnbellek.imza !== imza) {
@@ -59404,6 +60152,11 @@ async function fasonCbBirlestirKaydet(tur, kok) {
     const hedef = String(document.getElementById('cb-birlestir-hedef')?.value || '').trim();
     if (!hedef || hedef === kok || hedef === FASON_CB_FIRMASIZ) return false;
     if (fasonCbKok(tur, hedef) === kok) { erpToast('Seçilen firma zaten bu firmaya bağlı.', 'error'); return false; }
+    /* M8c YENI: ortak firma listesine kapıdan (kapı kurulu değilse eski yol) */
+    if (fasonCbFirmaListesiAcikMi()) {
+        const s = await fasonCbFirmaKapisi(tur, 'birlestir', kok, hedef);
+        if (s !== null) return s;
+    }
     const an = tur + '|' + kok;
     const eski = fasonFoyOku(an, 'cbad');
     const ok = await fasonFoyOlayYaz(an, 'cbad', '', { hedef: eski.hedef || '' }, { hedef });
@@ -59412,6 +60165,13 @@ async function fasonCbBirlestirKaydet(tur, kok) {
 }
 async function fasonCbAyir(tur, takmaKey) {
     if (!fasonCbYazKapisi()) return false;
+    /* M8c YENI: firma listesinde bağlıysa kapıdan ayrılır; listede birleşik değilse (yalnız cbad) eski yol */
+    const F = fasonCbFirmaListesiAcikMi() ? fasonCbFirmaListesi() : null;
+    if (F && F.kok.has(takmaKey) && F.kok.get(takmaKey) !== takmaKey) {
+        if (!(await erpAskConfirm(`"${fasonCbYazimBul(tur, takmaKey) || fasonCbFirmaAdi(tur, takmaKey)}" yazımı yeniden ayrı firma olsun mu?`))) return false;
+        const s = await fasonCbFirmaKapisi(tur, 'ayir', takmaKey);
+        if (s === true || s === false) return s;
+    }
     const an = tur + '|' + takmaKey;
     const eski = fasonFoyOku(an, 'cbad');
     if (!eski.hedef) return false;
@@ -59486,7 +60246,7 @@ function fasonCbHtml(tur) {
                 <td style="padding:4px 8px">${fasonTarihYaz(g.tarih)}</td><td style="padding:4px 8px">${pdfEsc(g.kod)} ${pdfEsc(g.ad)}</td><td style="padding:4px 8px">lot ${pdfEsc(g.lot || '—')} · ${pdfEsc(g.marka || '')}</td>
                 <td style="${td}">${kg(g.kg)}</td><td style="${td}">${g.top ? fasonFmtI(g.top) + ' çuval' : ''}</td><td style="padding:4px 8px;color:var(--text3)">${pdfEsc(g.firma)} · ${pdfEsc(g.user)}</td>
                 <td style="padding:4px 8px;text-align:right">${yaz ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:2px 7px;font-size:9px;white-space:nowrap" onclick="fasonCbDislaDegistir(${fasonArg(tur)},${fasonArg(g.id)},${g.disla ? 'false' : 'true'})">${g.disla ? '↶ Hesaba geri al' : '↷ Hesap dışı'}</button>` : (g.disla ? 'hesap dışı' : '')}</td></tr>`).join('')}</table></details>` : '';
-        const birlesik = h.takmaAdlar.length ? `<div style="font-size:10px;color:var(--text2)">⇄ Birleştirilen yazımlar: ${h.takmaAdlar.map(k => `<span style="display:inline-flex;gap:4px;align-items:center;margin-right:10px"><b>${pdfEsc(fasonCbFirmaAdi(tur, k))}</b>${yaz && fasonFoyOku(tur + '|' + k, 'cbad').hedef ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:1px 6px;font-size:9px" title="Bu yazımı yeniden ayrı firma yap" onclick="fasonCbAyir(${fasonArg(tur)},${fasonArg(k)})">⤺ ayır</button>` : ''}</span>`).join('')}</div>` : '';
+        const birlesik = h.takmaAdlar.length ? `<div style="font-size:10px;color:var(--text2)">⇄ Birleştirilen yazımlar: ${h.takmaAdlar.map(k => `<span style="display:inline-flex;gap:4px;align-items:center;margin-right:10px"><b>${pdfEsc(fasonCbFirmaAdi(tur, k))}</b>${yaz && fasonCbAyrilabilirMi(tur, k) ? `<button type="button" class="btn-pro btn-ghost-pro" style="padding:1px 6px;font-size:9px" title="Bu yazımı yeniden ayrı firma yap" onclick="fasonCbAyir(${fasonArg(tur)},${fasonArg(k)})">⤺ ayır</button>` : ''}</span>`).join('')}</div>` : '';
         const tumHareket = [f.key, ...h.takmaAdlar].flatMap(k => fasonAnahtarHareketleri(tur + '|' + k));
         return `<div class="panel-box" style="padding:0;overflow:hidden;border:1px solid rgba(99,102,241,0.45)">${ozet}
             <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:10px" onclick="event.stopPropagation()">
@@ -59513,6 +60273,7 @@ function fasonCbHtml(tur) {
 
 try {
     Object.assign(window, { fasonCbAcKapa, fasonCbHtml, fasonCbHesap, fasonCbFirmaKey, fasonCbIplikMpk, fasonCbKok, fasonCbBirlestirAc, fasonCbBirlestirKaydet, fasonCbAyir, fasonCbDislaDegistir,
+        fasonCbFirmaListesiYukle,
         fasonCbFormHazirla, fasonCbIplikSec, fasonCbFormKodDegisti });
 } catch (e) {}
 /* ════ TERBİYE — BOBİN BOYA UÇTAN UCA (22.10.2026) ═══════════════════════
@@ -60105,6 +60866,22 @@ async function terbiyeRenkKartiHazirla(plan, ac) {
         notlar: `[ANA_IPLIK:${ana}]` + (plan.renkKodu ? `[RENK_KODU:${terbiyeEtiketTemiz(plan.renkKodu)}]` : '') +
             ` Boyalı iplik renk kartı — ${ana} ${renk}${plan.musteri ? ' · ' + terbiyeEtiketTemiz(plan.musteri) : ''} · ilk dönüş ${fasonBugun()} · ${user}`
     };
+    /* M8b karşılaştırma: renk kartı kapıya deneme (yalnız anahtar 'iplik' KARSILASTIR; yazım aynen) */
+    try { if (typeof yapiIplikDeneBekle === 'function') await yapiIplikDeneBekle('RENK_KARTI', yapiIplikEkle([satir])); } catch (e) {}
+    /* M8c: anahtar 'iplik' YENI'de renk kartı kapıdan (aynı ham + renk kodu tekliği veritabanında; kişi oturumdan) */
+    if (typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+        const k = await yapiIplikYaz('RENK_KARTI', yapiIplikEkle([satir]));
+        if (k.ok) {
+            const { data: kayit } = await sb.from('iplik_stok').select('*').eq('id', k.idler[0]).maybeSingle();
+            if (kayit && Array.isArray(dataCache.iplik_stok)) dataCache.iplik_stok.push(kayit);
+            return { ok: true, kod: (kayit && kayit.stok_kodu) || kod, yeni: true };
+        }
+        if (k.cevap && k.cevap.err === 'renk_karti_var') {   /* bu arada başkası açtı: onu kullan */
+            const v = await terbiyeRenkKartiHazirla(plan, false);
+            return v.kod ? v : { ok: false, hata: 'Renk kartı açılamadı: bu renk için kart var ama okunamadı — yeniden deneyin.' };
+        }
+        if (!k.kapiYok) return { ok: false, hata: 'Renk kartı açılamadı, kayıt yapılmadı: ' + k.hata };
+    }
     const { data: yeni, error: e2 } = await sb.from('iplik_stok').insert(satir).select('*').single();
     if (e2 || !yeni) return { ok: false, hata: 'Renk kartı açılamadı, kayıt yapılmadı: ' + (e2?.message || e2 || '') };
     if (Array.isArray(dataCache.iplik_stok)) dataCache.iplik_stok.push(yeni);

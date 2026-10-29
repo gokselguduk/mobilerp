@@ -440,7 +440,7 @@
         const alt = [k.kod, k.renk, k.ebat].filter(v => String(v || '').trim()).join(' · ');
         return `<div class="kalem-kart">
             <div class="kalem-ust"><span class="kalem-no">${i + 1}</span>
-                <span class="satir-orta"><span style="font-weight:600">${esc(k.ad || '—')}</span><span class="alt">${esc(alt || (a && a.kumas ? 'Kumaş' : 'Mamül'))}</span></span>
+                <span class="satir-orta"><span style="font-weight:600">${esc(siparisKalemAdMetni(k) || '—')}</span><span class="alt">${esc(alt || (a && a.kumas ? 'Kumaş' : 'Mamül'))}</span></span>
                 <span style="font-size:13px;font-weight:700;flex:none">${fmt(siparis)} ${esc(birim)}</span></div>
             <div class="asama-izgara">${kutular}</div></div>`;
     }
@@ -876,7 +876,7 @@
             const alt = kb ? `ham · yalnız metre · ${kb.kalemSay} kalem bu kumaştan kesilir${kb.km.kod ? ' · ' + kb.km.kod : ''}` : [k.kod, k.renk, k.ebat, birim].filter(Boolean).join(' · ');
             const kutu = (ad, deger, renk, zemin) => `<div class="asama-kutu" style="background:${zemin}"><span class="d" style="color:${renk}">${deger}</span><span class="a">${ad}</span></div>`;
             return `<div class="kalem-kart"><div class="kalem-ust"><span class="kalem-no">${i + 1}</span>
-                <span class="satir-orta"><span style="font-weight:600">${esc(k.ad || k.kod || 'Ürün ' + (i + 1))}${kb ? ' <span class="hap" style="background:#FEF4E6;color:#B54708">KUMAŞ</span>' : ''}</span><span class="alt">${esc(alt)}</span></span>
+                <span class="satir-orta"><span style="font-weight:600">${esc(siparisKalemAdMetni(k) || k.kod || 'Ürün ' + (i + 1))}${kb ? ' <span class="hap" style="background:#FEF4E6;color:#B54708">KUMAŞ</span>' : ''}</span><span class="alt">${esc(alt)}</span></span>
                 <span style="font-size:13px;font-weight:700;flex:none">${esc(sipMetin)} ${esc(birim.toLowerCase())}</span></div>
                 <div class="asama-izgara" style="grid-template-columns:repeat(${1 + (alan.kg ? 1 : 0) + (alan.adet ? 1 : 0)},minmax(0,1fr))">
                     ${kutu('Dokunan metre', `${parseFloat(u.toplam_metre || 0).toFixed(1)} m`, '#0E7C70', '#E3F5F2')}
@@ -2667,7 +2667,10 @@
         };
         const asilRpc = client.rpc.bind(client);
         client.rpc = (ad, ...rest) => (YK_OKUMA_RPC.test(String(ad || '')) || YK_IZLEME_RPC.test(String(ad || ''))
-            || (String(ad) === 'erp_sayim_yaz' && D.ekran === 'STOK_SAYIM') ? asilRpc(ad, ...rest) : ykEngel('rpc ' + ad));
+            || (String(ad) === 'erp_sayim_yaz' && D.ekran === 'STOK_SAYIM')
+            /* M8c (28.10.2026): anahtar 'iplik' YENI'de iplik sayım hareketleri tek iplik kapısından — yalnız sayım ekranında, yalnız sayım işi */
+            || (String(ad) === 'erp_iplik_yaz' && D.ekran === 'STOK_SAYIM' && rest[0] && rest[0].p_istek && rest[0].p_istek.ekran === 'STOK_SAYIM')
+            ? asilRpc(ad, ...rest) : ykEngel('rpc ' + ad));
         if (client.storage && client.storage.from) {
             const asilDepo = client.storage.from.bind(client.storage);
             client.storage.from = (kova) => {

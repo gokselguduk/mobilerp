@@ -4388,7 +4388,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 renk: document.getElementById(`sk-renk-${j}`)?.value || '',
                 rkod: rkodlar()
             };
-            if (kumasKart) siparisKalemKumasDoldur(j, kumasKart);
+            if (kumasKart) siparisKalemKumasDoldur(j, kumasKart, { rkod: opts.silent ? null : 'bos' });
             /* Düğmeyle yenilemede boş RK'lar karttan dolar; sessiz (sipariş açılışı) yenileme RK'ya dokunmaz */
             else siparisKalemMamulDoldur(j, kart, { anaSecim: mamulVaryantNoBul(kart.desen_kodu) <= 0, rkod: opts.silent ? null : 'bos' });
             const sonra = {
@@ -4419,7 +4419,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (!kart) {
             const kumasKart = siparisKumasKartBul(kod);
             if (kumasKart) {
-                siparisKalemKumasDoldur(n, kumasKart);
+                siparisKalemKumasDoldur(n, kumasKart, { rkod: 'karttan' });
                 if (typeof erpToast === 'function') erpToast('Ürün kumaş kartından yenilendi.', 'success', 2500);
                 return;
             }
@@ -4803,14 +4803,43 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         siparisMamulSeciciAra(ara ? ara.value : '');
     };
 
-    window.siparisKalemKumasDoldur = function (kalemNo, k) {
+    /* 27.10.2026 kullanıcı: "boyalı kumaşlarda stok numarasını girdiğimde ürün adı geliyor ama renk kodları gelmiyor".
+       Boyalı kumaşın renk kodu varyant hücresinde (meta) durur → varyant kartı meta ile birleştirilip okunur
+       (kumasStokListeVaryantKartBul). Biçim mamüldeki gibi "RENK-KOD"; kartta nasıl yazıldıysa o, ayıklama YOK.
+       Çok renkli ana kart seçilirse kod gelmez (hangi renk olduğu belli değil). */
+    function siparisKumasVaryantKarti(k) {
+        const kod = siparisKumasKod(k);
+        const v = kod && typeof kumasStokListeVaryantKartBul === 'function' ? kumasStokListeVaryantKartBul(kod) : null;
+        return v || k;
+    }
+    function siparisKumasAnaCokRenkliMi(k) {
+        const kod = String(siparisKumasKod(k) || '').trim().toUpperCase();
+        if (!kod || typeof kumasVaryantNoBul !== 'function' || kumasVaryantNoBul(kod) > 0) return false;
+        const ana = typeof kumasAnaKodBul === 'function' ? kumasAnaKodBul(kod) : kod;
+        return (typeof kumasKartListeVaryantSayisi === 'function' ? kumasKartListeVaryantSayisi(ana) : 0) >= 2;
+    }
+    function siparisKumasRenkKodlariOku(k) {
+        if (!k || siparisKumasAnaCokRenkliMi(k)) return [];
+        const v = siparisKumasVaryantKarti(k);
+        const buyuk = (x) => String(x || '').trim().toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ');
+        const kod = buyuk(typeof kumasKartRenkKoduOku === 'function' ? kumasKartRenkKoduOku(v) : v.renk_kodu);
+        if (!kod || SIPARIS_RKOD_BOYASIZ.test(kod)) return [];
+        const renk = buyuk(siparisKumasRenkOku(v));
+        if (!SIPARIS_RKOD_HARF.test(kod) && SIPARIS_RKOD_HARF.test(renk)) return [renk.includes(kod) ? renk : `${renk}-${kod}`];
+        return [kod];
+    }
+
+    /** opts.rkod: siparisKalemRenkKodlariYaz modu | yok → RK'ya dokunulmaz (mamüldeki gibi) */
+    window.siparisKalemKumasDoldur = function (kalemNo, k, opts) {
+        opts = opts || {};
         if (!k || !kalemNo) return;
         const mv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
         mv(`sk-kod-${kalemNo}`, siparisKumasKod(k));
         mv(`sk-desen-${kalemNo}`, String(k.desen_adi || '').trim().toLocaleUpperCase('tr-TR'));
         mv(`sk-ad-${kalemNo}`, siparisKumasUrunAdiOku(k));
         mv(`sk-ebat-${kalemNo}`, siparisKumasEnOku(k));
-        mv(`sk-renk-${kalemNo}`, siparisKumasRenkOku(k));
+        mv(`sk-renk-${kalemNo}`, siparisKumasRenkOku(k) || (siparisKumasAnaCokRenkliMi(k) ? '' : siparisKumasRenkOku(siparisKumasVaryantKarti(k))));
+        if (opts.rkod) siparisKalemRenkKodlariYaz(kalemNo, siparisKumasRenkKodlariOku(k), opts.rkod);
         /* Kumaş siparişi metre ile (kg ise kullanıcı seçer); ADET kalırsa kalem konfeksiyon sanılır */
         const birim = document.getElementById(`sk-birim-${kalemNo}`);
         if (birim && birim.value === 'ADET') {
@@ -4827,7 +4856,7 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
         if (siparisSeciciGrup === 'KUMAS') {
             const kk = siparisKumasKartBul(hedef) || siparisMamulSeciciListe.find(x => siparisKumasKod(x).toUpperCase() === hedef);
             if (!kk) return;
-            siparisKalemKumasDoldur(siparisMamulSeciciKalemNo, kk);
+            siparisKalemKumasDoldur(siparisMamulSeciciKalemNo, kk, { rkod: 'ez' });
             siparisMamulSeciciKapat();
             return;
         }
@@ -7749,10 +7778,65 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
     }
     window.kumasTopluSiparisKaynakRows = kumasTopluSiparisKaynakRows;
 
+    /* Kartlı sipariş kalemi sipariş no / müşteri ile (28.10.2026, SP787: SM-0059 stokta 700 mt, "sp787"
+       → "Eşleşme yok"). Kalemin stok kartı varsa yukarıdaki satır listelenmez (stoktan düşmesi gerekir);
+       burada o kartın depo satırı sipariş bilgisiyle aday olur. Seçilince satır kartın KENDİ satırına
+       kurulur + "→ Siparişe say" bağı (19 stoktanSevkHedefKur) — kayıt bugünkü stoktan sevk yolu
+       (siparis_id boş, [SEVK_KUMAS:…][STOKTAN_SEVK:…]); yeni yazma / etiket yok. Yalnız sipariş no ya da
+       sipariş müşterisi eşleşince (kart kodu / adıyla arama değişmez). */
+    function kumasTopluAramaSade(s) {
+        return String(s || '').toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/\s+/g, ' ').trim();
+    }
+    function kumasTopluKartliSiparisAdaylari(src, q) {
+        const qs = kumasTopluAramaSade(q);
+        if (!qs || !kumasTopluCikisModuMu() || typeof stoktanSevkHedefKur !== 'function') return [];
+        const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
+        const kartlar = new Map((src || []).filter(r => r && r.anahtar && !r.siparisKaynak && !r.noKart).map(r => [r.anahtar, r]));
+        const out = [];
+        liste.forEach(sip => {
+            if (!sip || (typeof siparisKapaliMi === 'function' ? siparisKapaliMi(sip) : String(sip.durum || '').toUpperCase() === 'TAMAMLANDI')) return;
+            const sno = String(sip.sno || '').trim();
+            const firma = String(sip.firma || sip.musteri || '').trim();
+            if (!kumasTopluAramaSade(`${sno} ${firma}`).includes(qs)) return;
+            const kalemler = typeof siparisListeKalemleriArr === 'function' ? siparisListeKalemleriArr(sip) : [];
+            kalemler.forEach((k, ki) => {
+                if (typeof siparisKalemKumasMi !== 'function' || !siparisKalemKumasMi(k)) return;
+                const hamKod = String(k.kod || k.stok_kodu || '').trim();
+                /* kumasTopluSiparisKaynakRows'taki kartVar ile aynı koşul */
+                if (!(hamKod && hamKod.toUpperCase() !== 'KODSUZ' && kumasDepoStokKoduMu(hamKod) && kumasKutuphanesiKartBul(hamKod))) return;
+                const kart = kartlar.get(kumasTopluSatirAnahtar({ stok_kodu: hamKod }));
+                if (!kart) return;
+                const kartKod = String(kart.kod || '').trim();
+                const hedef = stoktanSevkHedefKur(sip, k, ki, kartKod, kart.ad || kart.kumas_cinsi || '', { renk: kart.renk || '', ebat: kart.ebat || '' });
+                out.push({
+                    ...kart,
+                    anahtar: `SIPSTOK:${String(sip.id)}|${ki}`,
+                    _kartAnahtar: kart.anahtar,
+                    _stokHedef: hedef,
+                    _sipSno: sno,
+                    _sipFirma: firma
+                });
+            });
+        });
+        return out;
+    }
+    window.kumasTopluKartliSiparisAdaylari = kumasTopluKartliSiparisAdaylari;
+
+    /* Açık siparişin numarası mı (Enter'da serbest "sp787" satırı kurulmasın) */
+    function kumasTopluAcikSiparisNo(q) {
+        const n = String(q || '').toLocaleUpperCase('tr-TR').replace(/\s+/g, '');
+        if (!n) return '';
+        const liste = (typeof dataCache !== 'undefined' && Array.isArray(dataCache.siparisler)) ? dataCache.siparisler : [];
+        const sip = liste.find(s => s && String(s.sno || '').toLocaleUpperCase('tr-TR').replace(/\s+/g, '') === n
+            && !(typeof siparisKapaliMi === 'function' ? siparisKapaliMi(s) : String(s.durum || '').toUpperCase() === 'TAMAMLANDI'));
+        return sip ? String(sip.sno || '').trim() : '';
+    }
+
     function kumasTopluSerbestKimlik(q) {
         const raw = String(q || '').trim();
         if (!raw) return null;
         if (kumasDepoStokKoduMu(raw)) return null;
+        if (kumasTopluAcikSiparisNo(raw)) return null;
         if (!/^SIP-/i.test(raw) && raw.length < 2) return null;
         const ad = /^SIP-/i.test(raw)
             ? raw.replace(/^SIP-[^-]+-K\d+-?/i, '').replace(/_/g, ' ').trim() || raw
@@ -8070,9 +8154,16 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 const sno = String(r.siparis_sno || '').toLocaleLowerCase('tr-TR');
                 return (ad && ad === qLower) || (cins && cins === qLower) || (firma && firma === qLower) || (sno && sno === qLower);
             });
+            /* Sipariş no birebir: kartlı kalemler de (stoktan sevk bağıyla) */
+            const sipKartli = kumasTopluKartliSiparisAdaylari(src, q)
+                .filter(r => String(r._sipSno || '').toLocaleLowerCase('tr-TR') === qLower);
+            if (sipKartli.length) adaylar = adaylar.concat(sipKartli);
         }
         if (!adaylar.length) adaylar = src.filter(r => kumasTopluAramaBlob(r).includes(qLower));
+        if (!adaylar.length) adaylar = kumasTopluKartliSiparisAdaylari(src, q);
         if (!adaylar.length && kumasTopluCikisModuMu()) {
+            const acikSno = kumasTopluAcikSiparisNo(q);
+            if (acikSno) return { kod: '', row: null, hata: `${acikSno} siparişinde bu formdan sevk edilecek kumaş kalemi bulunamadı — ürün adı ya da stok kodu ile arayın` };
             const serbest = kumasTopluSerbestKimlik(q);
             if (serbest) return { kod: serbest.kod, row: serbest, hata: '', noKart: true };
         }
@@ -8084,6 +8175,15 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
 
     function kumasTopluSatiraKaynakYaz(row, src) {
         if (!row || !src) return;
+        /* Sipariş no ile seçilen kartlı kalem: satır kartın kendi satırına kurulur + "→ Siparişe say" bağı */
+        if (src._stokHedef) {
+            const hedef = src._stokHedef;
+            const kart = kumasTopluKaynakRows().find(x => x.anahtar === src._kartAnahtar);
+            if (!kart) { row.hata = 'Stok kartı satırı bulunamadı — stok kodu ile arayın'; return; }
+            kumasTopluSatiraKaynakYaz(row, kart);
+            row.hedef = { ...hedef, kartKod: String(kart.kod || row.kod || '').trim() };
+            return;
+        }
         row.anahtar = src.anahtar || '';
         row.kod = src.kod || '';
         row._secimYazi = kumasTopluSecimYazi(src);
@@ -8297,7 +8397,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                     if (aV === 0 && bV > 0) return 1;
                     return String(a.kod || '').localeCompare(String(b.kod || ''), 'tr', { numeric: true });
                 });
-                adaylar = adaylar.slice(0, 32);
+                /* Sipariş no / müşteri: kartlı sipariş kalemleri en üstte (stoktan sevk bağıyla) */
+                adaylar = kumasTopluKartliSiparisAdaylari(src, q).concat(adaylar).slice(0, 32);
             }
             window._kumasTopluAramaAdaylari = adaylar;
             window._kumasTopluAktifSatir = idx;
@@ -8312,6 +8413,19 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 </div>`;
             } else {
                 html = adaylar.map((a, i) => {
+                    if (a._stokHedef) {
+                        const h = a._stokHedef;
+                        const bl = h.birim === 'KG' ? 'kg' : 'mt';
+                        const sayi = (n) => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 });
+                        const ozellikS = ['Stoktan sevk → ' + (h.sno || a._sipSno), a._sipFirma ? ('Müşteri: ' + a._sipFirma) : '', a.renk ? ('Renk: ' + a.renk) : '', a.kumas_cinsi || ''].filter(Boolean).join(' · ');
+                        return `
+            <div class="mamul-toplu-kod-drop-item" onmousedown="event.preventDefault();kumasTopluAdaySec(${i})">
+                <span class="mamul-toplu-kod-drop-item__kod">${esc('Sipariş ' + (h.sno || a._sipSno) + ' · ' + (a.kod || ''))}</span>
+                <span class="mamul-toplu-kod-drop-item__ad">${esc(a.ad || '—')}</span>
+                <span class="mamul-toplu-kod-drop-item__meta">${esc(ozellikS)}</span>
+                <span class="mamul-toplu-kod-drop-item__meta">${esc(`Stokta ${sayi(a.mt)} mt · ${sayi(a.kg)} kg · Sipariş kalan ${sayi(Math.max(0, h.kalan))} ${bl}`)}</span>
+            </div>`;
+                    }
                     const siparisMi = !!(a.siparisKaynak || a.noKart);
                     const kodYazi = siparisMi
                         ? ('Sipariş ' + (a.siparis_sno || a.kod || ''))
@@ -8965,6 +9079,8 @@ body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; backgr
                 src = coz.row;
             }
             if (!src) { hatalar.push(`Satır ${i + 1}: ürün seçin (sipariş no, isim veya müşteri ile arayın)`); return; }
+            /* Sipariş no ile bulunan kartlı kalem listeden seçilmeden kaydedilmez (bağ seçimle kurulur) */
+            if (src._stokHedef) { hatalar.push(`Satır ${i + 1}: ${src._sipSno || 'sipariş'} kalemini listeden seçin`); return; }
             const noKart = !!(src.noKart || src.siparisKaynak || r.noKart || /^SIP-/i.test(String(src.kod || r.kod || '')));
             if (!isCikis && noKart) {
                 hatalar.push(`Satır ${i + 1}: kartsız sipariş ürüne depo girişi yapılamaz`);

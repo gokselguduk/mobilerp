@@ -62,19 +62,26 @@ function muhasebeFisBul(id) {
 
 /* ─── Kalıcı fiş numarası (M5a, 18.10.2026): SF-<yıl>-<sıra> veritabanında (sevk_fis). Numara HAREKETTEN okunur
    (sevk_fis_hareket: hareket → fiş) — bugünkü MF- numarası çok satırlı fişte hareketlerin yüklenme sırasına göre
-   değişebiliyor. Numarası olmayan fiş (iplik fişleri M8'e kadar; okunamazsa) bugünkü MF- numarasıyla görünür.
+   değişebiliyor. Numarası olmayan fiş (okunamazsa) bugünkü MF- numarasıyla görünür. İplik fişleri (M8b-2, 28.10.2026): bağ
+   sevk_fis_iplik'te (iplik hareketinin kimliği sayı; önbellekte 'i:<id>'), numara sırası kumaş / mamülle ortak.
    Program yalnız okur; eski MF- numarası listede küçük yazıyla ve aramada kalır. ─── */
 const _muhasebeFisSfNo = new Map();       // hareket id → SF numarası
 const _muhasebeFisSfSorulma = new Map();  // hareket id → son soruluş (numarasız cevap 2 dk'da bir yeniden sorulur)
 const _muhasebeFisSfBekleyen = new Map(); // hareket id → süren istek (aynı anda iki çizim aynı numarayı iki kez sormasın)
 let _muhasebeFisSfKapali = false;         // tablo kurulu değil → hiç sorulmaz
+let _muhasebeFisSfIplikKapali = false;    // sevk_fis_iplik kurulu değil (SQL 21) → iplik fişi sorulmaz
 let _muhasebeFisSfSurum = 0;              // yeni numara geldikçe artar (liste imzasına girer)
 const MUHASEBE_FIS_SF_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Önbellek anahtarı: kumaş / mamül hareketi uuid, iplik hareketi 'i:<sayı>'. */
+function muhasebeFisSfAnahtar(fis, id) {
+    return String(fis && fis.depo_grup || '').toUpperCase() === 'IPLIK' ? 'i:' + String(id) : String(id);
+}
+
 function muhasebeFisSfNo(fis) {
-    if (!fis || String(fis.depo_grup || '').toUpperCase() === 'IPLIK') return '';
+    if (!fis) return '';
     for (const id of (fis.hareket_ids || [])) {
-        const sf = _muhasebeFisSfNo.get(String(id));
+        const sf = _muhasebeFisSfNo.get(muhasebeFisSfAnahtar(fis, id));
         if (sf) return sf;
     }
     return '';
@@ -89,33 +96,42 @@ function muhasebeFisGorunenNo(fis) {
  *  En çok opts.bekle ms (varsayılan 2,5 sn) bekler — geç gelen cevap bir sonraki çizimde görünür. */
 async function muhasebeFisKaliciNoYukle(fisler, opts) {
     opts = opts || {};
-    if (_muhasebeFisSfKapali || typeof sb === 'undefined' || !sb) return;
+    if ((_muhasebeFisSfKapali && _muhasebeFisSfIplikKapali) || typeof sb === 'undefined' || !sb) return;
     const simdi = Date.now();
-    const ids = [];
+    const ids = [], iplikIds = [];
     const surenler = new Set();
     for (const f of (fisler || [])) {
-        if (!f || String(f.depo_grup || '').toUpperCase() === 'IPLIK' || muhasebeFisSfNo(f)) continue;
+        if (!f || muhasebeFisSfNo(f)) continue;
+        const iplik = String(f.depo_grup || '').toUpperCase() === 'IPLIK';
+        if (iplik ? _muhasebeFisSfIplikKapali : _muhasebeFisSfKapali) continue;
         const id = String((f.hareket_ids || [])[0] || '');
-        if (!MUHASEBE_FIS_SF_UUID.test(id) || ids.includes(id)) continue;
-        if (_muhasebeFisSfBekleyen.has(id)) { surenler.add(_muhasebeFisSfBekleyen.get(id)); continue; }
-        if (simdi - (_muhasebeFisSfSorulma.get(id) || 0) < MUHASEBE_FIS_CACHE_MS) continue;
-        ids.push(id);
+        if (!(iplik ? /^\d+$/.test(id) : MUHASEBE_FIS_SF_UUID.test(id))) continue;
+        const a = muhasebeFisSfAnahtar(f, id);
+        if (ids.includes(a) || iplikIds.includes(a)) continue;
+        if (_muhasebeFisSfBekleyen.has(a)) { surenler.add(_muhasebeFisSfBekleyen.get(a)); continue; }
+        if (simdi - (_muhasebeFisSfSorulma.get(a) || 0) < MUHASEBE_FIS_CACHE_MS) continue;
+        (iplik ? iplikIds : ids).push(a);
     }
-    if (!ids.length && !surenler.size) return;
+    if (!ids.length && !iplikIds.length && !surenler.size) return;
     const parcalar = [];
-    for (let i = 0; i < ids.length; i += 100) parcalar.push(ids.slice(i, i + 100));
-    const yeni = parcalar.map((p) => {
+    for (let i = 0; i < ids.length; i += 100) parcalar.push({ tablo: 'sevk_fis_hareket', p: ids.slice(i, i + 100) });
+    for (let i = 0; i < iplikIds.length; i += 100) parcalar.push({ tablo: 'sevk_fis_iplik', p: iplikIds.slice(i, i + 100) });
+    const yeni = parcalar.map(({ tablo, p }) => {
+        const iplik = tablo === 'sevk_fis_iplik';
         const istek = (async () => {
-            const { data, error } = await sb.from('sevk_fis_hareket').select('eski_id,sevk_fis(fis_no)').in('eski_id', p);
+            const { data, error } = await sb.from(tablo).select('eski_id,sevk_fis(fis_no)').in('eski_id', iplik ? p.map((a) => a.slice(2)) : p);
             if (error) {
-                if (/PGRST20[05]|42P01|does not exist|could not find/i.test(`${error.code || ''} ${error.message || ''}`)) _muhasebeFisSfKapali = true;
+                if (/PGRST20[05]|42P01|does not exist|could not find/i.test(`${error.code || ''} ${error.message || ''}`)) {
+                    if (iplik) _muhasebeFisSfIplikKapali = true; else _muhasebeFisSfKapali = true;
+                }
                 return;
             }
             p.forEach((id) => _muhasebeFisSfSorulma.set(id, simdi));
             let yeniNo = 0;
             (data || []).forEach((r) => {
                 const sf = r && r.sevk_fis && r.sevk_fis.fis_no;
-                if (sf && _muhasebeFisSfNo.get(String(r.eski_id)) !== String(sf)) { _muhasebeFisSfNo.set(String(r.eski_id), String(sf)); yeniNo++; }
+                const a = (iplik ? 'i:' : '') + String(r && r.eski_id);
+                if (sf && _muhasebeFisSfNo.get(a) !== String(sf)) { _muhasebeFisSfNo.set(a, String(sf)); yeniNo++; }
             });
             if (yeniNo) {
                 _muhasebeFisSfSurum++;
@@ -338,6 +354,20 @@ function muhasebeFisKumasCikisHareketiMi(h) {
     const tip = muhasebeFisCikisTipiMi(h);
     if (tip === true) return true;
     return false;
+}
+
+/** İplik hareketinin fiş firması (M8b-2, 28.10.2026): iplik_stok'ta firma sütunu YOK — depo formu firmayı aracı firmaya, fason / boya
+    gönderimi gideceği firmaya ve [FASON_FIRMA:] etiketine yazar. Firma bulunamadığı için iplik fişleri hiç oluşmuyordu (SQL 21
+    erp_iplik_fis_firma aynı kural). */
+function muhasebeFisIplikFirma(h) {
+    const t = (v) => String(v == null ? '' : v).trim();
+    return t(h && h.firma) || t(h && h.araci_firma) || t(h && h.gidecegi_firma) || muhasebeFisNotMetaOku(h && h.notlar, 'FASON_FIRMA');
+}
+/** Fiş kuralları firma alanını okur: iplik satırına fiş firması eklenmiş kopya (satırın kendisi değişmez). */
+function muhasebeFisIplikSatiri(h) {
+    if (!h || String(h.firma || '').trim()) return h;
+    const f = muhasebeFisIplikFirma(h);
+    return f ? { ...h, firma: f } : h;
 }
 
 function muhasebeFisIplikCikisHareketiMi(h) {
@@ -936,7 +966,7 @@ function muhasebeFisHareketlerdenOlustur() {
     const iplik = typeof dataCache !== 'undefined' ? (dataCache.iplik_stok || []) : [];
     const mamulGruplar = muhasebeFisHareketGruplarOlustur(stok.filter(muhasebeFisMamulCikisHareketiMi), 'MAMUL');
     const kumasGruplar = muhasebeFisHareketGruplarOlustur(stok.filter(muhasebeFisKumasCikisHareketiMi), 'KUMAS');
-    const iplikGruplar = muhasebeFisHareketGruplarOlustur(iplik.filter(muhasebeFisIplikCikisHareketiMi), 'IPLIK');
+    const iplikGruplar = muhasebeFisHareketGruplarOlustur(iplik.map(muhasebeFisIplikSatiri).filter(muhasebeFisIplikCikisHareketiMi), 'IPLIK');
     return [...mamulGruplar, ...kumasGruplar, ...iplikGruplar]
         .sort((a, b) => (Date.parse(b.created_at)||0) - (Date.parse(a.created_at)||0));
 }
@@ -995,7 +1025,8 @@ function muhasebeFisHareketGruplarOlustur(kayitlar, depoGrup) {
             musteri:      String(first.firma||'').toUpperCase(),
             teslim_alan:  muhasebeFisNotMetaOku(first.notlar,'TESLIM_ALAN'),
             teslim_tel:   muhasebeFisNotMetaOku(first.notlar,'TESLIM_TEL'),
-            plaka:        muhasebeFisNotMetaOku(first.notlar,'PLAKA') || String(first.araci_firma||'').toUpperCase(),
+            /* iplikte aracı firma firmanın kendisidir (plaka değil) */
+            plaka:        muhasebeFisNotMetaOku(first.notlar,'PLAKA') || (depoGrup === 'IPLIK' ? '' : String(first.araci_firma||'').toUpperCase()),
             sofor:        muhasebeFisNotMetaOku(first.notlar,'SOFOR'),
             teslim_adres: muhasebeFisNotMetaOku(first.notlar,'TESLIM_ADRES'),
             irsaliye_no:  irsaliyeNo,

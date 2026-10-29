@@ -1569,8 +1569,20 @@ async function sayimHareketleriYaz(table, payloads, onIlerleme) {
         let insertPayload = chunk.map(x => ({ ...x }));
         /* M5b karşılaştırma: sayım düzeltmesi kapıya deneme (yalnız kumaş / mamül deposu, anahtar 'depo' KARSILASTIR; yazım değişmez) */
         if (table === 'kumas_stok') { try { if (typeof yapiDepoDeneBekle === 'function') await yapiDepoDeneBekle('STOK_SAYIM', insertPayload); } catch (e) {} }
+        /* M8b karşılaştırma: iplik sayım düzeltmesi kapıya deneme (yalnız anahtar 'iplik' KARSILASTIR; yazım değişmez) */
+        if (table === 'iplik_stok') { try { if (typeof yapiIplikDeneBekle === 'function') await yapiIplikDeneBekle('STOK_SAYIM', yapiIplikEkle(insertPayload)); } catch (e) {} }
         const triedCols = new Set();
         let ok = false;
+        /* M8c: anahtar 'iplik' YENI'de iplik sayım hareketleri tek iplik kapısından (parça tek işlemde; kişi oturumdan) */
+        if (table === 'iplik_stok' && typeof yapiIplikYeniMi === 'function' && yapiIplikYeniMi()) {
+            const k = await yapiIplikYaz('STOK_SAYIM', yapiIplikEkle(insertPayload));
+            if (k.ok) {
+                const { data: geri } = await sb.from(table).select('id,stok_kodu,created_at,notlar').in('id', k.idler);
+                inserted.push(...(geri || []));
+                sayimCacheHareketEkle(table, chunk, geri || []);
+                ok = true;
+            } else if (!k.kapiYok) throw new Error(k.iptal ? 'Sayım hareketleri yazılmadı (vazgeçildi)' : k.hata);
+        }
         for (let deneme = 0; deneme < 12 && !ok; deneme++) {
             /* Geri okunan kolonlar iki tabloda da bulunmalı: iplik_stok'ta miktar_mt yok ve
                istendiğinde kayıt tümden reddediliyordu (column iplik_stok.miktar_mt does not exist). */

@@ -748,6 +748,9 @@ function mobilSaltOkunurKapisiKur(client) {
     const asilRpc = client.rpc.bind(client);
     client.rpc = (ad, ...rest) => (MOBIL_OKUMA_RPC.test(String(ad || '')) || MOBIL_IZLEME_RPC.test(String(ad || ''))
         || (MOBIL_SAYIM_RPC.test(String(ad || '')) && typeof appMode !== 'undefined' && appMode === 'STOK_SAYIM')
+        /* M8c (28.10.2026): anahtar 'iplik' YENI'de iplik sayım hareketleri tek iplik kapısından — yalnız sayım ekranında, yalnız sayım işi */
+        || (String(ad || '') === 'erp_iplik_yaz' && typeof appMode !== 'undefined' && appMode === 'STOK_SAYIM'
+            && rest[0] && rest[0].p_istek && rest[0].p_istek.ekran === 'STOK_SAYIM')
         ? asilRpc(ad, ...rest)
         : mobilSaltOkunurEngelSonucu('rpc ' + ad));
     if (client.storage && client.storage.from) {
