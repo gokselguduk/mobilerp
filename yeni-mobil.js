@@ -2670,6 +2670,8 @@
             || (String(ad) === 'erp_sayim_yaz' && D.ekran === 'STOK_SAYIM')
             /* M8c (28.10.2026): anahtar 'iplik' YENI'de iplik sayım hareketleri tek iplik kapısından — yalnız sayım ekranında, yalnız sayım işi */
             || (String(ad) === 'erp_iplik_yaz' && D.ekran === 'STOK_SAYIM' && rest[0] && rest[0].p_istek && rest[0].p_istek.ekran === 'STOK_SAYIM')
+            /* M7c (30.10.2026): anahtar 'recete' YENI'de ürün ağacı kabı tek kapıdan — bugünkü kural (yalnız yönetici, Ürün Ağacı ekranı), yalnız 'yaz' (sıfırlama yok) */
+            || (String(ad) === 'erp_recete_yaz' && ykUaAcik() && rest[0] && rest[0].p_istek && rest[0].p_istek.tur === 'yaz')
             ? asilRpc(ad, ...rest) : ykEngel('rpc ' + ad));
         if (client.storage && client.storage.from) {
             const asilDepo = client.storage.from.bind(client.storage);

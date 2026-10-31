@@ -7436,6 +7436,9 @@ function erpLiveApplyPayloadYap(table, payload) {
                        yankısı) önbellek düşürülmez, yeniden okunmaz — bkz. erpLiveOnChange. */
                     const onb = _kdCache[`${tip}_${sid}`];
                     if (onb !== undefined && payload?.new && typeof row.notlar === 'string' && _kdHamMap.get(onb) === row.notlar) return 'ayni';
+                    /* M7c (anahtar 'recete' YENI): önbellekteki ürün ağacı görünümden gelir (ham metni farklı) — kapıdan yazdığımız metnin yankısı da "aynı" */
+                    if (onb !== undefined && payload?.new && tip === 'KD_URUN_AGACI' && typeof _kdUaYazilanHam !== 'undefined'
+                        && typeof row.notlar === 'string' && _kdUaYazilanHam.get(String(sid)) === row.notlar) return 'ayni';
                     delete _kdCache[`${tip}_${sid}`];
                     if (typeof _uaKdHydrated !== 'undefined') delete _uaKdHydrated[`${tip}_${sid}`];
                 }
@@ -38007,6 +38010,14 @@ function sbKdSatirlardanSec(rows, tip) {
     return sec ? kdHamKaydet(sec.parsed, String(sec.row.notlar || '{}')) : kdHamKaydet({}, '{}');
 }
 
+/* M7c (anahtar 'recete' YENI): görünümden gelen ürün ağacı kabı — ham metni kendisi (yazarken TABAN bu olur) */
+function sbKdUaYeniKap(k) {
+    const kap = k && typeof k === 'object' && !Array.isArray(k) ? k : {};
+    return kdHamKaydet(kap, JSON.stringify(kap));
+}
+/* M7c: kapıdan yazılan kap metni (sipariş → metin) — kapı metni AYNEN yazar; 04 canlı yankıyı bununla "aynı" sayar */
+const _kdUaYazilanHam = new Map();
+
 function sbKdCacheYaz(siparisId, tip, val) {
     const key = `${tip}_${siparisId}`;
     const prev = _kdCache[key];
@@ -38032,6 +38043,16 @@ async function sbKdGetMany(siparisIds, tip, opts = {}) {
         if (v !== undefined) out[id] = v;
     });
     if (!need.length || typeof sb === 'undefined' || !sb) return out;
+    /* M7c: anahtar 'recete' YENI'de ürün ağacı kabı görünümden (38; kalemi olmayan eski reçete görünmez — K1); okunamazsa aşağıdaki eski okuma */
+    if (tip === 'KD_URUN_AGACI' && typeof yapiReceteYeniKaplar === 'function') {
+        const yeni = await yapiReceteYeniKaplar(need);
+        if (yeni) {
+            let degisti = false;
+            need.forEach((id) => { const v = sbKdUaYeniKap(yeni.get(String(id))); if (sbKdCacheYaz(id, tip, v)) degisti = true; out[id] = v; });
+            if (degisti) planlamaIhtiyacSatirCacheInvalidate();
+            return out;
+        }
+    }
     let anyChange = false;
     const CHUNK = 40;
     for (let i = 0; i < need.length; i += CHUNK) {
@@ -38077,13 +38098,24 @@ async function sbKdGetTipler(siparisId, tips, opts = {}) {
     const list = (tips || []).map(String).filter(Boolean);
     if (sid == null || !list.length) return {};
     const ttl = opts.ttl === 0 ? 0 : (Number.isFinite(opts.ttl) ? opts.ttl : KD_SOFT_TTL_MS);
-    const need = opts.force ? list : list.filter(t => kdCacheStaleMi(sid, t, ttl));
+    let need = opts.force ? list : list.filter(t => kdCacheStaleMi(sid, t, ttl));
     const out = {};
     list.forEach((t) => {
         const v = _kdCache[`${t}_${sid}`];
         if (v !== undefined) out[t] = v;
     });
     if (!need.length || typeof sb === 'undefined' || !sb) return out;
+    /* M7c: anahtar 'recete' YENI'de ürün ağacı kabı görünümden (38); okunamazsa diğer tiplerle birlikte eski okuma */
+    if (need.includes('KD_URUN_AGACI') && typeof yapiReceteYeniKaplar === 'function') {
+        const yeni = await yapiReceteYeniKaplar([sid]);
+        if (yeni) {
+            const v = sbKdUaYeniKap(yeni.get(String(sid)));
+            if (sbKdCacheYaz(sid, 'KD_URUN_AGACI', v)) planlamaIhtiyacSatirCacheInvalidate();
+            out.KD_URUN_AGACI = v;
+            need = need.filter(t => t !== 'KD_URUN_AGACI');
+            if (!need.length) return out;
+        }
+    }
     try {
         const { data, error } = await erpWithTimeout(
             sb.from('siparis_akis')
@@ -38115,6 +38147,15 @@ async function sbKdGet(siparisId, tip, forceReload = false) {
     const key = `${tip}_${siparisId}`;
     if (!forceReload && _kdCache[key] !== undefined) return _kdCache[key];
     if (forceReload) delete _kdCache[key];
+    /* M7c: anahtar 'recete' YENI'de ürün ağacı kabı görünümden (38); okunamazsa aşağıdaki eski okuma */
+    if (tip === 'KD_URUN_AGACI' && typeof yapiReceteYeniKaplar === 'function') {
+        const yeni = await yapiReceteYeniKaplar([siparisId]);
+        if (yeni) {
+            const v = sbKdUaYeniKap(yeni.get(String(siparisId)));
+            if (sbKdCacheYaz(siparisId, tip, v)) planlamaIhtiyacSatirCacheInvalidate();
+            return v;
+        }
+    }
     try {
         const { data, error } = await erpWithTimeout(
             sb.from('siparis_akis')
@@ -38200,6 +38241,20 @@ async function sbKdSet(siparisId, tip, kd, opts = {}) {
         const birlesik = taban ? kdUcYonluBirlestir(taban, benim, guncel, undefined, undefined, mutlak) : kdDeepMerge(guncel, benim);
         const json = JSON.stringify(birlesik || {});
 
+        /* M7c: anahtar 'recete' YENI'de ürün ağacı kabı kapıdan GERÇEK (38 yapiReceteYaz; K3 yetki, gördüğü hâl, K1 kapıda, mükerrer
+           satırlar da kapıda); arada başka cihaz yazdıysa ('cakisma') taze okunup yeniden birleştirilir; kapı kurulu değilse aşağıdaki eski yazım */
+        if (tip === 'KD_URUN_AGACI' && typeof yapiReceteYazYeniMi === 'function' && yapiReceteYazYeniMi()) {
+            const gorulen = sec ? sec.row : (rows || [])[0];
+            const k = await yapiReceteYaz({ siparis_id: siparisId, tur: 'yaz', notlar: json,
+                gordugu: gorulen ? { id: gorulen.id, updated_at: gorulen.updated_at || null } : null });
+            if (k.ok) return sbKdUaYeniYazildi(siparisId, key, benim, json);
+            if (!k.kapiYok) {
+                if (k.cakisma) continue;
+                hataGoster('sbKdSet ürün ağacı kapısı', new Error(k.hata));
+                return { error: new Error(k.hata) };
+            }
+        }
+
         /* M7b: ürün ağacı kabı yazılmadan önce yazma kapısına deneme (yalnız anahtar 'recete' KARSILASTIR'da; 38) */
         const rd = tip === 'KD_URUN_AGACI' && typeof yapiReceteDeneBekle === 'function'
             ? await yapiReceteDeneBekle({ siparis_id: siparisId, tur: 'yaz', notlar: json,
@@ -38254,11 +38309,32 @@ function sbKdYazildi(siparisId, tip, key, benim, json) {
     return { error: null };
 }
 
+/* M7c: kapıdan yazıldı — kap görünümden yeniden okunur (kalemi olmayan eski reçete görünmez; arada başka cihazın birleşen değişikliği
+   dahil); okunamazsa yazılan metin. Yazılan metin hatırlanır: canlı yankısı (04) önbelleği düşürmesin. */
+async function sbKdUaYeniYazildi(siparisId, key, benim, json) {
+    _kdUaYazilanHam.set(String(siparisId), json);
+    let sonJson = json;
+    try {
+        const m = typeof yapiReceteYeniKaplar === 'function' ? await yapiReceteYeniKaplar([siparisId]) : null;
+        if (m) sonJson = JSON.stringify(m.get(String(siparisId)) || {});
+    } catch (e) {}
+    return sbKdYazildi(siparisId, 'KD_URUN_AGACI', key, benim, sonJson);
+}
+
 async function sbKdDel(siparisId, tip) {
     const key = `${tip}_${siparisId}`;
     delete _kdCache[key];
     delete _kdCacheAt[key];
     planlamaIhtiyacSatirCacheInvalidate();
+    /* M7c: anahtar 'recete' YENI'de "ürün ağacını sıfırla" kapıdan (K2: kabın tam kopyası izde, sonra silme); kapı kurulu değilse eski yol */
+    if (tip === 'KD_URUN_AGACI' && typeof yapiReceteYazYeniMi === 'function' && yapiReceteYazYeniMi()) {
+        const k = await yapiReceteYaz({ siparis_id: siparisId, tur: 'sifirla' });
+        if (k.ok) return { error: null };
+        if (!k.kapiYok) {
+            try { erpToast('Silinemedi: ' + k.hata, 'error', 6000); } catch (e) {}
+            return { error: new Error(k.hata) };
+        }
+    }
     /* M7b: ürün ağacını sıfırla → yazma kapısına deneme (K2 arşiv + iz; yalnız anahtar 'recete' KARSILASTIR'da; 38) */
     if (tip === 'KD_URUN_AGACI' && typeof yapiReceteDeneBekle === 'function') await yapiReceteDeneBekle({ siparis_id: siparisId, tur: 'sifirla' });
     const { error } = await sb.from('siparis_akis').delete().eq('siparis_id', siparisId).eq('islem', tip);
@@ -43866,11 +43942,19 @@ async function fasonAkisYukle(zorla) {
     _fasonAkis.yukleniyor = (async () => {
         /* M6c: kapalı fiyat + ödeme defteri olaylarla birlikte okunur (yalnız yetkiliye veri gelir; SQL yoksa istek yok) */
         const fiyatSoz = typeof fasonFiyatYukle === 'function' ? fasonFiyatYukle(!!zorla).catch(() => false) : null;
-        const { data, error } = await sbTumSatirlar(() => sb.from('siparis_akis')
+        /* M6 ekran geçişi: anahtar 'fason' YENI'de olaylar v_fason_akis'ten (aynı satır biçimi); görünüm okunamazsa oturumda eski tablo */
+        const oku = (tablo) => sbTumSatirlar(() => sb.from(tablo)
             .select('id,created_at,siparis_id,islem,kalem_ad,miktar,notlar')
             .in('islem', FASON_ISLEM_LISTE)
             .order('created_at', { ascending: true })
             .order('id', { ascending: true }));
+        const kaynak = typeof yapiFasonOkumaKaynagi === 'function' ? yapiFasonOkumaKaynagi() : 'siparis_akis';
+        let { data, error } = await oku(kaynak);
+        if (error && kaynak !== 'siparis_akis') {
+            /* görünüm kurulu değilse oturumda bir daha sorulmaz; ağ hatasında bu seferlik eski tablo */
+            if (typeof yapiRpcYokMu === 'function' && yapiRpcYokMu(error) && typeof yapiFasonGorunumYok === 'function') yapiFasonGorunumYok();
+            ({ data, error } = await oku('siparis_akis'));
+        }
         if (fiyatSoz) await fiyatSoz;
         if (error) { _fasonAkis.hata = String(error.message || error); return; }
         const sunucu = (data || []).map(r => ({ ...r, n: fasonNotOku(r.notlar) }));
@@ -44217,6 +44301,51 @@ function fasonParaMetin(obj) {
 function fasonOlaySatir(baglam, islem, kalemAd, miktar, n) {
     return { siparis_id: baglam.siparisId != null && baglam.siparisId !== '' ? baglam.siparisId : null, islem, kalem_ad: kalemAd || baglam.baslik || '—', miktar: miktar || 0, notlar: JSON.stringify(n) };
 }
+/** M6 ekran geçişi (anahtar 'fason' YENI — 38 yapiFasonYaz): olay(lar) + depo ters kayıtları + Terbiye dönüşünün Kesim önü satırı TEK
+    kapı isteğinde; biri düşerse hiçbiri yazılmaz. parcalar = [{ satir: fasonOlaySatir(...), n: kapıya giden (fiyatsız) olay notları }],
+    depo = [{ tablo, satir, olay? }] (fasonDepoPayload / fasonDepoDuzeltmeSatirlari), kesimOnu = 38 ek.kesim_onu. Döner null → YENI
+    değil ya da kapı kurulu değil (çağıran eski yoldan yazar; hiçbir şey yazılmadı) | { ok: false, hata } | { ok: true }. Kapının
+    kurduğu bağlar (notlar.depo / notlar.konf_gelis) ve kişi yerel olaya da yazılır; depo ve Kesim önü önbellekleri tazelenir. */
+async function fasonKapiYaz(parcalar, depo, kesimOnu) {
+    if (typeof yapiFasonYeniMi !== 'function' || !yapiFasonYeniMi() || !Array.isArray(parcalar) || !parcalar.length) return null;
+    const ko = Array.isArray(kesimOnu) ? kesimOnu : [];
+    const y = await yapiFasonYaz(parcalar.map((p) => p.satir), depo || [], ko.length ? { kesim_onu: ko } : null);
+    if (!y.ok) return y.kapiYok ? null : { ok: false, hata: y.hata };
+    const simdi = new Date().toISOString();
+    parcalar.forEach((p, i) => {
+        const n = p.n;
+        y.depo.forEach((d) => {
+            if (!d || d.olay === null || d.olay === undefined || Number(d.olay) !== i) return;
+            n.depo = { dus: true, tablo: d.tablo, id: d.tablo === 'iplik_stok' ? Number(d.id) : d.id };
+        });
+        y.kesimOnu.forEach((k) => {
+            if (!k || k.tur !== 'ekle' || Number(k.olay) !== i) return;
+            const x = ko.find((z) => z && z.tur !== 'sil' && Number(z.olay) === i) || {};
+            const kn = typeof x.notlar === 'string' ? fasonNotOku(x.notlar) : (x.notlar || {});
+            n.konf_gelis = { id: k.id, sid: String(x.siparis_id ?? ''), ki: parseInt(kn.kalem_idx, 10) };
+        });
+        if (y.kisi) n.user = y.kisi;
+        fasonAkisYerelEkle(p.satir, n);
+    });
+    /* depo önbelleği: fasonStokYaz gibi yazılan satır hemen, sonra tablo arka planda */
+    (depo || []).forEach((d, j) => {
+        const k = y.depo[j];
+        if (!d || !k || !Array.isArray(dataCache[d.tablo])) return;
+        dataCache[d.tablo].unshift({ ...d.satir, id: d.tablo === 'iplik_stok' ? Number(k.id) : k.id, created_at: simdi, updated_by: y.kisi || d.satir.updated_by });
+    });
+    const tablolar = [...new Set((depo || []).map((d) => d && d.tablo).filter(Boolean))];
+    try { if (tablolar.length && typeof erpSyncTablesBackground === 'function') erpSyncTablesBackground(tablolar); } catch (e) {}
+    /* Kesim önü: eklenen satırın siparişi tazelenir (42 terbiyeKonfGelisYaz gibi), silinen önbellekten düşer (terbiyeKonfGelisSil gibi) */
+    const silinen = new Set(y.kesimOnu.filter((k) => k && k.tur === 'sil').map((k) => String(k.id)));
+    if (silinen.size) {
+        try { if (typeof konfGlobalKumasGelisCacheMutate === 'function') konfGlobalKumasGelisCacheMutate((_konfGlobalKumasGelisCache || []).filter((r) => !silinen.has(String(r.akis_id)))); } catch (e) {}
+    }
+    [...new Set(ko.filter((x) => x && x.tur !== 'sil').map((x) => String(x.siparis_id ?? '')).filter(Boolean))].forEach((sid) => {
+        try { if (typeof _konfGlobalKumasGelisAt !== 'undefined' && _konfGlobalKumasGelisAt) konfGlobalKumasGelisSiparisTazele(sid).then(() => konfKesimOnuPanelTazele()).catch(() => {}); } catch (e) {}
+        try { if (typeof konfPipelineSiparisDurumSenkron === 'function') konfPipelineSiparisDurumSenkron(sid).catch(() => {}); } catch (e) {}
+    });
+    return { ok: true };
+}
 /** opts.yapiSoruldu: çağıran olayı (ve depo ters kaydını) kapıya zaten sordu (M6 karşılaştırma).
     opts.fiyatGordugu: iş formunun okuduğu fiyat zamanı (M6c — başkası değiştirdiyse fiyat yazılmaz). */
 async function fasonOlayYaz(baglam, islem, kalemAd, miktar, n, etiket, opts = {}) {
@@ -44227,6 +44356,15 @@ async function fasonOlayYaz(baglam, islem, kalemAd, miktar, n, etiket, opts = {}
         n = y.n;
     }
     const satir = fasonOlaySatir(baglam, islem, kalemAd, miktar, n);
+    /* M6 ekran geçişi: anahtar 'fason' YENI'de olay kapıdan (fasonKapiYaz); kapı kurulu değilse aşağıdaki eski yazım */
+    const kapi = await fasonKapiYaz([{ satir, n }], [], null);
+    if (kapi) {
+        if (!kapi.ok) {
+            try { erpToast(`${etiket || 'Fason kaydı'} yazılamadı: ${kapi.hata}`, 'error', 8000); } catch (e) {}
+            return { ok: false, error: kapi.hata };
+        }
+        return { ok: true };
+    }
     /* M6 karşılaştırma: aynı olay kapıya deneme (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
     if (!opts.yapiSoruldu) { try { if (typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([satir], []); } catch (e) {} }
     const res = await erpAkisEkle(satir, etiket || 'Fason kaydı');
@@ -44658,42 +44796,46 @@ async function fasonHareketKaydet() {
             if (!ks.ok) { erpToast(ks.hata, 'error', 9000); return; }
             konfGelisSatir = ks.satir;
         }
-        /* M6 karşılaştırma: olay + depo ters kaydı + Kesim önü satırı kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım
-           aşağıda aynen — konf_gelis bağını kapı yazar, denemedeki olayda yok) */
-        try {
-            /* M6c: SQL kuruluysa ödeme olayı kapalı deftere gider — kapıya sorulmaz (fasonFiyatAcikOlay → null) */
-            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(t.islem, n) : n;
-            if (an && typeof yapiFasonDeneBekle === 'function') {
-                await yapiFasonDeneBekle([fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), an)],
-                    etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`), olay: 0 }] : [], undefined,
-                    konfGelisSatir ? { kesim_onu: [{ olay: 0, siparis_id: konfGelisSatir.siparis_id, kalem_ad: konfGelisSatir.kalem_ad,
-                        miktar: konfGelisSatir.miktar, notlar: konfGelisSatir.notlar }] } : null);
+        /* M6: olay (M6c: SQL kuruluysa ödeme olayı kapalı deftere gider → null, aşağıdaki eski yol) + depo ters kaydı + Kesim önü satırı
+           YAZMADAN kurulur — yeni kapı, karşılaştırma denemesi ve eski yazım AYNI satırları kullanır (konf_gelis / depo bağını kapı yazar) */
+        const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(t.islem, n) : n;
+        const kapiSatir = an ? fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), an) : null;
+        const kapiDepo = etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`), olay: 0 }] : [];
+        const kapiKo = konfGelisSatir ? [{ olay: 0, siparis_id: konfGelisSatir.siparis_id, kalem_ad: konfGelisSatir.kalem_ad,
+            miktar: konfGelisSatir.miktar, notlar: konfGelisSatir.notlar }] : null;
+        /* M6 ekran geçişi (anahtar 'fason' YENI): hepsi TEK kapı isteğinde — biri düşerse hiçbiri yazılmaz */
+        const kapi = an ? await fasonKapiYaz([{ satir: kapiSatir, n: an }], kapiDepo, kapiKo) : null;
+        if (kapi && !kapi.ok) { erpToast('Kaydedilemedi, hiçbir şey yazılmadı: ' + kapi.hata, 'error', 9000); return; }
+        if (!kapi) {
+            /* M6 karşılaştırma: aynı parçalar kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
+            try {
+                if (an && typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([kapiSatir], kapiDepo, undefined, kapiKo ? { kesim_onu: kapiKo } : null);
+            } catch (e) {}
+            let depoId = null;
+            if (etki) {
+                const r = await fasonStokYaz(etki.tablo, kapiDepo[0].satir);
+                if (!r.ok) { erpToast('Depoya yazılamadı, kayıt yapılmadı: ' + (r.error?.message || r.error || ''), 'error', 9000); return; }
+                depoId = r.id;
+                n.depo = { dus: true, tablo: etki.tablo, id: depoId };
             }
-        } catch (e) {}
-        let depoId = null;
-        if (etki) {
-            const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`));
-            if (!r.ok) { erpToast('Depoya yazılamadı, kayıt yapılmadı: ' + (r.error?.message || r.error || ''), 'error', 9000); return; }
-            depoId = r.id;
-            n.depo = { dus: true, tablo: etki.tablo, id: depoId };
-        }
-        /* Boyahaneden Konfeksiyon'a (42): Kesim önü satırı (KUMAS_GELIS) önce; hareket yazılamazsa geri silinir */
-        let konfGelisId = null;
-        if (konfGelisSatir && typeof terbiyeKonfGelisYaz === 'function') {
-            const kg = await terbiyeKonfGelisYaz(konfGelisSatir);
-            if (!kg.ok) { erpToast(kg.hata, 'error', 9000); return; }
-            konfGelisId = kg.id;
-            n.konf_gelis = { id: kg.id, sid: konfDonus.sid, ki: parseInt(konfDonus.ki, 10) };
-        }
-        const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), n, 'Fason hareketi', { yapiSoruldu: true });
-        if (!res.ok) {
-            if (konfGelisId != null && !(await terbiyeKonfGelisGeriAl(konfGelisId))) erpToast('Hareket yazılamadı; Kesim önüne yazılan satır geri alınamadı — Kesim ekranından kontrol edin.', 'error', 10000);
-            if (depoId != null) {
-                const { error } = await sb.from(etki.tablo).delete().eq('id', depoId);
-                if (!error && Array.isArray(dataCache[etki.tablo])) dataCache[etki.tablo] = dataCache[etki.tablo].filter(x => String(x.id) !== String(depoId));
-                if (error) erpToast('Fason kaydı yazılamadı; depoya yazılan satır geri alınamadı — Depo Hareketleri\'nden kontrol edin.', 'error', 10000);
+            /* Boyahaneden Konfeksiyon'a (42): Kesim önü satırı (KUMAS_GELIS) önce; hareket yazılamazsa geri silinir */
+            let konfGelisId = null;
+            if (konfGelisSatir && typeof terbiyeKonfGelisYaz === 'function') {
+                const kg = await terbiyeKonfGelisYaz(konfGelisSatir);
+                if (!kg.ok) { erpToast(kg.hata, 'error', 9000); return; }
+                konfGelisId = kg.id;
+                n.konf_gelis = { id: kg.id, sid: konfDonus.sid, ki: parseInt(konfDonus.ki, 10) };
             }
-            return;
+            const res = await fasonOlayYaz(b, t.islem, null, fasonAnaMiktar({ tip: ctx.tip, ...v }), n, 'Fason hareketi', { yapiSoruldu: true });
+            if (!res.ok) {
+                if (konfGelisId != null && !(await terbiyeKonfGelisGeriAl(konfGelisId))) erpToast('Hareket yazılamadı; Kesim önüne yazılan satır geri alınamadı — Kesim ekranından kontrol edin.', 'error', 10000);
+                if (depoId != null) {
+                    const { error } = await sb.from(etki.tablo).delete().eq('id', depoId);
+                    if (!error && Array.isArray(dataCache[etki.tablo])) dataCache[etki.tablo] = dataCache[etki.tablo].filter(x => String(x.id) !== String(depoId));
+                    if (error) erpToast('Fason kaydı yazılamadı; depoya yazılan satır geri alınamadı — Depo Hareketleri\'nden kontrol edin.', 'error', 10000);
+                }
+                return;
+            }
         }
         _fasonMesgul = false;
         fasonPencereKapat();
@@ -44725,22 +44867,25 @@ async function fasonHareketDuzeltKaydet(ctx, b, v) {
         if (h.konfGelis && ['mt', 'kg', 'top', 'kumas_kodu', 'lot_no'].some(a => a in yeni)) { erpToast('Bu dönüş Konfeksiyon’a (Kesim önüne) gitti — miktarı buradan düzeltilmez; kaydı silip doğrusunu yeniden girin.', 'error', 10000); return; }
         const n = { kaynak: 'MASAUSTU_FASON', oid: fasonId('fd'), hedef_fgid: h.fgid, tip: h.tip, alan: h.alan, anahtar: h.anahtar, is_id: h.isId,
             user: fasonKullanici(), ts: new Date().toISOString(), eski, yeni, neden: fasonDeger('fh-neden'), giris_user: h.user, giris_ts: h.ts };
-        /* M6 karşılaştırma: düzeltme olayı + depo ters kayıtları kapıya TEK denemede (yazım aşağıda aynen) */
-        try {
-            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.DUZENLE, n) : n;   /* M6c: ödeme düzeltmesi sorulmaz */
-            if (an && typeof yapiFasonDeneBekle === 'function') {
-                await yapiFasonDeneBekle([fasonOlaySatir(b, FASON_ISLEM.DUZENLE, null, 0, an)], h.depo?.dus
-                    ? fasonDepoDuzeltmeSatirlari(b, { ...h, ...yeni }.firma, h.fgid, fasonDepoEtki(h.tip, h), fasonDepoEtki(h.tip, { ...h, ...yeni }), 'Fason hareketi düzeltildi') : []);
-            }
-        } catch (e) {}
-        /* Önce iz: yazılamazsa düzeltme yapılmaz */
-        const res = await fasonOlayYaz(b, FASON_ISLEM.DUZENLE, null, 0, n, 'Fason düzeltme kaydı', { yapiSoruldu: true });
-        if (!res.ok) return;
+        /* M6: düzeltme olayı (M6c: ödeme düzeltmesi kapalı deftere → null, eski yol) + depo ters kayıtları YAZMADAN kurulur */
+        const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.DUZENLE, n) : n;
+        const sonra = { ...h, ...yeni };
+        const kapiSatir = an ? fasonOlaySatir(b, FASON_ISLEM.DUZENLE, null, 0, an) : null;
+        const kapiDepo = h.depo?.dus ? fasonDepoDuzeltmeSatirlari(b, sonra.firma, h.fgid, fasonDepoEtki(h.tip, h), fasonDepoEtki(h.tip, sonra), 'Fason hareketi düzeltildi') : [];
+        /* M6 ekran geçişi (anahtar 'fason' YENI): düzeltme olayı + depo ters kayıtları TEK kapı isteğinde */
+        const kapi = an ? await fasonKapiYaz([{ satir: kapiSatir, n: an }], kapiDepo, null) : null;
+        if (kapi && !kapi.ok) { erpToast('Düzeltilemedi, hiçbir şey yazılmadı: ' + kapi.hata, 'error', 9000); return; }
         let depoUyari = '';
-        if (h.depo?.dus) {
-            const sonra = { ...h, ...yeni };
-            const r = await fasonDepoDuzeltmeYaz(b, sonra.firma, h.fgid, fasonDepoEtki(h.tip, h), fasonDepoEtki(h.tip, sonra), 'Fason hareketi düzeltildi');
-            if (!r.ok) depoUyari = ' Depo düzeltmesi yazılamadı — Depo Hareketleri\'nden elle düzeltin.';
+        if (!kapi) {
+            /* M6 karşılaştırma: aynı parçalar kapıya TEK denemede (yazım aşağıda aynen) */
+            try { if (an && typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([kapiSatir], kapiDepo); } catch (e) {}
+            /* Önce iz: yazılamazsa düzeltme yapılmaz */
+            const res = await fasonOlayYaz(b, FASON_ISLEM.DUZENLE, null, 0, n, 'Fason düzeltme kaydı', { yapiSoruldu: true });
+            if (!res.ok) return;
+            if (h.depo?.dus) {
+                const r = await fasonDepoDuzeltmeYaz(b, sonra.firma, h.fgid, fasonDepoEtki(h.tip, h), fasonDepoEtki(h.tip, sonra), 'Fason hareketi düzeltildi');
+                if (!r.ok) depoUyari = ' Depo düzeltmesi yazılamadı — Depo Hareketleri\'nden elle düzeltin.';
+            }
         }
         _fasonMesgul = false;
         fasonPencereKapat();
@@ -44782,27 +44927,30 @@ async function fasonHareketSil() {
         FASON_HAREKET_ALANLARI.forEach(a => { eski[a] = h[a]; });
         const n = { kaynak: 'MASAUSTU_FASON', oid: fasonId('fs'), hedef_fgid: h.fgid, tip: h.tip, alan: h.alan, anahtar: h.anahtar, is_id: h.isId,
             user: fasonKullanici(), ts: new Date().toISOString(), eski, neden, giris_user: h.user, giris_ts: h.ts, depo: h.depo || null };
-        /* M6 karşılaştırma: silme olayı + depo ters kaydı + boyahane dönüşünün Kesim önü satırı (42) kapıya TEK denemede (yazım
-           aşağıda aynen) */
-        try {
-            const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.SIL, n) : n;   /* M6c: ödeme silmesi sorulmaz */
-            if (an && typeof yapiFasonDeneBekle === 'function') {
-                await yapiFasonDeneBekle([fasonOlaySatir(b, FASON_ISLEM.SIL, null, 0, an)],
-                    h.depo?.dus ? fasonDepoDuzeltmeSatirlari(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)') : [], undefined,
-                    h.konfGelis?.id != null && typeof terbiyeKonfGelisIz === 'function'
-                        ? { kesim_onu: [{ olay: 0, tur: 'sil', id: String(h.konfGelis.id), iz: terbiyeKonfGelisIz(h) }] } : null);
-            }
-        } catch (e) {}
-        const res = await fasonOlayYaz(b, FASON_ISLEM.SIL, null, 0, n, 'Fason silme kaydı', { yapiSoruldu: true });
-        if (!res.ok) return;
+        /* M6: silme olayı (M6c: ödeme silmesi kapalı deftere → null, eski yol) + depo ters kaydı + boyahane dönüşünün Kesim önü satırı
+           (42; izi kapıda, nedeni silme olayından) YAZMADAN kurulur */
+        const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(FASON_ISLEM.SIL, n) : n;
+        const kapiSatir = an ? fasonOlaySatir(b, FASON_ISLEM.SIL, null, 0, an) : null;
+        const kapiDepo = h.depo?.dus ? fasonDepoDuzeltmeSatirlari(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)') : [];
+        const kapiKo = h.konfGelis?.id != null && typeof terbiyeKonfGelisIz === 'function'
+            ? [{ olay: 0, tur: 'sil', id: String(h.konfGelis.id), iz: terbiyeKonfGelisIz(h) }] : null;
+        /* M6 ekran geçişi (anahtar 'fason' YENI): hepsi TEK kapı isteğinde */
+        const kapi = an ? await fasonKapiYaz([{ satir: kapiSatir, n: an }], kapiDepo, kapiKo) : null;
+        if (kapi && !kapi.ok) { erpToast('Silinemedi, hiçbir şey değişmedi: ' + kapi.hata, 'error', 9000); return; }
         let depoUyari = '';
-        if (h.depo?.dus) {
-            const r = await fasonDepoDuzeltmeYaz(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)');
-            if (!r.ok) depoUyari = ' Depo ters kaydı yazılamadı — Depo Hareketleri\'nden elle düzeltin.';
-        }
-        if (h.konfGelis && typeof terbiyeKonfGelisSil === 'function') {
-            const r = await terbiyeKonfGelisSil(h, neden);
-            if (!r.ok) depoUyari += ' ' + r.hata;
+        if (!kapi) {
+            /* M6 karşılaştırma: aynı parçalar kapıya TEK denemede (yazım aşağıda aynen) */
+            try { if (an && typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([kapiSatir], kapiDepo, undefined, kapiKo ? { kesim_onu: kapiKo } : null); } catch (e) {}
+            const res = await fasonOlayYaz(b, FASON_ISLEM.SIL, null, 0, n, 'Fason silme kaydı', { yapiSoruldu: true });
+            if (!res.ok) return;
+            if (h.depo?.dus) {
+                const r = await fasonDepoDuzeltmeYaz(b, h.firma, h.fgid, fasonDepoEtki(h.tip, h), null, 'Fason hareketi silindi (ters kayıt)');
+                if (!r.ok) depoUyari = ' Depo ters kaydı yazılamadı — Depo Hareketleri\'nden elle düzeltin.';
+            }
+            if (h.konfGelis && typeof terbiyeKonfGelisSil === 'function') {
+                const r = await terbiyeKonfGelisSil(h, neden);
+                if (!r.ok) depoUyari += ' ' + r.hata;
+            }
         }
         _fasonMesgul = false;
         fasonPencereKapat();
@@ -50419,18 +50567,32 @@ async function fasonAgacTopluHareketYaz(sid, ortak, satirlar, opts = {}) {
         const etki = opts.depo !== false && t.depo && v.kumas_kodu ? fasonDepoEtki(tip, v) : null;
         return { m, tip, t, miktar, v, fgid, n, etki };
     });
-    /* M6 karşılaştırma: bütün olaylar + depo ters kayıtları kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR) */
-    try {
-        if (typeof yapiFasonDeneBekle === 'function') {
-            const depo = [];
-            parcalar.forEach((x, i) => { if (x.etki) depo.push({ tablo: x.etki.tablo, satir: fasonDepoPayload(b, x.v.firma, x.fgid, x.etki, `Fason · ${x.t.ad}`), olay: i }); });
-            await yapiFasonDeneBekle(parcalar.map((x) => fasonOlaySatir(b, x.t.islem, [x.m.kod, x.m.ad, x.m.renk].filter(fasonAgacDolu).join(' '), x.miktar, x.n)), depo);
+    /* M6: olaylar (M6c fiyatsız hâl; ödeme olayı burada yok) + depo ters kayıtları YAZMADAN kurulur — yeni kapı, karşılaştırma denemesi ve
+       eski yazım AYNI satırları kullanır */
+    const depo = [];
+    parcalar.forEach((x, i) => {
+        x.an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(x.t.islem, x.n) : x.n;
+        x.satir = fasonOlaySatir(b, x.t.islem, [x.m.kod, x.m.ad, x.m.renk].filter(fasonAgacDolu).join(' '), x.miktar, x.an || x.n);
+        x.depoSatir = x.etki ? fasonDepoPayload(b, x.v.firma, x.fgid, x.etki, `Fason · ${x.t.ad}`) : null;
+        if (x.etki) depo.push({ tablo: x.etki.tablo, satir: x.depoSatir, olay: i });
+    });
+    /* M6 ekran geçişi (anahtar 'fason' YENI): bütün satırlar TEK kapı isteğinde — biri düşerse hiçbiri yazılmaz */
+    if (parcalar.length && parcalar.every((x) => x.an)) {
+        const kapi = await fasonKapiYaz(parcalar.map((x) => ({ satir: x.satir, n: x.an })), depo, null);
+        if (kapi && !kapi.ok) return { ok: false, hata: `Kaydedilemedi, hiçbir satır yazılmadı: ${kapi.hata}`, yazilan, topluId };
+        if (kapi) {
+            parcalar.forEach((x) => yazilan.push({ malzeme: x.m, tip: x.tip, miktar: x.miktar, fgid: x.fgid, depo: !!x.etki }));
+            return { ok: true, yazilan, topluId };
         }
+    }
+    /* M6 karşılaştırma: bütün olaylar + depo ters kayıtları kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
+    try {
+        if (typeof yapiFasonDeneBekle === 'function' && parcalar.every((x) => x.an)) await yapiFasonDeneBekle(parcalar.map((x) => x.satir), depo);
     } catch (e) {}
-    for (const { m, tip, t, miktar, v, fgid, n, etki } of parcalar) {
+    for (const { m, tip, t, miktar, v, fgid, n, etki, depoSatir } of parcalar) {
         let depoId = null;
         if (etki) {
-            const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Fason · ${t.ad}`));
+            const r = await fasonStokYaz(etki.tablo, depoSatir);
             if (!r.ok) return { ok: false, hata: `${m.kod}: depoya yazılamadı (${r.error?.message || r.error || ''}) — bu satır ve sonrakiler kaydedilmedi.`, yazilan, topluId };
             depoId = r.id;
             n.depo = { dus: true, tablo: etki.tablo, id: depoId };
@@ -52146,16 +52308,20 @@ async function terbiyeHareketYaz(anahtar, tip, v, opts = {}) {
     if (etki && !etki.kod) return { ok: false, hata: 'Depoya yazmak için stok kodu gerekli.' };
     const fgid = fasonId('fh');
     const n = { kaynak: 'MASAUSTU_TERBIYE', oid: fgid, fgid, tip, alan: 'TERBIYE', anahtar, is_id: 'ana', user: fasonKullanici(), ts: new Date().toISOString(), ...v };
-    /* M6 karşılaştırma: olay + depo ters kaydı kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
+    /* M6: olay (M6c fiyatsız hâl) + depo ters kaydı YAZMADAN kurulur — yeni kapı, karşılaştırma denemesi ve eski yazım AYNI satırlar */
+    const an = typeof fasonFiyatAcikOlay === 'function' ? fasonFiyatAcikOlay(t.islem, n) : n;
+    const kapiSatir = fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip, ...v }), an || n);
+    const kapiDepo = etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Terbiye · ${t.ad}`), olay: 0 }] : [];
+    /* M6 ekran geçişi (anahtar 'fason' YENI): olay + depo TEK kapı isteğinde — biri düşerse hiçbiri yazılmaz */
+    const kapi = an ? await fasonKapiYaz([{ satir: kapiSatir, n: an }], kapiDepo, null) : null;
+    if (kapi) return kapi.ok ? { ok: true, fgid } : { ok: false, hata: 'Kaydedilemedi, hiçbir şey yazılmadı: ' + kapi.hata };
+    /* M6 karşılaştırma: aynı parçalar kapıya TEK denemede (yalnız anahtar 'fason' KARSILASTIR; yazım aşağıda aynen) */
     try {
-        if (typeof yapiFasonDeneBekle === 'function') {
-            await yapiFasonDeneBekle([fasonOlaySatir(b, t.islem, null, fasonAnaMiktar({ tip, ...v }), n)],
-                etki ? [{ tablo: etki.tablo, satir: fasonDepoPayload(b, v.firma, fgid, etki, `Terbiye · ${t.ad}`), olay: 0 }] : []);
-        }
+        if (an && typeof yapiFasonDeneBekle === 'function') await yapiFasonDeneBekle([kapiSatir], kapiDepo);
     } catch (e) {}
     let depoId = null;
     if (etki) {
-        const r = await fasonStokYaz(etki.tablo, fasonDepoPayload(b, v.firma, fgid, etki, `Terbiye · ${t.ad}`));
+        const r = await fasonStokYaz(etki.tablo, kapiDepo[0].satir);
         if (!r.ok) return { ok: false, hata: 'Depoya yazılamadı, kayıt yapılmadı: ' + (r.error?.message || r.error || '') };
         depoId = r.id;
         n.depo = { dus: true, tablo: etki.tablo, id: depoId };
@@ -52820,7 +52986,7 @@ try {
 const ERP_SURUM_KONTROL_MS = 5 * 60 * 1000;
 const ERP_SURUM_ODAK_MS = 60 * 1000;
 /* Veri yazan rpc'ler — oturum (erp_login, erp_session_*) ve okuma rpc'leri serbest */
-const ERP_SURUM_YAZAN_RPC = /^erp_admin_user_(create|delete|password|save)$|^erp_fiyat_(yaz|yetki_ver)$|^erp_sayim_yaz$|^erp_iplik_yaz$|^erp_firma_birlestir$|^erp_yapi_(ayar_yaz|fark_acikla)$/;
+const ERP_SURUM_YAZAN_RPC = /^erp_admin_user_(create|delete|password|save)$|^erp_fiyat_(yaz|yetki_ver)$|^erp_sayim_yaz$|^erp_iplik_yaz$|^erp_fason_yaz$|^erp_recete_yaz$|^erp_firma_birlestir$|^erp_yapi_(ayar_yaz|fark_acikla)$/;
 let _erpSurum = { eski: false, kontrolAt: 0, bekliyor: null, uzakSurum: '', uyariAt: 0, zamanlayici: null };
 
 function erpSurumKapisiVarMi() {
@@ -54839,10 +55005,13 @@ function ortakKesimOnuKumasKalemleri(plan, ki) {
    • ÖNCE iz (depo_hareket_iz, kaynak ADMIN_HAM; düzeltmede eski → yeni alanlar, silmede satırın tam kopyası),
      iz yazılamazsa hiçbir şey değişmez. Neden zorunlu. İz Günlük İşlemler'de ve Aktif kullanıcılarda görünür.
    • Kullanıcı / oturum tabloları ve iz tabloları KAPALI (iz değiştirilemez; hesaplar Kullanıcı Yönetimi'nden).
-   Mobil salt okunur — orada yok. */
+   Mobil salt okunur — orada yok.
+   • M8d (31.10.2026, karar D6): iplik_stok satırları YALNIZ GÖSTERİLİR. İplik yeni yapıya kapandıktan sonra o tabloya
+     programlardan doğrudan yazma veritabanında kapalıdır (SQL 23); iplik düzeltmesi depo düzelt penceresinden, kapı + iz ile. */
 const ERP_HAM_TABLOLAR = ['siparisler', 'siparis_akis', 'kumas_stok', 'iplik_stok', 'kumas_kutuphanesi', 'konf_kesim_yikama',
     'tezgahlar', 'dokuma_levent', 'dokuma_levent_is', 'dokuma_duraklama', 'numuneler', 'dokuma_fason_siparisleri', 'todo_list'];
 const ERP_HAM_SALT_OKUNUR = ['id', 'created_at'];
+const ERP_HAM_YALNIZ_GOSTER = ['iplik_stok'];   /* M8d D6: satır açılır, hiçbir alanı değiştirilemez / silinemez */
 let _erpHam = null;        // açık pencere: { tablo, id, taze, alanlar: [{ k, tur }] }
 let _erpHamMesgul = false;
 
@@ -54921,11 +55090,12 @@ async function erpHamKayitAc(tablo, id) {
     if (!taze) { erpToast(`${tablo} tablosunda id = ${id} olan satır yok (silinmiş olabilir).`, 'error', 7000); return; }
     const alanlar = Object.keys(taze).sort((a, b) => (ERP_HAM_SALT_OKUNUR.includes(b) - ERP_HAM_SALT_OKUNUR.includes(a)) || a.localeCompare(b))
         .map(k => ({ k, ...erpHamAlanCoz(taze[k]) }));
-    _erpHam = { tablo, id, taze, alanlar };
+    const yalnizGoster = ERP_HAM_YALNIZ_GOSTER.includes(tablo);
+    _erpHam = { tablo, id, taze, alanlar, yalnizGoster };
     const esc = pdfEsc;
     const turAd = { sayi: 'sayı', mantik: 'true / false', json: 'JSON', jsonMetin: 'JSON (metin kolonda)', metin: 'metin', bos: 'boş (null)' };
     const satirlar = alanlar.map((a, i) => {
-        const kilit = ERP_HAM_SALT_OKUNUR.includes(a.k);
+        const kilit = yalnizGoster || ERP_HAM_SALT_OKUNUR.includes(a.k);
         const satirSay = Math.min(14, Math.max(1, a.metin.split('\n').length, Math.ceil(a.metin.length / 90)));
         return `<div style="display:grid;grid-template-columns:190px 1fr;gap:10px;align-items:start;padding:6px 0;border-top:1px solid var(--border)">
             <div style="font-size:11.5px;font-weight:600;color:var(--text);word-break:break-all">${esc(a.k)}${kilit ? ' 🔒' : ''}
@@ -54943,11 +55113,17 @@ async function erpHamKayitAc(tablo, id) {
         <div style="display:flex;align-items:flex-start;gap:10px">
             <div style="flex:1">
                 <div style="font-size:15px;font-weight:700;color:var(--text)">⚙ Ham kayıt — ${esc(tablo)} · id ${esc(id)}</div>
-                <div style="font-size:11px;color:var(--text3);margin-top:3px">Yalnız admin. ${alanlar.length} alan · değiştirdiğiniz kutunun kenarı sarı olur, yalnız onlar yazılır.</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">Yalnız admin. ${alanlar.length} alan${yalnizGoster ? ' · yalnız gösterilir' : ' · değiştirdiğiniz kutunun kenarı sarı olur, yalnız onlar yazılır.'}</div>
             </div>
             <button type="button" onclick="erpHamKapat()" class="btn-pro btn-ghost-pro" style="padding:4px 10px;font-size:12px">✕</button>
         </div>
-        <div style="margin-top:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--rose-c);font-size:11.5px;color:var(--rose-c);line-height:1.5">
+        ${yalnizGoster ? `<div style="margin-top:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--amber-c);font-size:11.5px;color:var(--text2);line-height:1.5">
+            🔒 İplik kaydı burada yalnız gösterilir. Düzeltme ve silme depo düzelt penceresinden yapılır (iplik kapısı denetler, değişiklik geçmişine yazar).
+        </div>
+        <div style="margin-top:10px">${satirlar}</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px">
+            <button type="button" onclick="erpHamKapat()" class="btn-pro btn-ghost-pro" style="padding:8px 14px;font-size:12px">Kapat</button>
+        </div>` : `<div style="margin-top:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--rose-c);font-size:11.5px;color:var(--rose-c);line-height:1.5">
             ⚠ Burada yalnız BU SATIR değişir. Sayaçlar, sevkiyat fişi, depo kalanı, bağlı kayıtlar kendiliğinden düzelmez —
             olağan düzeltme kaydın kendi ekranındadır (Günlük İşlemler → Düzelt / Aç). Emin değilseniz kapatın.
             Her değişiklik / silme adınızla ve saatle değişiklik geçmişine yazılır; silinen satırın tam kopyası izde kalır.
@@ -54960,7 +55136,7 @@ async function erpHamKayitAc(tablo, id) {
             <span style="flex:1"></span>
             <button type="button" onclick="erpHamKapat()" class="btn-pro btn-ghost-pro" style="padding:8px 14px;font-size:12px">Vazgeç</button>
             <button type="button" id="ham-kaydet" onclick="erpHamKaydet()" class="btn-pro btn-primary-pro" style="padding:8px 16px;font-size:12px">Değişenleri kaydet</button>
-        </div>
+        </div>`}
     </div>`;
     document.body.appendChild(ov);
 }
@@ -54990,6 +55166,7 @@ function erpHamOnbellekGuncelle(tablo, id, yeniSatir) {
 async function erpHamKaydet() {
     if (_erpHamMesgul || !_erpHam) return;
     if (!erpHamYetkiliMi()) { erpToast('Ham kayıt düzenleyici yalnız admine açıktır.', 'error', 6000); return; }
+    if (_erpHam.yalnizGoster || ERP_HAM_YALNIZ_GOSTER.includes(_erpHam.tablo)) { erpToast('İplik kaydı burada değiştirilmez — depo düzelt penceresinden.', 'error', 7000); return; }
     const { tablo, id, taze, alanlar } = _erpHam;
     const patch = {}, eski = {}, yeni = {}, satirlar = [];
     for (let i = 0; i < alanlar.length; i++) {
@@ -55045,6 +55222,7 @@ async function erpHamKaydet() {
 async function erpHamSil() {
     if (_erpHamMesgul || !_erpHam) return;
     if (!erpHamYetkiliMi()) { erpToast('Ham kayıt düzenleyici yalnız admine açıktır.', 'error', 6000); return; }
+    if (_erpHam.yalnizGoster || ERP_HAM_YALNIZ_GOSTER.includes(_erpHam.tablo)) { erpToast('İplik kaydı burada silinmez — depo düzelt penceresinden.', 'error', 7000); return; }
     const { tablo, id } = _erpHam;
     const neden = String(document.getElementById('ham-neden')?.value || '').trim();
     if (!neden) { erpToast('Neden yazın — ham silme nedensiz yapılmaz.', 'error', 6000); document.getElementById('ham-neden')?.focus(); return; }
@@ -57502,7 +57680,7 @@ var _yapi = { ortam: null, ayar: null, ayarZaman: 0, ayarYok: false, ayarYokZama
 
 /** Bu okuyucunun sürümü. Bir modülün okuma / yazma kodu değişince artar; eşitleme kapatılmadan önce cihaz listesinde
     bütün cihazların bu sayıya ulaştığına bakılır. */
-function yapiOkuyucuSurum() { return 13; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) + M1 ekran geçişi (YENI'de ekran yeni sevki gösterir, 21.10) + M6 fason okuma kıyası / yazma denemesi (21.10) · 9: M7a ürün ağacı okuma kıyası (22.10 gece) · 10: M7b ürün ağacı yazma denemesi (22.10 gece) · 11: M8a iplik okuma kıyası (26.10) · 12: M8b iplik yazma denemesi (28.10) · 13: M8c iplik ekran geçişi (YENI: okuma görünümden, yazma kapıdan; 28.10) */
+function yapiOkuyucuSurum() { return 16; }   /* 2: M1 sevk (16.10 gece) · 3: M2 üretim + ortak okuyucu (17.10) · 4: M3 sayım yazma kapısı (17.10) · 5: M4 üretim yazma karşılaştırması (17.10 gece) · 6: M5b depo yazma karşılaştırması (18.10) · 7: Dokuma Depo sevki tek işlem denemesi (M5b 2, 21.10) · 8: depo düzeltme / geri alma denemesi (M5c, 21.10) + M1 ekran geçişi (YENI'de ekran yeni sevki gösterir, 21.10) + M6 fason okuma kıyası / yazma denemesi (21.10) · 9: M7a ürün ağacı okuma kıyası (22.10 gece) · 10: M7b ürün ağacı yazma denemesi (22.10 gece) · 11: M8a iplik okuma kıyası (26.10) · 12: M8b iplik yazma denemesi (28.10) · 13: M8c iplik ekran geçişi (YENI: okuma görünümden, yazma kapıdan; 28.10) · 14: M6 fason ekran geçişi (YENI: okuma v_fason_akis'ten, yazma erp_fason_yaz'dan; 30.10) · 15: M7c ürün ağacı ekran geçişi (YENI: okuma v_urun_agaci_kap'tan, yazma erp_recete_yaz'dan; 30.10) · 16: M8d iplik kapanışı (ham kayıt düzenleyicide iplik yalnız gösterilir, Yapı geçişi penceresi kapanan modülü kilitler; SQL 23 bütün cihazlar ≥16 olmadan kurulmaz; 31.10) */
 
 /** Geçiş modülleri (plan sırası). hazir: bu sürümde modülün karşılaştırma / yeni okuma kodu var mı.
     yeni: ekranın yeni sayıya geçiş kodu var mı — yoksa anahtar YENI'ye çevrilse de modül KARSILASTIR çalışır. */
@@ -57513,8 +57691,8 @@ function yapiModulleri() {
         { k: 'stok_sayim', m: 'M3', ad: 'Stok sayımı (pilot yazma)', hazir: true, yeni: true },   /* assets/stok-sayim.js */
         { k: 'uretim_yazma', m: 'M4', ad: 'Üretim yazma (dokuma)', hazir: true, yeni: false },   /* yapiUretimDene */
         { k: 'depo', m: 'M5', ad: 'Depo ve sevk yazma (ekleme)', hazir: true, yeni: false },   /* yapiDepoDene */
-        { k: 'fason', m: 'M6', ad: 'Fason ve terbiye', hazir: true, yeni: false },   /* yapiFasonOkuKiyas + yapiFasonDene (21.10) */
-        { k: 'recete', m: 'M7', ad: 'Ürün ağacı ve kumaş planı', hazir: true, yeni: false },   /* yapiReceteKiyasEkle (M7a, 22.10 gece) */
+        { k: 'fason', m: 'M6', ad: 'Fason ve terbiye', hazir: true, yeni: true },   /* yapiFasonOkuKiyas + yapiFasonDene (21.10) · ekran geçişi yapiFasonYaz / yapiFasonOkumaKaynagi (30.10) */
+        { k: 'recete', m: 'M7', ad: 'Ürün ağacı ve kumaş planı', hazir: true, yeni: true },   /* yapiReceteKiyasEkle (M7a, 22.10 gece) · ekran geçişi yapiReceteYeniKaplar / yapiReceteYaz (M7c, 30.10) */
         { k: 'iplik', m: 'M8', ad: 'İplik', hazir: true, yeni: true },   /* yapiIplikOkuKiyas (M8a, 26.10) · yapiIplikDene (M8b) · ekran geçişi yapiIplikYaz / yapiIplikOkumaKaynagi (M8c, 28.10) */
         { k: 'stok_kart', m: 'M9', ad: 'Stok kartları', hazir: false },
         { k: 'islem_izi', m: 'M10', ad: 'İşlem izi ve günlük', hazir: false }
@@ -57695,7 +57873,7 @@ async function yapiRpc(ad, govde, tablolar) {
     if (!token) return { ok: false, err: 'oturum' };
     try {
         const { data, error } = await c.rpc(ad, Object.assign({ p_token: token }, govde || {}));
-        if (error) return { ok: false, err: yapiRpcYokMu(error) ? 'kurulu_degil' : 'ag', mesaj: String(error.message || error) };
+        if (error) return { ok: false, err: yapiRpcYokMu(error) ? 'kurulu_degil' : 'ag', mesaj: String(error.message || error), kod: String(error.code || '') };
         const d = data && typeof data === 'object' ? data : { ok: false, err: 'cevap' };
         if (d.ok && Array.isArray(tablolar) && _yapi.ortam && typeof _yapi.ortam.yayinla === 'function') {
             tablolar.forEach((t) => { try { _yapi.ortam.yayinla(t); } catch (e) {} });
@@ -58041,6 +58219,84 @@ function yapiFasonDeneSonuc(g, r, durum) {
     });
 }
 
+/* ═══ M6 FASON / TERBİYE · EKRAN GEÇİŞİ (anahtar 'fason' YENI, 30.10.2026) ═══════════════════════════════════════════════
+   Karşılaştırmada bir hafta fark 0 (22.10 → 29.10, 85 olay). OKUMA: 12 fasonAkisYukle olayları v_fason_akis'ten okur (siparis_akis'in
+   FASON_* satırıyla aynı biçim: id = akış id'si, created_at, notlar = olayın tam hâli); görünüm okunamazsa oturumda eski tabloya döner.
+   YAZMA: fason motorunun olayları + depo ters kayıtları + Terbiye kumaş dönüşünün Kesim önü satırı TEK kapı isteğinde GERÇEK olarak
+   (erp_fason_yaz, deneme değil — SQL 14): biri düşerse hiçbiri yazılmaz (eski "depo / Kesim önü satırını geri sil" adımı yok); depo bağı
+   (notlar.depo) ve Kesim önü bağı (notlar.konf_gelis) kapıda kurulur, kişi oturumdan. Bağlantı koparsa aynı gid ile bir kez daha
+   sorulur (kapı aynı gid'i ikinci kez yazmaz, ilk yazımın sonucunu döner); sürüm kapısının reddi (ERP_ESKI_SURUM) tekrarlanmaz. Kapı
+   kurulu değilse bu oturumda eski yazıma dönülür. Olaylar yine siparis_akis'e yazılır (eşitleme fason_hareket'e taşır — eski sürümdeki
+   cihaz görmeye devam eder; M6d'de kapanır). Fiyat / ödeme (M6c) değişmez: 12 fasonOlayYaz önce fasonFiyatYolu'ndan geçer, kapıya
+   fiyatsız olay gider. Bağlantı yerleri 12 fasonOlayYaz (tek olay) + fasonKapiYaz (olay + depo + Kesim önü: 12 fasonHareketKaydet /
+   Duzelt / Sil, 20 fasonAgacTopluHareketYaz, 23 terbiyeHareketYaz). Mobil fason yazmaz; tabletlerde fason yok. */
+function yapiFasonYeniMi() { return yapiYeniMi('fason') && !_yapiFason.kapiYok; }
+
+/** 12 fasonAkisYukle: fason olayları hangi tablodan / görünümden okunsun. */
+function yapiFasonOkumaKaynagi() { return yapiYeniMi('fason') && !_yapiFason.gorunumYok ? 'v_fason_akis' : 'siparis_akis'; }
+/** Görünüm okunamadı (kurulu değil): bu oturumda eski tabloya dönülür. */
+function yapiFasonGorunumYok() { _yapiFason.gorunumYok = true; }
+
+/** Kapının ret nedeni → kullanıcıya gösterilecek metin. */
+function yapiFasonHataMetni(r) {
+    const x = r || {};
+    const ne = String(x.neden || '');
+    switch (x.err) {
+        case 'yetki': return 'Bu fason kaydı için yetkiniz yok' + (x.alan ? ` (${x.alan})` : '') + '.';
+        case 'tekrar': case 'cakisma': return 'Bu kayıt zaten yazılmış — liste yenilenince kontrol edin.';
+        case 'yok': return 'Düzeltilecek / silinecek kayıt bulunamadı — liste yenilenince kontrol edin.';
+        case 'silinmis': return 'Bu kayıt bu arada silinmiş.';
+        case 'siparis': return 'Sipariş bulunamadı.';
+        case 'tip': return 'Hareket türü tanınmadı' + (x.tip ? ` (${x.tip})` : '') + '.';
+        case 'dokuma_depo_sevki': return 'Bu gönderim bir Dokuma Depo sevkidir — miktarı ve silmesi Dokuma Depo ekranındaki "Sevk edilenler" listesinden yapılır.';
+        case 'kesim_onu_donusu': return 'Bu dönüş Konfeksiyon’a (Kesim önüne) gitti — miktarı düzeltilmez; kaydı silip doğrusunu yeniden girin.';
+        case 'etiket': case 'bag': return 'Depo / Kesim önü satırı bu kayda bağlanamadı.';
+        case 'miktar': return 'Depo satırının miktarı okunamadı.';
+        case 'kalem_yok': return 'Sipariş kalemi bulunamadı — Kesim önüne yazılmadı.';
+        case 'kumas_gelis': return 'Kesim önü satırı kurala uymuyor.';
+        case 'engel': return ne === 'kapali' ? 'Bu kumaşın kesimi "✓ Bitti" ile kapatılmış — önce Kesim önünde "Kapatılanlar"dan yeniden açın.'
+            : 'Bu kumaşa kesim / kalite / sevk işlenmiş — silinemez.';
+        case 'es': return 'Bu dönüşün Kesim önü satırı duruyor — kayıt Kesim önü satırıyla birlikte silinmeli.';
+        case 'bicim': return 'Kayıt biçimi kapıda reddedildi' + (ne ? ` (${ne})` : '') + '.';
+        case 'yazim': return 'Veritabanı kaydı yazamadı' + (x.detay ? ` (${String(x.detay).slice(0, 120)})` : '') + ' — hiçbir parça yazılmadı.';
+        case 'oturum': return 'Oturum süresi dolmuş — yeniden giriş yapın.';
+        case 'ag': case 'baglanti': return x.kod === 'ERP_ESKI_SURUM' && x.mesaj ? String(x.mesaj) : 'Bağlantı hatası — kayıt yapılmadı, yeniden deneyin.';
+        default: return 'Kayıt yapılamadı' + (x.err ? ` (${x.err}${x.detay ? ': ' + String(x.detay).slice(0, 120) : ''})` : '') + '.';
+    }
+}
+
+/** YENI'de fason yazımı: kapıya GERÇEK istek. olaylar / depo / ek.kesim_onu: yapiFasonDene ile aynı biçim (programın yazacağı satırlar).
+    Döner { ok: true, olayIds, depo: [{tablo, id, olay}], kesimOnu: [{tur, olay, id}], kisi } | { ok: false, kapiYok } (çağıran eski
+    yoldan yazar — hiçbir şey yazılmadı) | { ok: false, hata, cevap }. Hiç fırlatmaz. */
+async function yapiFasonYaz(olaylar, depo, ek) {
+    let g;
+    try {
+        g = { gid: 'fy_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+            program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: false,
+            olaylar: JSON.parse(JSON.stringify((olaylar || []).map((o) => Object.assign({}, o, { notlar: yapiFasonNot(o.notlar) })))),
+            depo: JSON.parse(JSON.stringify(Array.isArray(depo) ? depo : [])) };
+        if (ek && Array.isArray(ek.kesim_onu) && ek.kesim_onu.length) {
+            g.kesim_onu = JSON.parse(JSON.stringify(ek.kesim_onu.map((x) => (x && x.notlar !== undefined ? Object.assign({}, x, { notlar: yapiFasonNot(x.notlar) }) : x))));
+        }
+    } catch (e) {
+        return { ok: false, hata: 'Kayıt hazırlanamadı.' };
+    }
+    if (!g.olaylar.length) return { ok: false, hata: 'Yazılacak olay yok.' };
+    const tablolar = ['siparis_akis'].concat([...new Set(g.depo.map((d) => d && d.tablo).filter(Boolean))]);
+    const istek = () => {
+        /* kapının yazdığı satırların canlı yankısı bu oturumun kendi yazması ("başka oturumdan" bildirimi çıkmasın) */
+        try { if (_yapi.ortam && typeof _yapi.ortam.kendiYazma === 'function') tablolar.forEach((t) => _yapi.ortam.kendiYazma(t)); } catch (e) {}
+        return yapiRpc('erp_fason_yaz', { p_istek: g }, tablolar);
+    };
+    let r = await istek();
+    /* bağlantı koptu: kapı yazmış olabilir — aynı gid ile bir kez daha (ikinci kez yazmaz, ilk yazımın sonucunu döner) */
+    if (r && (r.err === 'ag' || r.err === 'baglanti') && r.kod !== 'ERP_ESKI_SURUM') r = await istek();
+    if (r && r.err === 'kurulu_degil') { _yapiFason.kapiYok = true; return { ok: false, kapiYok: true }; }
+    if (!r || !r.ok) return { ok: false, hata: yapiFasonHataMetni(r), cevap: r };
+    return { ok: true, olayIds: Array.isArray(r.olay_ids) ? r.olay_ids : [], depo: Array.isArray(r.depo) ? r.depo : [],
+        kesimOnu: Array.isArray(r.kesim_onu) ? r.kesim_onu : [], kisi: String(r.kisi || ''), cevap: r };
+}
+
 /* ═══ M7 ÜRÜN AĞACI · OKUMA KIYASI (karşılaştırma aşaması, 22.10.2026 gece) ═══════════════════════════════════════════════
    SQL: supabase/yapi-adim/16-urun-agaci-oku (v_urun_agaci_kap: kap + kalem_siralar + arsiv_siralar). Kararlar docs/M7-URUN-AGACI-TASLAK.md.
    Anahtar 'recete' KARSILASTIR'dayken ürün ağacı kabı (KD_URUN_AGACI) AĞDAN okunduğu anda (ana program + mobil 08 sbKdGet / sbKdGetMany /
@@ -58246,6 +58502,86 @@ function yapiReceteFarkYaz(g, r) {
         ayrinti: { islem: 'yaz', tur: g.tur || 'yaz', neden, ayrinti: r.neden || '', sira: r.sira ?? null, program: g.program, gid: g.gid,
             gordugu: g.gordugu || null, kapi_satiri: r.akis_id ?? null, boyut: g.notlar ? String(g.notlar).length : 0 }
     });
+}
+
+/* ═══ M7c ÜRÜN AĞACI · EKRAN GEÇİŞİ (anahtar 'recete' YENI, 30.10.2026) ════════════════════════════════════════════════════
+   Karşılaştırmada bir hafta fark 0 (23.10 → 30.10; okuma her ağdan okunuşta kıyaslandı — yazma tarafında bu sürede tek kap değişti).
+   OKUMA: ürün ağacı kabı v_urun_agaci_kap'tan (siparis_recete + CANLI kaleme bağlı kalem_recete — kalemi olmayan / arşivdeki eski
+   reçete görünmez, yeni kalem onu devralmaz: K1; ekranın iç sayacı _ua_edit_seq yok). Okuyucular: ana program + mobil 08 sbKdGet /
+   sbKdGetMany / sbKdGetTipler, Konfeksiyon Panel + Dokuma Panel getKd / getKdBatch — yapiReceteYeniKaplar(sids) Map döndürürse onu
+   kullanır (görünümde satırı olmayan sipariş = boş kap; istek sayısı bugünkü kadar), null ise eski okuma (YENI değil / görünüm kurulu
+   değil / okunamadı). YAZMA: 08 sbKdSet / sbKdDel kapıdan GERÇEK (erp_recete_yaz tur 'yaz' | 'sifirla', deneme değil — SQL 17: K3 yetki,
+   gördüğü hâl, K1, K2 sıfırlamada arşiv + iz kapıda); 'cakisma' (arada başka cihaz yazdı) → program taze okuyup yeniden birleştirir
+   (bugünkü döngü, K4 programda); yazımdan sonra kap görünümden yeniden okunur (yetimsiz son hâl). Bağlantı koparsa aynı gid ile bir kez
+   daha; sürüm kapısının reddi tekrarlanmaz; kapı kurulu değilse bu oturumda eski yazım. Mobilde yalnız yönetici, yalnız Ürün Ağacı
+   ekranında, yalnız 'yaz' (mobil kapıları; sıfırlama mobilde yok). Tabletler ürün ağacı yazmaz. */
+function yapiReceteYeniMi() { return yapiYeniMi('recete') && !_yapiRecete.gorunumYok; }
+function yapiReceteYazYeniMi() { return yapiYeniMi('recete') && !_yapiRecete.kapiYok; }
+
+/** YENI'de siparişlerin ürün ağacı kabı görünümden: Map(sid → kap; görünümde yoksa boş nesne) ya da null (YENI değil / görünüm kurulu
+    değil / okunamadı → çağıran eski yoldan okur). Hiç fırlatmaz. */
+async function yapiReceteYeniKaplar(sids) {
+    if (!yapiReceteYeniMi()) return null;
+    const c = yapiSb();
+    if (!c || typeof c.from !== 'function') return null;
+    const liste = [...new Set((sids || []).map((s) => String(s == null ? '' : s).trim()).filter((s) => /^\d+$/.test(s)))];
+    const out = new Map();
+    for (let i = 0; i < liste.length; i += _yapiRecete.parca) {
+        const parca = liste.slice(i, i + _yapiRecete.parca);
+        try {
+            const { data, error } = await c.from('v_urun_agaci_kap').select('siparis_id,kap').in('siparis_id', parca);
+            if (error) { if (yapiRpcYokMu(error)) _yapiRecete.gorunumYok = true; else _yapiRecete.sayac.hata++; return null; }
+            _yapiRecete.sayac.okuma++;
+            parca.forEach((sid) => out.set(sid, {}));
+            (data || []).forEach((r) => {
+                const k = r && r.kap;
+                out.set(String(r.siparis_id), k && typeof k === 'object' && !Array.isArray(k) ? k : {});
+            });
+        } catch (e) {
+            _yapiRecete.sayac.hata++;
+            return null;
+        }
+    }
+    return out;
+}
+
+/** Kapının ret nedeni → kullanıcıya gösterilecek metin. */
+function yapiReceteHataMetni(r) {
+    const x = r || {};
+    switch (x.err) {
+        case 'yetki': return 'Ürün ağacını değiştirme yetkiniz yok (Ürün Ağacı ekranı ya da yönetici; mobilde yalnız yönetici).';
+        case 'kalem': return `Ürün ağacındaki ${x.sira != null ? (Number(x.sira) + 1) + '. kalem' : 'bir kalem'} siparişte yok — sipariş kalemleri değişmiş, ekranı yenileyip tekrar deneyin.`;
+        case 'siparis': return 'Sipariş bulunamadı.';
+        case 'cakisma': return 'Ürün ağacı bu arada başka bir cihazdan değiştirildi — ekranı yenileyip tekrar deneyin.';
+        case 'bicim': return 'Ürün ağacı kaydı kapıda reddedildi' + (x.neden ? ` (${x.neden})` : '') + '.';
+        case 'oturum': return 'Oturum süresi dolmuş — yeniden giriş yapın.';
+        case 'ag': case 'baglanti': return x.kod === 'ERP_ESKI_SURUM' && x.mesaj ? String(x.mesaj) : 'Bağlantı hatası — kayıt yapılmadı, yeniden deneyin.';
+        default: return 'Kayıt yapılamadı' + (x.err ? ` (${x.err}${x.detay ? ': ' + String(x.detay).slice(0, 120) : ''})` : '') + '.';
+    }
+}
+
+/** YENI'de ürün ağacı yazımı: kapıya GERÇEK istek. istek = { siparis_id, tur: 'yaz' | 'sifirla', gordugu: { id, updated_at } | null,
+    notlar: kap metni } (yapiReceteDeneBekle ile aynı biçim). Döner { ok: true, akisId } | { ok: false, kapiYok } (çağıran eski yoldan
+    yazar — hiçbir şey yazılmadı) | { ok: false, cakisma, hata, cevap }. Hiç fırlatmaz. */
+async function yapiReceteYaz(istek) {
+    let g;
+    try {
+        g = Object.assign({ gid: 'ry_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+            program: String((_yapi.ortam && _yapi.ortam.platform) || ''), deneme: false }, JSON.parse(JSON.stringify(istek || {})));
+    } catch (e) {
+        return { ok: false, hata: 'Kayıt hazırlanamadı.' };
+    }
+    const yolla = () => {
+        /* kapının yazdığı satırın canlı yankısı bu oturumun kendi yazması ("başka oturumdan" bildirimi çıkmasın) */
+        try { if (_yapi.ortam && typeof _yapi.ortam.kendiYazma === 'function') _yapi.ortam.kendiYazma('siparis_akis'); } catch (e) {}
+        return yapiRpc('erp_recete_yaz', { p_istek: g }, ['siparis_akis']);
+    };
+    let r = await yolla();
+    /* bağlantı koptu: kapı yazmış olabilir — aynı gid ile bir kez daha (ikinci kez yazmaz, ilk yazımın sonucunu döner) */
+    if (r && (r.err === 'ag' || r.err === 'baglanti') && r.kod !== 'ERP_ESKI_SURUM') r = await yolla();
+    if (r && r.err === 'kurulu_degil') { _yapiRecete.kapiYok = true; return { ok: false, kapiYok: true }; }
+    if (r && r.ok) return { ok: true, akisId: r.akis_id ?? null, cevap: r };
+    return { ok: false, cakisma: !!(r && r.err === 'cakisma' && r.neden !== 'gid'), hata: yapiReceteHataMetni(r), cevap: r };
 }
 
 /* ═══ M8a İPLİK · OKUMA KIYASI (karşılaştırma aşaması, 26.10.2026) ════════════════════════════════════════════════════════
@@ -59108,14 +59444,17 @@ const YAPI_DURUM_AD = { ESKI: 'Eski', KARSILASTIR: 'Karşılaştır', YENI: 'Yen
 
 async function yapiGecisYukle() {
     const oku = async (sorgu) => { try { const r = await sorgu(); return r.error ? { hata: r.error } : { data: r.data || [] }; } catch (e) { return { hata: e }; } };
-    const [ayar, iz, fark, sevk, cihaz] = await Promise.all([
+    const [ayar, iz, fark, sevk, cihaz, kapanis] = await Promise.all([
         oku(() => sb.from('yapi_gecis_ayar').select('*').order('sira')),
         oku(() => sb.from('yapi_gecis_ayar_iz').select('*').order('id', { ascending: false }).limit(30)),
         oku(() => sb.from('yapi_gecis_fark').select('*').order('son_zaman', { ascending: false }).limit(1000)),
         oku(() => sb.from('v_kalem_sevk_fark').select('*').limit(500)),
-        oku(() => sb.from('yapi_gecis_cihaz').select('*').order('son_zaman', { ascending: false }).limit(300))
+        oku(() => sb.from('yapi_gecis_cihaz').select('*').order('son_zaman', { ascending: false }).limit(300)),
+        oku(() => sb.from('yapi_kapanis').select('*'))   /* M8d (SQL 23): kapanan modül — tablo yoksa hata, hiçbir modül kapalı sayılmaz */
     ]);
-    const v = { ayar, iz, fark, sevk, cihaz, sno: {}, zaman: Date.now() };
+    const kapali = {};
+    (kapanis.data || []).forEach((k) => { if (k && k.modul) kapali[k.modul] = k; });
+    const v = { ayar, iz, fark, sevk, cihaz, kapali, sno: {}, zaman: Date.now() };
     const ids = [...new Set((fark.data || []).map((f) => f.siparis_id).filter((x) => x != null).map(String))].slice(0, 300);
     if (ids.length) {
         const s = await oku(() => sb.from('siparisler').select('id,sno').in('id', ids));
@@ -59187,8 +59526,9 @@ function yapiGecisCiz() {
         const m = modProg[a.modul];
         const nAcik = acik.filter((f) => f.modul === a.modul).length;
         const gun = a.durum === 'KARSILASTIR' && a.degisti ? Math.floor((Date.now() - new Date(a.degisti)) / 86400000) : null;
+        const kap = (v.kapali || {})[a.modul];   /* M8d: kapanan modülün anahtarı Yeni'de kalır (veritabanı tetikleyicisi de reddeder) */
         const dugme = (d) => {
-            if (!admin || a.durum === d) return '';
+            if (!admin || a.durum === d || kap) return '';
             const kapali = d !== 'ESKI' && !(m && m.hazir);
             const yeniYok = !kapali && d === 'YENI' && !(m && m.yeni);
             const sira = d === 'YENI' && a.durum !== 'KARSILASTIR';
@@ -59201,7 +59541,8 @@ function yapiGecisCiz() {
             <td style="padding:6px 8px"><span style="font-size:11px;font-weight:700;color:${YAPI_DURUM_RENK[a.durum] || 'var(--text)'}">${YAPI_DURUM_AD[a.durum] || e(a.durum)}</span>${gun !== null ? ` <span style="font-size:10.5px;color:var(--text3)">${gun} gün</span>` : ''}</td>
             <td style="padding:6px 8px;font-size:11px;color:var(--text3)">${a.degistiren ? e(a.degistiren) + ' · ' + yapiGecisZaman(a.degisti) + (a.neden ? ' · ' + e(a.neden) : '') : '—'}</td>
             <td style="padding:6px 8px;text-align:right">${nAcik ? `<button type="button" class="kya-mini" style="padding:3px 8px;font-size:11px;color:var(--rose-c)" onclick="yapiGecisModulSec('${e(a.modul)}')">${nAcik} açık</button>` : '<span style="font-size:11px;color:var(--text3)">0</span>'}</td>
-            <td style="padding:6px 8px;text-align:right;white-space:nowrap">${dugme('ESKI')}${dugme('KARSILASTIR')}${dugme('YENI')}</td></tr>`;
+            <td style="padding:6px 8px;text-align:right;white-space:nowrap">${kap ? `<span style="font-size:11px;font-weight:700;color:var(--text2)" title="${e((kap.aciklama || '') + ' · ' + yapiGecisZaman(kap.zaman))}">🔒 kapandı (${e(kap.adim || '')})</span>`
+                : dugme('ESKI') + dugme('KARSILASTIR') + dugme('YENI')}</td></tr>`;
     }).join('');
     const secili = _yapiPanel.modul;
     const liste = acik.filter((f) => !secili || f.modul === secili).slice(0, 300);
@@ -59255,6 +59596,7 @@ async function yapiGecisAnahtar(modul, durum) {
     const v = _yapiPanel.veri;
     const a = (v?.ayar?.data || []).find((x) => x.modul === modul);
     if (!a) return;
+    if (v.kapali && v.kapali[modul]) { erpToast('Bu modül yeni yapıya kapandı — anahtar Yeni\'de kalır.', 'error', 6000); return; }
     let uyari = '';
     if (durum === 'YENI') {
         const gun = a.degisti ? (Date.now() - new Date(a.degisti)) / 86400000 : 0;
@@ -59275,7 +59617,8 @@ async function yapiGecisAnahtar(modul, durum) {
     const r = await yapiRpc('erp_yapi_ayar_yaz', { p_modul: modul, p_durum: durum, p_neden: String(neden).trim() }, ['yapi_gecis_ayar']);
     if (!r.ok) {
         const m = { yetki: 'Yalnız admin değiştirebilir.', sira: 'Yeni\'ye ancak Karşılaştır\'dan geçilir.', oturum: 'Oturum geçersiz — yeniden giriş yapın.',
-            kurulu_degil: 'Faz 0 SQL\'i kurulu değil.', neden: 'Neden zorunlu.' }[r.err] || ('Değişmedi: ' + (r.mesaj || r.err));
+            kurulu_degil: 'Faz 0 SQL\'i kurulu değil.', neden: 'Neden zorunlu.' }[r.err]
+            || (/kapandı/i.test(String(r.mesaj || '')) ? 'Bu modül yeni yapıya kapandı — anahtar Yeni\'de kalır.' : ('Değişmedi: ' + (r.mesaj || r.err)));
         erpToast(m, 'error', 4500);
         return;
     }
